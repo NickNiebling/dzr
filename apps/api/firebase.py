@@ -288,6 +288,7 @@ def compare_rider_categories(
         allowed_rider_ids: Optional allowlist of rider IDs (Zwift IDs) to include.
                           When provided, riders not in this set are excluded at the
                           data source before any upgrade comparisons are computed.
+                          None allows everyone; an empty set allows no one.
         
     Returns:
         Dict containing comparison results with upgraded riders
@@ -342,7 +343,7 @@ def compare_rider_categories(
             return str(v)
 
         allowed: Optional[set[str]] = None
-        if allowed_rider_ids:
+        if allowed_rider_ids is not None:
             allowed = {str(r).strip() for r in allowed_rider_ids if str(r).strip()}
 
         # Normalize keys so today's/yesterday's lookup always matches (Firestore data can mix str/int IDs).

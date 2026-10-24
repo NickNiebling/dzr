@@ -99,13 +99,14 @@ class ZwiftPower:
 
         If allowed_zwids is provided, filter the returned `data` rows at the source
         so downstream analysis only considers those Zwift IDs.
+        None allows everyone; an empty set allows no one.
         """
         url = f"https://zwiftpower.com/api3.php?do=team_results&id={club_id}"
         resp = self.session.get(url)
         resp.raise_for_status()
         payload = resp.json()
 
-        if allowed_zwids:
+        if allowed_zwids is not None:
             allowed = {str(z).strip() for z in allowed_zwids if str(z).strip()}
             try:
                 rows = payload.get("data", [])
