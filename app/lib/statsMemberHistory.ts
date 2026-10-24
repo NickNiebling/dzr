@@ -1,5 +1,5 @@
 import type { MemberPoint } from './statsTypes'
-import { buildSnapshotTimeline, dateTimestamp, isDateKey, type ChartTimeline } from './statsTimeline'
+import { buildChartTimeline, buildSnapshotTimeline, isDateKey } from './statsTimeline'
 import { shiftDay, weekStart, type PeriodWindow } from './statsPeriods'
 
 const MEMBER_SERIES = ['members', 'clubMembers'] as const
@@ -54,55 +54,67 @@ function normalizeMemberSnapshot(
   }
 }
 
-// Weekly counts are independent: a missing role count must not erase its last
-// known value when a newer Discord total is sampled (or vice versa).
+// Weekly peaks are independent for each series. Missing weeks carry the last
+// actual observation, not a peak from an earlier week.
 export function buildMemberTimeline(rows: MemberPoint[], window: PeriodWindow, now = new Date()) {
   if (window.granularity === 'day') return buildSnapshotTimeline(rows, window, now)
 
-  const latest: Record<MemberSeries, number | null> = { members: null, clubMembers: null }
-  const sourceDates: Partial<Record<MemberSeries, string>> = {}
-  let estimated = false
-  const snapshots = rows
-    .filter(row => isDateKey(row.date))
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .map(row => {
-      for (const series of MEMBER_SERIES) {
-        if (isCount(row[series])) {
-          latest[series] = row[series]
-          sourceDates[series] = row.date
-        }
-      }
-      if (isCount(row.members)) estimated = row.estimated
-      return { ...row, ...latest, estimated, sourceDates: { ...sourceDates } }
-    })
-  return withCurrentMemberSnapshot(buildSnapshotTimeline(snapshots, window, now), snapshots, window, now)
-}
-
-// Completed weeks stay Sunday samples. The newest snapshot this week is added
-// on its own date so the line reaches the same counts as the member cards.
-function withCurrentMemberSnapshot<T extends MemberPoint>(
-  timeline: ChartTimeline<T>,
-  snapshots: T[],
-  window: PeriodWindow,
-  now: Date,
-): ChartTimeline<T> {
   const today = now.toISOString().slice(0, 10)
-  const current = snapshots.filter(row => row.date > window.end && row.date <= today).at(-1)
-  if (!current) return timeline
+  const snapshots = rows
+    .filter(row => isDateKey(row.date) && row.date <= today)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const first = snapshots[0]
+  if (!first) return buildChartTimeline<MemberPoint>([], window)
 
-  const domainEnd = dateTimestamp(current.date)
-  return {
-    ...timeline,
-    points: [...timeline.points, {
-      ...current,
-      weekStart: weekStart(current.date),
-      weekEnd: current.date,
-      timestamp: domainEnd,
-      openWeek: true,
-    }],
-    end: current.date,
-    domain: [timeline.domain[0], Math.max(timeline.domain[1], domainEnd)] as [number, number],
+  const start = window.start && window.start > weekStart(first.date) ? window.start : weekStart(first.date)
+  const latest: Partial<Record<MemberSeries, MemberPoint>> = {}
+  const points: (MemberPoint & {
+    weekStart: string
+    weekEnd: string
+    sourceDates: Partial<Record<MemberSeries, string>>
+    openWeek?: boolean
+  })[] = []
+  let index = 0
+  for (let monday = start; monday <= today; monday = shiftDay(monday, 7)) {
+    const sunday = shiftDay(monday, 6)
+    const openWeek = sunday > window.end
+    if (openWeek && monday !== weekStart(today)) continue
+    const end = openWeek ? today : sunday
+    const peaks: Partial<Record<MemberSeries, MemberPoint>> = {}
+    let lastDate: string | undefined
+    while (index < snapshots.length && snapshots[index].date <= end) {
+      const row = snapshots[index++]
+      for (const series of MEMBER_SERIES) {
+        const value = row[series]
+        if (!isCount(value)) continue
+        latest[series] = row
+        const peak = peaks[series]?.[series]
+        // Equal peaks use the most recent observation's date.
+        if (row.date >= monday && (!isCount(peak) || value >= peak)) peaks[series] = row
+      }
+      if (row.date >= monday) lastDate = row.date
+    }
+    if (openWeek && !lastDate) continue
+    const members = peaks.members ?? latest.members
+    const clubMembers = peaks.clubMembers ?? latest.clubMembers
+    if (!members && !clubMembers) continue
+    const sourceDates: Partial<Record<MemberSeries, string>> = {}
+    if (members) sourceDates.members = members.date
+    if (clubMembers) sourceDates.clubMembers = clubMembers.date
+    points.push({
+      date: openWeek ? lastDate! : sunday,
+      weekStart: monday,
+      weekEnd: openWeek ? lastDate! : sunday,
+      members: members?.members ?? null,
+      clubMembers: clubMembers?.clubMembers ?? null,
+      presence: members?.presence ?? null,
+      estimated: members?.estimated ?? false,
+      sourceDates,
+      ...(openWeek ? { openWeek: true } : {}),
+    })
   }
+  const end = points.at(-1)?.openWeek ? points.at(-1)!.date : window.end
+  return buildChartTimeline(points, { ...window, end })
 }
 
 export type MissingObservationRange = {
@@ -142,3 +154,4 @@ export function findMissingMemberObservations(
   }
   return gaps
 }
+
