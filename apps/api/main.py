@@ -86,42 +86,52 @@ VERIFIED_MEMBER_ROLE_ID = os.getenv(
     "DISCORD_VERIFIED_MEMBER_ROLE_ID", _SHARED_ROLES.get("verifiedMember", "1385216556166025347")
 )
 
-# Cache for verified Zwift IDs (to avoid enumerating all Discord members on every cron hit)
-_verified_zwift_ids_cache: Optional[set[str]] = None
-_verified_zwift_ids_cache_ts: Optional[float] = None
+# Cache by required roles so weekly results and Club Member highlights stay separate.
+_verified_zwift_ids_cache: dict[frozenset[str], tuple[float, set[str]]] = {}
 VERIFIED_ZWIFT_IDS_CACHE_TTL_SECONDS = int(os.getenv("VERIFIED_ZWIFT_IDS_CACHE_TTL_SECONDS", "900"))  # 15 min
 
 
-def _get_verified_member_zwift_ids(force_refresh: bool = False) -> set[str]:
+def _get_verified_member_zwift_ids(
+    force_refresh: bool = False, *, require_club_membership: bool = False
+) -> set[str]:
     """
     Return a set of Zwift IDs for Discord members who currently have the Verified Member role.
+    Upgrade highlights additionally require the configured Club Member role.
 
     Source of truth:
       - Discord guild member roles (role_ids)
       - Firestore users collection for discordId -> zwiftId link
     """
-    global _verified_zwift_ids_cache, _verified_zwift_ids_cache_ts
-
-    now = time.time()
-    if (not force_refresh
-        and _verified_zwift_ids_cache is not None
-        and _verified_zwift_ids_cache_ts is not None
-        and (now - _verified_zwift_ids_cache_ts) < VERIFIED_ZWIFT_IDS_CACHE_TTL_SECONDS):
-        return _verified_zwift_ids_cache
-
     role_id = str(VERIFIED_MEMBER_ROLE_ID or "").strip()
     if not role_id:
-        _verified_zwift_ids_cache = set()
-        _verified_zwift_ids_cache_ts = now
-        return _verified_zwift_ids_cache
+        return set()
+
+    required_roles = {role_id}
+    if require_club_membership:
+        try:
+            settings = firebase.get_document("system_settings", "global") or {}
+            membership = settings.get("membership") or {}
+            club_role_id = str(membership.get("clubMemberRoleId") or "").strip()
+        except Exception as e:
+            logging.warning("Failed to load Club Member role for highlights: %s", e)
+            return set()
+        if not club_role_id:
+            logging.warning("Club Member role is not configured; skipping upgrade highlights")
+            return set()
+        required_roles.add(club_role_id)
+
+    # Read settings before the cache so a changed Club Member role takes effect immediately.
+    cache_key = frozenset(required_roles)
+    now = time.time()
+    cached = _verified_zwift_ids_cache.get(cache_key)
+    if not force_refresh and cached is not None and now - cached[0] < VERIFIED_ZWIFT_IDS_CACHE_TTL_SECONDS:
+        return cached[1]
 
     guild_id = os.environ.get("DISCORD_GUILD_ID")
     bot_token = os.environ.get("DISCORD_BOT_TOKEN")
     if not guild_id or not bot_token:
         # Don't hard-fail cron endpoints if env is misconfigured; just return empty allowlist.
-        _verified_zwift_ids_cache = set()
-        _verified_zwift_ids_cache_ts = now
-        return _verified_zwift_ids_cache
+        return set()
 
     # Build discordId -> zwiftId lookup from Firestore users
     discord_to_zwift: dict[str, str] = {}
@@ -151,7 +161,7 @@ def _get_verified_member_zwift_ids(force_refresh: bool = False) -> set[str]:
             if not discord_id:
                 continue
             role_ids = [str(r) for r in (m.get("role_ids") or [])]
-            if role_id in role_ids:
+            if required_roles.issubset(role_ids):
                 zwift_id = discord_to_zwift.get(discord_id)
                 if zwift_id:
                     verified_zwift_ids.add(str(zwift_id).strip())
@@ -159,8 +169,7 @@ def _get_verified_member_zwift_ids(force_refresh: bool = False) -> set[str]:
         print(f"[WARN] Failed to build verified allowlist from Discord: {e}")
         verified_zwift_ids = set()
 
-    _verified_zwift_ids_cache = verified_zwift_ids
-    _verified_zwift_ids_cache_ts = now
+    _verified_zwift_ids_cache[cache_key] = (now, verified_zwift_ids)
     return verified_zwift_ids
 
 CONTENT_API_KEY = os.getenv("CONTENT_API_KEY", "your_content_api_key")
@@ -1159,7 +1168,7 @@ def generate_and_post_upgrades():
 
         # Use firebase.compare_rider_categories instead of external API
         print(f"[DEBUG] Comparing rider categories between {today} and {yesterday}")
-        allowed_zwids = _get_verified_member_zwift_ids()
+        allowed_zwids = _get_verified_member_zwift_ids(require_club_membership=True)
         upgrade_data = firebase.compare_rider_categories(today, yesterday, allowed_rider_ids=allowed_zwids)
 
         # Be defensive: comparison should return a dict, but don't fail cron runs if it doesn't.
