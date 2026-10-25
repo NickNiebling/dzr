@@ -118,6 +118,34 @@ $env:COACH_EVAL_REPEATS="3"
 npm run eval
 ```
 
+## Discord member snapshots
+
+The existing Render bot scheduler invokes `POST /api/discord/stats/snapshot` on
+Flask every minute from 23:45 until midnight **Europe/Copenhagen**, including a
+check on startup. The endpoint uses the existing `CONTENT_API_KEY`. The admin
+Stats page's **Save snapshot now** button calls the same endpoint through an
+admin-authenticated Next route; ordinary page loads only read history.
+
+The shared writer requires `system_settings/global.membership.clubMemberRoleId`
+and a complete Discord member enumeration. Failed requests never become zero
+counts. It replaces `server_member_counts/YYYY-MM-DD` using the Copenhagen date,
+with a UTC observation timestamp. Manual runs update today's snapshot without
+suppressing the evening run. The evening observation is not a whole-day maximum;
+weekly chart maxima are computed from the stored daily observations.
+
+`bot_state/member_counts_daily` stores a shared 180-second lease, last success,
+last automatic success, and failure details with reference IDs. Snapshot data and
+the success marker commit in one Firestore transaction. Automatic failures retry
+after 1, 2, 4, then 5 minutes (until midnight). Missing days stay missing; later
+runs never backdate current counts. Stats displays the last success/error and
+warns when yesterday has no successful automatic run. If Firestore itself is down,
+error persistence may also fail: use the reference ID in the API logs.
+
+Deploy **Flask API first**, then the website and bot. No new scheduler service or
+credentials are required. Keep the existing Render bot running continuously.
+Validation: `python apps/api/tests/test_member_snapshots.py`,
+`node --test apps/bot/services/memberSnapshotSchedule.test.js`, and `npm test`.
+
 ## Shared constants
 
 `packages/shared/constants.json` is the source of truth for `siteOrigin`, Discord guild/role IDs, and Firestore collection names.

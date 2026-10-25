@@ -3366,59 +3366,19 @@ def get_daily_discord_stats():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def _record_daily_member_count_snapshot() -> None:
-    """
-    Record a daily snapshot of Discord member count in Firestore.
-    
-    Stores/updates one document per day in collection `server_member_counts`,
-    using `dateKey` (YYYY-MM-DD) as the document ID.
-    """
-    try:
-        # Use Central European Time for dateKey consistency with other dashboards
-        cet = pytz.timezone('Europe/Berlin')
-        now_cet = datetime.now(cet)
-        date_key = now_cet.strftime('%Y-%m-%d')
+@app.route('/api/discord/stats/snapshot', methods=['POST'])
+def save_member_snapshot():
+    unauthorized = require_api_or_401()
+    if unauthorized:
+        return unauthorized
+    from member_snapshots import FirestoreSnapshotStore, collect_counts, run_snapshot
+    source = (request.get_json(silent=True) or {}).get('source', 'manual')
+    body, status = run_snapshot(
+        FirestoreSnapshotStore(firebase.db), source,
+        lambda role_id: collect_counts(DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, role_id),
+    )
+    return jsonify(body), status
 
-        # Prefer lightweight guild counts for total; but we still enumerate members to compute role counts
-        discord_api = DiscordAPI(DISCORD_BOT_TOKEN, DISCORD_GUILD_ID)
-        counts = discord_api.get_guild_member_counts()
-        member_count = counts.get("approximate_member_count")
-        presence_count = counts.get("approximate_presence_count")
-
-        role_counts = {}
-        try:
-            # Enumerate members to compute role membership counts (roleId -> count)
-            all_members = discord_api.get_all_members(limit=200000, include_role_names=False)
-            for m in all_members:
-                for role_id in (m.get("role_ids") or []):
-                    if isinstance(role_id, str) and role_id:
-                        role_counts[role_id] = role_counts.get(role_id, 0) + 1
-            # If lightweight count wasn't available, use enumerated count
-            if not isinstance(member_count, int):
-                member_count = len(all_members)
-        except Exception:
-            # If enumeration fails, we can still store total member count if available
-            all_members = None
-
-        if not isinstance(member_count, int):
-            return
-
-        snapshot = {
-            "dateKey": date_key,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "memberCount": int(member_count),
-        }
-        if isinstance(presence_count, int):
-            snapshot["presenceCount"] = int(presence_count)
-        if isinstance(role_counts, dict) and role_counts:
-            snapshot["roleCounts"] = role_counts
-
-        firebase.db.collection('server_member_counts').document(date_key).set(snapshot, merge=True)
-    except Exception as e:
-        try:
-            logging.warning(f"Failed to record daily member count snapshot: {e}")
-        except Exception:
-            pass
 
 def _parse_discord_iso_datetime(value: str) -> Optional[datetime]:
     """
@@ -3803,7 +3763,6 @@ def get_top_channels():
 @login_required
 def discord_stats():
     """Discord server statistics dashboard"""
-    _record_daily_member_count_snapshot()
     return admin_ui_gone()
 
 # Optional debug endpoint to verify data exists

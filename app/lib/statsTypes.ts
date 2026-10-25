@@ -45,7 +45,17 @@ export type MemberPoint = {
   estimated: boolean
 }
 
+export type SnapshotStatus = {
+  lastSuccessAt?: string | null
+  lastScheduledSuccessAt?: string | null
+  lastScheduledSuccessDate?: string | null
+  missingScheduledDate?: string | null
+  lastError?: { stage: string; message: string; runId: string; at: string; source: string } | null
+  error?: string
+}
+
 export type StatsResponse = {
+  snapshotStatus?: SnapshotStatus
   period: PeriodWindow
   totals: {
     messages: number

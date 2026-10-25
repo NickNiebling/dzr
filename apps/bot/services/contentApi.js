@@ -179,6 +179,14 @@ function getRandomEmoji() {
 /**
  * Refresh Zwift club roster in the backend (writes to Firestore)
  */
+async function saveMemberSnapshot() {
+  const response = await axios.post(`${API_BASE_URL}/api/discord/stats/snapshot`, { source: 'scheduled' }, {
+    headers: { Authorization: `Bearer ${API_KEY}` },
+    timeout: 120000,
+  });
+  return response.data;
+}
+
 async function refreshClubRoster() {
   const response = await axios.post(`${API_BASE_URL}/api/zwift/club/roster/refresh`, {}, {
     headers: { Authorization: `Bearer ${API_KEY}` }
@@ -231,6 +239,7 @@ module.exports = {
   getProbabilitySelectedMessages,
   markScheduledMessageSent,
   processMessageContent,
+  saveMemberSnapshot,
   refreshClubRoster,
   refreshZwiftPowerRoster,
   fixDueFiftyResults,

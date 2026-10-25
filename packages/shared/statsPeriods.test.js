@@ -8,7 +8,7 @@ const ts = require("typescript");
 // Exercise the production TypeScript helpers with the existing Node test runner.
 const outputDir = mkdtempSync(path.join(tmpdir(), "dzr-stats-tests-"));
 test.after(() => rmSync(outputDir, { recursive: true, force: true }));
-for (const name of ["statsPeriods", "statsSeries", "statsTimeline", "statsMemberHistory"]) {
+for (const name of ["statsPeriods", "statsSeries", "statsTimeline", "statsMemberHistory", "memberSnapshotClock"]) {
   const source = readFileSync(path.join(__dirname, "../../app/lib", `${name}.ts`), "utf8");
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
@@ -397,9 +397,9 @@ test("weekly member totals and roles retain independent values and source dates 
   assert.equal(timeline.points.length, 2);
   assert.equal(timeline.points[0].date, "2026-10-18");
   assert.equal(timeline.points[0].members, 700);
-  assert.equal(timeline.points[0].clubMembers, 0);
+  assert.equal(timeline.points[0].clubMembers, 10);
   assert.equal(timeline.points[0].estimated, true);
-  assert.deepEqual(timeline.points[0].sourceDates, { members: "2026-10-12", clubMembers: "2026-10-16" });
+  assert.deepEqual(timeline.points[0].sourceDates, { members: "2026-10-12", clubMembers: "2026-10-12" });
   assert.equal(timeline.points[1].date, "2026-10-19");
   assert.equal(timeline.points[1].openWeek, true);
   assert.equal(timeline.points[1].members, 999);
@@ -436,4 +436,76 @@ test("a newer total does not erase an earlier role value or change its source da
   assert.equal(roleOnly.points[0].members, null);
   assert.equal(roleOnly.points[0].clubMembers, 0);
   assert.deepEqual(roleOnly.points[0].sourceDates, { clubMembers: "2026-10-16" });
+});
+
+
+
+for (const period of [StatsPeriod.Last30Days, StatsPeriod.Last90Days]) {
+  test(`${period} retains October 22 role observations after switching from weekly views`, () => {
+    const clock = new Date("2026-10-24T18:00:00Z");
+    const rows = Object.freeze([
+      Object.freeze(member("2026-10-21", 724, 188)),
+      Object.freeze(member("2026-10-22", 725, 189)),
+      Object.freeze(member("2026-10-23", 728, null)),
+    ]);
+    buildMemberTimeline(rows, getPeriodWindow(StatsPeriod.All, clock), clock);
+    const points = buildMemberTimeline(rows, getPeriodWindow(period, clock), clock).points;
+    assert.equal(points.find(p => p.date === "2026-10-22").clubMembers, 189);
+    assert.equal(points.find(p => p.date === "2026-10-23").clubMembers, null);
+    assert.equal(points.find(p => p.date === "2026-10-21").clubMembers, 188);
+  });
+}
+
+for (const period of [StatsPeriod.LastYear, StatsPeriod.LastThreeYears, StatsPeriod.All]) {
+  test(`${period} selects independent weekly maxima, resets each week, and carries actual counts through gaps`, () => {
+    const clock = new Date("2026-10-24T18:00:00Z");
+    const rows = Object.freeze([
+      Object.freeze(member("2026-10-05", 700, 100)),
+      Object.freeze(member("2026-10-07", 705, 105)),
+      Object.freeze(member("2026-10-09", 710, 104)),
+      Object.freeze(member("2026-10-19", 690, 90)),
+      Object.freeze(member("2026-10-21", 695, 95)),
+      Object.freeze(member("2026-10-23", 692, 94)),
+      Object.freeze(member("2026-10-25", 999, 999)),
+    ]);
+    const points = buildMemberTimeline(rows, getPeriodWindow(period, clock), clock).points;
+    const peak = points.find(p => p.date === "2026-10-11");
+    assert.equal(peak.members, 710);
+    assert.equal(peak.clubMembers, 105);
+    assert.deepEqual(peak.sourceDates, { members: "2026-10-09", clubMembers: "2026-10-07" });
+    const gap = points.find(p => p.date === "2026-10-18");
+    assert.equal(gap.clubMembers, 104);
+    assert.equal(gap.sourceDates.clubMembers, "2026-10-09");
+    const current = points.at(-1);
+    assert.equal(current.date, "2026-10-23");
+    assert.equal(current.openWeek, true);
+    assert.equal(current.members, 695);
+    assert.equal(current.clubMembers, 95);
+    assert.deepEqual(current.sourceDates, { members: "2026-10-21", clubMembers: "2026-10-21" });
+  });
+}
+
+test("weekly maxima preserve zero, use the latest tied peak, and exclude earlier weeks' higher values", () => {
+  const clock = new Date("2026-10-24T18:00:00Z");
+  const rows = [member("2026-10-09", 999, 999), member("2026-10-12", 700, 0), member("2026-10-14", 700, null)];
+  const timeline = buildMemberTimeline(rows, getPeriodWindow(StatsPeriod.All, clock), clock);
+  const point = timeline.points.at(-1);
+  assert.equal(point.members, 700);
+  assert.equal(point.clubMembers, 0);
+  assert.deepEqual(point.sourceDates, { members: "2026-10-14", clubMembers: "2026-10-12" });
+});
+
+
+test("Copenhagen member dates remain visible after local midnight, including DST transitions", () => {
+  const { memberSnapshotClock } = require(path.join(outputDir, "memberSnapshotClock.js"));
+  for (const [instant, date] of [
+    ["2026-10-24T22:01:00Z", "2026-10-25"],
+    ["2026-10-25T22:01:00Z", "2026-10-25"],
+    ["2026-10-25T23:01:00Z", "2026-10-26"],
+  ]) {
+    const clock = memberSnapshotClock(new Date(instant));
+    assert.equal(clock.toISOString().slice(0, 10), date);
+    const timeline = buildMemberTimeline([member(date, 725, 189)], getPeriodWindow(StatsPeriod.Last30Days, clock), clock);
+    assert.equal(timeline.points.at(-1).clubMembers, 189);
+  }
 });
