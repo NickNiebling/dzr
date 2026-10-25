@@ -8,7 +8,7 @@ const ts = require("typescript");
 // Exercise the production TypeScript helpers with the existing Node test runner.
 const outputDir = mkdtempSync(path.join(tmpdir(), "dzr-stats-tests-"));
 test.after(() => rmSync(outputDir, { recursive: true, force: true }));
-for (const name of ["statsPeriods", "statsSeries", "statsTimeline", "statsMemberHistory"]) {
+for (const name of ["statsPeriods", "statsSeries", "statsTimeline", "statsMemberHistory", "memberSnapshotClock"]) {
   const source = readFileSync(path.join(__dirname, "../../app/lib", `${name}.ts`), "utf8");
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
@@ -493,4 +493,19 @@ test("weekly maxima preserve zero, use the latest tied peak, and exclude earlier
   assert.equal(point.members, 700);
   assert.equal(point.clubMembers, 0);
   assert.deepEqual(point.sourceDates, { members: "2026-10-14", clubMembers: "2026-10-12" });
+});
+
+
+test("Copenhagen member dates remain visible after local midnight, including DST transitions", () => {
+  const { memberSnapshotClock } = require(path.join(outputDir, "memberSnapshotClock.js"));
+  for (const [instant, date] of [
+    ["2026-10-24T22:01:00Z", "2026-10-25"],
+    ["2026-10-25T22:01:00Z", "2026-10-25"],
+    ["2026-10-25T23:01:00Z", "2026-10-26"],
+  ]) {
+    const clock = memberSnapshotClock(new Date(instant));
+    assert.equal(clock.toISOString().slice(0, 10), date);
+    const timeline = buildMemberTimeline([member(date, 725, 189)], getPeriodWindow(StatsPeriod.Last30Days, clock), clock);
+    assert.equal(timeline.points.at(-1).clubMembers, 189);
+  }
 });

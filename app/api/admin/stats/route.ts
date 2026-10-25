@@ -1,10 +1,10 @@
+import { memberSnapshotClock } from '@/app/lib/memberSnapshotClock'
 import { normalizeMemberHistory } from '@/app/lib/statsMemberHistory'
 import { getHistoryStart, getPeriodWindow, parseStatsPeriod } from '@/app/lib/statsPeriods'
 import { buildActivitySeries, type ActivityPoint } from '@/app/lib/statsSeries'
 import type { MemberPoint, StatsResponse } from '@/app/lib/statsTypes'
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/app/api/admin/_lib/auth'
-import { discordGet, guildId, listGuildMembers } from '@/app/api/admin/_lib/discord'
 import { adminDb } from '@/app/utils/firebaseAdminConfig'
 import { COLLECTIONS } from '@/app/lib/sharedConstants'
 
@@ -103,36 +103,23 @@ async function clubMemberRoleId() {
   return String(doc.data()?.membership?.clubMemberRoleId || '').trim()
 }
 
-async function snapshotTodayMemberCount() {
+async function loadSnapshotStatus() {
   try {
-    const dateKey = utcDateKey(new Date())
-    const docRef = adminDb.collection(COLLECTIONS.serverMemberCounts).doc(dateKey)
-    const [guildRes, members, roleId, existing] = await Promise.all([
-      discordGet(`/guilds/${guildId()}?with_counts=true`),
-      listGuildMembers(4000).catch(() => [] as any[]),
-      clubMemberRoleId().catch(() => ''),
-      docRef.get().catch(() => null),
-    ])
-    const memberCount = guildRes.ok ? guildRes.body?.approximate_member_count : undefined
-    const presenceCount = guildRes.ok ? guildRes.body?.approximate_presence_count : undefined
-    const snapshot: Record<string, unknown> = {
-      dateKey,
-      timestamp: new Date().toISOString(),
+    const doc = await adminDb.collection('bot_state').doc('member_counts_daily').get()
+    const state = doc.data() || {}
+    const today = memberSnapshotClock().toISOString().slice(0, 10)
+    const yesterday = new Date(`${today}T00:00:00Z`)
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+    const expectedDate = yesterday.toISOString().slice(0, 10)
+    return {
+      lastSuccessAt: state.lastSuccessAt || null,
+      lastScheduledSuccessAt: state.lastScheduledSuccessAt || null,
+      lastScheduledSuccessDate: state.lastScheduledSuccessDate || null,
+      lastError: state.lastError || null,
+      missingScheduledDate: state.lastScheduledSuccessDate >= expectedDate ? null : expectedDate,
     }
-    if (typeof memberCount === 'number') snapshot.memberCount = memberCount
-    else if (members.length > 0) snapshot.memberCount = members.length
-    if (typeof presenceCount === 'number') snapshot.presenceCount = presenceCount
-    if (roleId) {
-      const clubCount = members.filter((m) => Array.isArray(m?.roles) && m.roles.includes(roleId)).length
-      const prevRoles = (existing && existing.exists ? existing.data()?.roleCounts : null) || {}
-      snapshot.roleCounts = { ...(typeof prevRoles === 'object' && prevRoles ? prevRoles : {}), [roleId]: clubCount }
-      snapshot.clubMemberRoleId = roleId
-      snapshot.clubMemberCount = clubCount
-    }
-    if (typeof snapshot.memberCount !== 'number' && typeof snapshot.clubMemberCount !== 'number') return
-    await docRef.set(snapshot, { merge: true })
   } catch {
-    // Keep serving historical snapshots if Discord is unavailable.
+    return { error: 'Could not load snapshot job status.' }
   }
 }
 
@@ -160,9 +147,10 @@ export async function GET(req: Request) {
   const window = getPeriodWindow(selection)
   const { start: rangedStartKey, end: endKey } = window
 
-  const [activities, memberCounts] = await Promise.all([
+  const [activities, memberCounts, snapshotStatus] = await Promise.all([
     loadActivities(rangedStartKey, endKey),
-    snapshotTodayMemberCount().then(() => loadMemberCounts()),
+    loadMemberCounts(),
+    loadSnapshotStatus(),
   ])
 
   const activityDates = activities
@@ -283,5 +271,6 @@ export async function GET(req: Request) {
     topUsers,
     topChannels,
     members: memberCounts,
+    snapshotStatus,
   } satisfies StatsResponse)
 }

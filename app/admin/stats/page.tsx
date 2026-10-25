@@ -1,5 +1,7 @@
 'use client'
 
+import { memberSnapshotClock } from '@/app/lib/memberSnapshotClock'
+
 import { useCallback, useEffect, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import ChartCard from '@/components/admin/stats/ChartCard'
@@ -54,6 +56,8 @@ export default function StatsAdminPage() {
   const [loadingGrowth, setLoadingGrowth] = useState(true)
   const [loadingStats, setLoadingStats] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [savingSnapshot, setSavingSnapshot] = useState(false)
+  const [snapshotMessage, setSnapshotMessage] = useState<string | null>(null)
 
   const loadGrowth = useCallback(async () => {
     setLoadingGrowth(true)
@@ -88,6 +92,24 @@ export default function StatsAdminPage() {
   useEffect(() => { loadGrowth().catch(() => {}) }, [loadGrowth])
   useEffect(() => { loadStats(activityPeriod).catch(() => {}) }, [activityPeriod, loadStats])
 
+  async function saveSnapshot() {
+    setSavingSnapshot(true)
+    setSnapshotMessage(null)
+    try {
+      const res = await fetch('/api/admin/stats/snapshot', { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok || body.status !== 'saved') {
+        throw new Error(`${body.error || 'Snapshot was not saved.'}${body.stage ? ` (${body.stage})` : ''}${body.runId ? ` · Reference: ${body.runId}` : ''}`)
+      }
+      setSnapshotMessage(`Saved ${body.dateKey} at ${body.timestamp}: Discord ${body.memberCount}, club member role ${body.clubMemberCount}.`)
+    } catch (error) {
+      setSnapshotMessage(error instanceof Error ? error.message : 'Snapshot request failed.')
+    } finally {
+      await loadStats(activityPeriod)
+      setSavingSnapshot(false)
+    }
+  }
+
   async function refresh(kind: 'zwift' | 'zwiftpower') {
     setBusy(true)
     const res = await fetch(`/api/admin/growth?kind=${kind}`, { method: 'POST' })
@@ -100,9 +122,10 @@ export default function StatsAdminPage() {
   const totals = stats?.totals
   const hasActivity = (totals?.messages || 0) + (totals?.reactions || 0) + (totals?.voice || 0) + (totals?.interactions || 0) > 0
   const now = new Date()
-  const memberTimeline = buildMemberTimeline(stats?.members.series || [], getPeriodWindow(memberPeriod, now), now)
+  const memberNow = memberSnapshotClock(now)
+  const memberTimeline = buildMemberTimeline(stats?.members.series || [], getPeriodWindow(memberPeriod, memberNow), memberNow)
   const missingObservations = !loadingStats && !statsError && !stats?.members.error
-    ? findMissingMemberObservations(stats?.members.series || [], memberTimeline, now)
+    ? findMissingMemberObservations(stats?.members.series || [], memberTimeline, memberNow)
     : []
   const activityTimeline = buildChartTimeline(stats?.activity || [], stats?.period || getPeriodWindow(activityPeriod, now))
   const latestMembers = stats?.members?.latest
@@ -187,12 +210,26 @@ export default function StatsAdminPage() {
           title="Discord members"
           loading={loadingStats && !stats}
           isEmpty={memberTimeline.points.length < 1}
-          empty="No member snapshots yet. Open this page again later to start the series."
-          actions={<PeriodToggle value={memberPeriod} onChange={setMemberPeriod} />}
+          empty="No member snapshots yet. Use Save snapshot now or wait for the daily collection."
+          actions={(
+            <HStack flexWrap="wrap" justify="flex-end">
+              <PeriodToggle value={memberPeriod} onChange={setMemberPeriod} />
+              <Button size="xs" onClick={saveSnapshot} isLoading={savingSnapshot}>Save snapshot now</Button>
+            </HStack>
+          )}
         >
           <MembersChart timeline={memberTimeline} />
         </ChartCard>
       </SimpleGrid>
+
+      <Box mb={4} fontSize="sm" color="gray.300" aria-live="polite">
+        <Text>Member snapshots: daily at 23:45 Europe/Copenhagen. Retries continue until midnight.</Text>
+        <Text>Last saved: {stats?.snapshotStatus?.lastSuccessAt || 'None recorded'} · Last automatic success: {stats?.snapshotStatus?.lastScheduledSuccessAt || 'None recorded'}</Text>
+        {stats?.snapshotStatus?.missingScheduledDate && <Text color="orange.300">No successful automatic run recorded for {stats.snapshotStatus.missingScheduledDate}.</Text>}
+        {stats?.snapshotStatus?.error && <Text color="red.300">{stats.snapshotStatus.error}</Text>}
+        {stats?.snapshotStatus?.lastError && <Text color="red.300">Last collection error ({stats.snapshotStatus.lastError.stage}): {stats.snapshotStatus.lastError.message} · {stats.snapshotStatus.lastError.at} · Reference: {stats.snapshotStatus.lastError.runId}</Text>}
+        {snapshotMessage && <Text>{snapshotMessage}</Text>}
+      </Box>
 
       <Flex gap={4} direction={{ base: 'column', lg: 'row' }} mb={4}>
         <Box flex="2">

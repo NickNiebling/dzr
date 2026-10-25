@@ -74,3 +74,13 @@ jobs:
       # source alone does not even rebuild the bot — the drift would be silent without this.
       - name: Check shared copies
         run: node scripts/sync-shared.js --check
+
+  member-snapshots:
+    name: Member snapshot job tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python apps/api/tests/test_member_snapshots.py

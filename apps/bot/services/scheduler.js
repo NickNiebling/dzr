@@ -1,3 +1,6 @@
+const { createMemberSnapshotCheck } = require('./memberSnapshotSchedule');
+const { saveMemberSnapshot } = require('./contentApi');
+const checkMemberSnapshot = createMemberSnapshotCheck(saveMemberSnapshot);
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getDueScheduledMessages, getProbabilitySelectedMessages, markScheduledMessageSent, processMessageContent, refreshClubRoster, refreshZwiftPowerRoster, fixDueFiftyResults, applyDueWeeklySeries } = require("./contentApi");
 const { sweepGuildForNewMembers } = require("./newMemberService");
@@ -573,10 +576,12 @@ function startScheduler(client) {
   
   // Check immediately
   checkScheduledMessages(client);
+  void checkMemberSnapshot();
   
   // Then check every minute
   setInterval(() => {
     checkScheduledMessages(client);
+    void checkMemberSnapshot();
   }, 60000); // 1 minute
   
   console.log("✅ Message scheduler started - checking every minute");
