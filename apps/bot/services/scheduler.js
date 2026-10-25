@@ -7,11 +7,14 @@ const { syncZpRolesForGuild } = require("./zpRoleSync");
 const { maybePostScheduledQuiz } = require("./quizService");
 const { maybeSendCoachFollowUps } = require("./coachFollowUp");
 const { maybeRunLadderJobs } = require("./ladder/ladderJobs");
+const { maybeSendErrorDigest } = require("./errorDigest");
 
 /**
  * Check for and send scheduled messages (both time-based and probability-based)
  */
 async function checkScheduledMessages(client) {
+  // Independent of slower jobs and their failures; owns its in-flight guard and error handling.
+  maybeSendErrorDigest(client);
   try {
     console.log("🔍 Checking for scheduled messages...");
     
@@ -586,4 +589,4 @@ module.exports = {
   startScheduler,
   checkScheduledMessages,
   updateKmsStatus,
-}; 
+};

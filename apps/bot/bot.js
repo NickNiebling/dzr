@@ -1,3 +1,6 @@
+// Install before loading handlers so existing console.error calls also reach the daily digest.
+const { installErrorLog, flushErrorLog, diagnostic } = require("./services/errorLog");
+installErrorLog();
 const { Client, GatewayIntentBits, REST, Routes, Partials } = require("discord.js");
 const config = require("./config/config");
 const commands = require("./commands/slashCommands");
@@ -174,7 +177,10 @@ async function gracefulShutdown() {
     console.warn('⏱️ Shutdown cap reached before coach sessions finished flushing');
     resolve();
   }, SHUTDOWN_MAX_MS));
-  await Promise.race([Promise.all([statsGrace, flush]), cap]);
+  const flushWithErrors = Promise.all([statsGrace, flush])
+    .then(flushErrorLog)
+    .catch((err) => diagnostic("[error-digest] Shutdown flush failed:", err));
+  await Promise.race([flushWithErrors, cap]);
   console.log('👋 Bot shutting down');
   process.exit(0);
 }

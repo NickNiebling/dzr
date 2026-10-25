@@ -86,6 +86,10 @@ module.exports = {
     previewMinutes: Number.parseInt(process.env.LADDER_PREVIEW_MINUTES || "65", 10),
     tz: process.env.LADDER_TZ || "Europe/Copenhagen",
   },
+  errorDigest: {
+    // An explicit empty value disables Discord delivery. Counts still reach Firestore.
+    channelId: (process.env.ERROR_DIGEST_CHANNEL_ID ?? "1544209256100794378").trim(),
+  },
   quiz: {
     channelId: process.env.QUIZ_CHANNEL_ID || "1353477785674453104",
     tz: process.env.QUIZ_TZ || "Europe/Paris",
