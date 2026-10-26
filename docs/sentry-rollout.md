@@ -39,3 +39,33 @@ later with reviewed, stable error codes. `sendDefaultPii: false` alone is not en
 Use separate website and bot projects in one organization if possible. An onboarding
 run code identifies setup progress; it is neither a DSN nor a runtime credential.
 No Sentry account/project has been created or changed by these files.
+
+## Step 2 — Next browser and server catch-all
+
+Next's `onRequestError` captures unhandled server request/render errors in Node
+and Edge; the client SDK captures unhandled browser errors/rejections, and
+`app/global-error.tsx` reports errors caught by the root React error boundary.
+This does not make handled `catch` branches report automatically.
+
+Local framework check: add `SENTRY_LOCAL_TEST=1` to `.env.local`, run `npm run dev`,
+and open `/api/dev/sentry-check`. Expect HTTP 500 and an error in Sentry tagged
+`service:website-server`. The route is 404 without the flag and always 404 in
+production. To exercise the browser integration, run this intentional test in the
+browser console on the local site:
+
+```js
+setTimeout(() => { throw new Error('Sentry local browser check') }, 0)
+```
+
+Check for `service:website-browser`. Remove `SENTRY_LOCAL_TEST` afterwards.
+Hot-reload/React development behavior can produce duplicates; verify production
+behavior separately before enabling notifications.
+
+`withSentryConfig` supplies framework build instrumentation. Source-map upload
+is disabled without `SENTRY_AUTH_TOKEN`. To enable private upload on Vercel, set
+that build secret and `SENTRY_PROJECT` there. The organization is configured as
+`danish-zwift-racers`. No token is required to send errors. Browser release IDs
+are supplied by the build integration; server releases use Vercel's commit SHA.
+Set the browser environment explicitly per Vercel environment; public variables
+require rebuilding when changed. No public source-map hosting or telemetry tunnel
+is added in this step.
