@@ -111,3 +111,54 @@ and console.warn/log for any additional local context.
 Caught failures which only return HTTP responses or UI state still need explicit
 capture; enabling console capture does not find silent catches. Turn these flags
 off to roll back console reporting without disabling crash/error-boundary coverage.
+
+## Step 5 — First explicit handled error and delivery checks
+
+The onboarding payment creation route now calls `Sentry.captureException(err)`
+where it catches unexpected failures and returns HTTP 500. Its response remains
+unchanged. This demonstrates adoption for a silent catch without migrating every
+route in one commit. Add explicit captures at the owning catch boundary gradually;
+expected validation/permission failures should remain ordinary responses.
+
+Privacy filtering preserves sanitized debug-image IDs for source-map lookup and
+exception mechanism/handled status. It never forwards the mechanism's data fields.
+The tests exercise the real bot initialization against an HTTP sink bound only to
+localhost: console errors arrive sanitized, warnings do not create events, and an
+uncaught exception is sent before exiting with code 1. No live account is used.
+
+## Remaining decisions before a wider rollout
+
+- Authenticate the Sentry connection, create/select website and bot projects, store
+  DSNs locally outside git, then verify real Sentry receipt in both projects.
+- Verify browser error capture in an actual browser and a production-like build.
+- Configure Vercel/Render environment variables when ready to deploy; enable console
+  capture separately after checking volume. Enable source-map upload with a private
+  build token and verify source locations on a deployed error.
+- Audit remaining silent catch branches. Prefer stable reviewed error codes/messages
+  if richer diagnostics are wanted; current messages are deliberately conservative.
+- Decide whether Flask API should join in a separate commit. No Python SDK or Flask
+  handlers are changed in this branch.
+- Daily Discord summaries, alerts, quota/retention settings and rate limits are
+  separate follow-up work. Nothing posts to Discord from this Sentry branch.
+- Consider duplicate ownership between browser/server and repeated console calls;
+  event counts are not automatically counts of distinct incidents.
+
+The Sentry agent plugin is installed locally, outside the repository. Installation
+alone does not authenticate account access or create a project; a new agent session
+may be needed before its MCP tools become available. Account credentials must never
+be pasted into a tracked file. `.env.local`, `apps/bot/.env`, `.sentryclirc` and the
+Sentry wizard's `.env.sentry-build-plugin` are ignored.
+
+## Validation of this branch
+
+- TypeScript check and site/bot lint pass (existing warnings remain).
+- Shared tests: 105 pass. Bot suite on Node 22: 297 pass, 3 existing canvas
+  tests skipped; the two additional opt-out/rejection checks also pass on Node 22.
+- Real Next development request error and real bot console capture were delivered
+  to a local-only HTTP sink. Synthetic private markers were absent from payloads.
+- Both production dependency audits report zero vulnerabilities; coach prompt
+  structure checks pass 33/33; shared copies match.
+- Live Sentry ingestion, browser execution, private source-map upload and a full
+  production build/deploy are not verified yet. No account authentication was
+  available during this validation. A successful queue flush is not proof that
+  Sentry ingested an event.

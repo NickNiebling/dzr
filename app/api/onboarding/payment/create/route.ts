@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs'
 import { NextResponse } from 'next/server'
 import { adminDb } from '@/app/utils/firebaseAdminConfig'
 import { resolvePaymentOptions, usesPaymentOptionFallback } from '@/app/lib/membershipPaymentOptions'
@@ -132,6 +133,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ reference, url }, { status: 200 })
   } catch (err: any) {
+    Sentry.captureException(err)
     return NextResponse.json({ error: err?.message || 'Failed to create onboarding payment session' }, { status: 500 })
   }
 }

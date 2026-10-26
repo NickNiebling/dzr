@@ -5,6 +5,10 @@ function beforeSend(event) {
   const values = event.exception?.values?.map((exception) => ({
     type: /^[\w.]{1,100}$/.test(exception.type || "") ? exception.type : "Error",
     value: "Application failure; details remain in platform logs",
+    mechanism: exception.mechanism && {
+      type: exception.mechanism.type,
+      handled: exception.mechanism.handled,
+    },
     stacktrace: exception.stacktrace && {
       frames: exception.stacktrace.frames?.map((frame) => ({
         filename: frame.filename?.split(/[?#]/)[0],
@@ -24,6 +28,13 @@ function beforeSend(event) {
     environment: event.environment,
     release: event.release,
     tags: { service: event.tags?.service },
+    debug_meta: event.debug_meta && {
+      images: event.debug_meta.images?.map((image) => ({
+        type: image.type,
+        debug_id: image.debug_id,
+        code_file: image.code_file?.split(/[?#]/)[0],
+      })),
+    },
     exception: values?.length ? { values } : undefined,
     message: values?.length ? undefined : "Application error log; details remain in platform logs",
   };
