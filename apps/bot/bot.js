@@ -1,3 +1,4 @@
+const Sentry = require("./services/sentry");
 const { Client, GatewayIntentBits, REST, Routes, Partials } = require("discord.js");
 const config = require("./config/config");
 const commands = require("./commands/slashCommands");
@@ -35,6 +36,8 @@ const client = new Client({
   ],
   partials: [Partials.Channel] // Required to receive DMs as messageCreate events
 });
+
+client.on("error", (error) => Sentry.captureException(error));
 
 // Register Slash Commands
 const rest = new REST({ version: "10" }).setToken(config.discord.token);
@@ -174,7 +177,10 @@ async function gracefulShutdown() {
     console.warn('⏱️ Shutdown cap reached before coach sessions finished flushing');
     resolve();
   }, SHUTDOWN_MAX_MS));
-  await Promise.race([Promise.all([statsGrace, flush]), cap]);
+  await Promise.race([
+    Promise.all([statsGrace, flush]).then(() => Sentry.flush(2000)),
+    cap,
+  ]);
   console.log('👋 Bot shutting down');
   process.exit(0);
 }

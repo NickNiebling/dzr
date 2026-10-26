@@ -1,3 +1,4 @@
+const Sentry = require("./sentry");
 const { Client, GatewayIntentBits, ActivityType, Partials } = require("discord.js");
 const config = require("../config/config");
 
@@ -44,6 +45,8 @@ function startCoachBot() {
     // arrive at all.
     partials: [Partials.Channel, Partials.Message, Partials.Reaction],
   });
+
+  coachClient.on("error", (error) => Sentry.captureException(error));
 
   coachClient.on("messageCreate", async (message) => {
     try {

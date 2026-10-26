@@ -69,3 +69,22 @@ are supplied by the build integration; server releases use Vercel's commit SHA.
 Set the browser environment explicitly per Vercel environment; public variables
 require rebuilding when changed. No public source-map hosting or telemetry tunnel
 is added in this step.
+
+## Step 3 — Bot and Coach process coverage
+
+Run `npm ci --ignore-scripts` in `apps/bot`. Add `SENTRY_DSN` and
+`SENTRY_ENVIRONMENT=development` to `apps/bot/.env` (ignored). Run
+`npm run sentry:smoke` from that directory; this uses the real bot SDK initialization
+without logging in to Discord or touching Firebase. Check the event in Sentry.
+Then start the actual bot normally to verify it still connects.
+
+The SDK initializes before bot dependencies. It covers uncaught exceptions and
+unhandled rejections, preserving fatal exit behavior, plus Discord client `error`
+events for club bot and Coach. Graceful shutdown gives Sentry up to two seconds
+inside the existing overall shutdown cap. Explicit `process.exit()` calls and
+hard kills cannot guarantee delivery. Caught/logged failures follow in step 4.
+
+On Render set `SENTRY_DSN` for the bot project and `SENTRY_ENVIRONMENT=production`.
+`RENDER_GIT_COMMIT` sets the release automatically. `SENTRY_RELEASE` is a local
+fallback. The bot needs no Sentry auth token. Website and bot stay separately
+installed/deployed; no npm workspace or new service is introduced.
