@@ -9,5 +9,9 @@ Sentry.init({
   dataCollection: { userInfo: false, cookies: false, httpHeaders: false, httpBodies: [], urlQueryParams: false, genAI: { inputs: false, outputs: false }, mcp: { inputs: false, outputs: false }, stackFrameVariables: false, frameContextLines: 0, databaseQueryData: false, queues: false },
   tracesSampleRate: 0,
   beforeSend,
+  attachStacktrace: true,
+  integrations: process.env.NEXT_PUBLIC_SENTRY_CAPTURE_CONSOLE_ERRORS === '1'
+    ? [Sentry.captureConsoleIntegration({ levels: ['error'] })]
+    : [],
   initialScope: { tags: { service: 'website-server' } },
 })

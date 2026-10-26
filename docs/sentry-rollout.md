@@ -23,7 +23,9 @@ The shared privacy hook keeps only error type, stack locations, level, time,
 release, environment and service. It removes original error messages, request,
 user, contexts, extras and breadcrumbs. Details remain in hosting logs. This is
 an intentionally conservative starting point: useful error messages can be added
-later with reviewed, stable error codes. `sendDefaultPii: false` alone is not enough.
+later with reviewed, stable error codes. SDK 11 uses `dataCollection` controls (older `sendDefaultPii` examples do not apply).
+User info, headers, cookies, bodies, query params, AI/MCP content and local variables
+are disabled at collection time as well as filtered before sending.
 
 ## Variables outside git
 
@@ -88,3 +90,24 @@ On Render set `SENTRY_DSN` for the bot project and `SENTRY_ENVIRONMENT=productio
 `RENDER_GIT_COMMIT` sets the release automatically. `SENTRY_RELEASE` is a local
 fallback. The bot needs no Sentry auth token. Website and bot stay separately
 installed/deployed; no npm workspace or new service is introduced.
+
+## Step 4 — Opt-in reporting of existing console.error calls
+
+Enable `NEXT_PUBLIC_SENTRY_CAPTURE_CONSOLE_ERRORS=1` for the website (both server
+and browser; rebuild required) and `SENTRY_CAPTURE_CONSOLE_ERRORS=1` for the bot.
+Both are off by default for a controlled rollout. The official SDK integration
+captures only `console.error`; log/info/warn remain hosting/browser logs. Original
+console output is retained. This creates error events, not a full Sentry Logs stream.
+`attachStacktrace` supplies code locations for string-only log calls. Raw console
+arguments and messages are removed by the same shared privacy hook.
+
+Start locally with a deliberate `console.error('Sentry console check', new Error('check'))`.
+Expect an error event with a stack and sanitized message; a `console.warn` should
+not produce an error event. Check volume before enabling production. One failure
+logged at multiple layers can generate multiple events. Avoid both explicitly
+capturing and console.error logging the same exception: use one reporting owner
+and console.warn/log for any additional local context.
+
+Caught failures which only return HTTP responses or UI state still need explicit
+capture; enabling console capture does not find silent catches. Turn these flags
+off to roll back console reporting without disabling crash/error-boundary coverage.
