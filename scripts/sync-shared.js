@@ -21,6 +21,7 @@ const root = path.resolve(__dirname, "..");
 
 /** [source relative to repo root, ...destinations] */
 const TARGETS = [
+  ["packages/shared/telemetry/sentryPrivacy.js", "apps/bot/services/sentryPrivacy.js"],
   ["packages/shared/constants.json", "apps/bot/constants.json", "apps/api/constants.json"],
   // JS only goes to the bot. The Flask API cannot run it and a third copy is a third place to drift.
   ["packages/shared/coach/tokenCrypto.js", "apps/bot/services/tokenCrypto.js"],

@@ -13,7 +13,8 @@
     "lint:bot": "eslint apps/bot --config eslint.bot.config.mjs --max-warnings 25",
     "test": "node --test \"packages/shared/**/*.test.js\"",
     "sync:shared": "node scripts/sync-shared.js",
-    "check:shared": "node scripts/sync-shared.js --check"
+    "check:shared": "node scripts/sync-shared.js --check",
+    "sentry:smoke": "node scripts/sentry-smoke.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.651.1",
@@ -21,6 +22,7 @@
     "@chakra-ui/react": "^2.10.10",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@sentry/nextjs": "^11.9.0",
     "@types/gsap": "^3.0.0",
     "@types/node": "^20.11.25",
     "@vercel/analytics": "^1.2.2",

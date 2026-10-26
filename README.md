@@ -132,3 +132,9 @@ When you change the shared file, copy it into both app trees before deploying bo
 ## Rollback remotes
 
 `bot-origin` → `T00few2/bot` and `api-origin` → `T00few2/zwiftpower` remain as rollback remotes. Production deploys come from `T00few2/dzr`.
+
+## Sentry rollout
+
+See [the staged Sentry setup](docs/sentry-rollout.md) for local verification,
+environment variables and the commit-by-commit rollout. No DSN is required for
+ordinary local development or CI.

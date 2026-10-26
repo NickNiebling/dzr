@@ -56,3 +56,7 @@ next-env.d.ts
 # one-off local exports
 active_members_2026_emails.csv
 scripts/export-active-member-emails-2026.js
+
+# Sentry wizard / CLI credentials are machine-local.
+.env.sentry-build-plugin
+.sentryclirc
