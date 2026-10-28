@@ -90,13 +90,13 @@ test_button(); pump(50)
 event(1); pump(50)
 event(2); pump(50)
 service_name="Custom RTMP"
-event(1); pump(50) -- unknown detection must reach DZR, so it can report to IT
+event(1); pump(50) -- an undetected platform is sent as null so DZR can report to IT
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="twitch"})
 pump(50) -- selecting a known platform repairs the active session
 event(2); pump(50)
 service_available=false
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="auto"})
-test_button(); pump(50) -- missing OBS service also becomes unknown
+test_button(); pump(50) -- a missing OBS service also serializes as null
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="facebook"})
 test_button(); pump(50) -- invalid persisted/manual settings cannot become a provider
 script_unload()
