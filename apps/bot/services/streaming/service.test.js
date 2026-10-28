@@ -268,7 +268,7 @@ test("authenticated unknown platforms report to IT once, without sessions, provi
   const s = setup(); const { token } = await s.enroll();
   s.providers.verify = () => assert.fail("unknown platforms cannot reach verification");
   for (let i = 0; i < 3; i++) {
-    await assert.rejects(s.service.callback(token, s.event({ platform: "unknown" })), { code: "unknown_platform" });
+    await assert.rejects(s.service.callback(token, s.event({ platform: null })), { code: "unknown_platform" });
   }
   await s.service.tick();
   assert.equal(s.alerts.length, 1);

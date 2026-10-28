@@ -56,17 +56,17 @@ end
 
 local function platform()
     if platform_setting == "youtube" or platform_setting == "twitch" then return platform_setting end
-    if platform_setting ~= "auto" then return "unknown" end
+    if platform_setting ~= "auto" then return nil end
     local service = obs.obs_frontend_get_streaming_service()
-    if service == nil then return "unknown" end
+    if service == nil then return nil end
     local settings = obs.obs_service_get_settings(service)
-    if settings == nil then return "unknown" end
+    if settings == nil then return nil end
     local name = string.lower(obs.obs_data_get_string(settings, "service") or "")
     obs.obs_data_release(settings)
     -- Deliberately never read the service's "key", account credentials or authentication files.
     if name:find("youtube", 1, true) then return "youtube" end
     if name:find("twitch", 1, true) then return "twitch" end
-    return "unknown"
+    return nil
 end
 
 local function valid_settings()
@@ -88,7 +88,7 @@ local function video_id()
 end
 
 local function new_session()
-    if platform() == "unknown" then
+    if platform() == nil then
         log(obs.LOG_ERROR, "Ukendt streamingplatform. DZR får besked; vælg YouTube eller Twitch i Platform.")
     end
     last_session_start = math.max(millis(), last_session_start + 1)
@@ -122,13 +122,15 @@ end
 local function body_for(job)
     local data = obs.obs_data_create()
     obs.obs_data_set_string(data, "event", job.event)
-    obs.obs_data_set_string(data, "platform", job.platform)
+    if job.platform then obs.obs_data_set_string(data, "platform", job.platform) end
     obs.obs_data_set_string(data, "sessionId", job.session_id)
     obs.obs_data_set_int(data, "sequence", job.sequence)
     obs.obs_data_set_int(data, "startedAt", job.started_at)
     obs.obs_data_set_int(data, "sentAt", math.max(millis(), job.started_at))
     if job.video_id and job.platform == "youtube" then obs.obs_data_set_string(data, "videoId", job.video_id) end
     local body = obs.obs_data_get_json(data)
+    -- OBS string setters cannot represent nil; serialize the absent platform as JSON null.
+    if job.platform == nil then body = body:gsub("}%s*$", ',"platform":null}') end
     obs.obs_data_release(data)
     return body
 end
@@ -188,7 +190,7 @@ local function pump()
         log(obs.LOG_ERROR, "Nøgle eller platform afvist. Kør /streaming_add, og kontrollér opsætningen.")
         queue = {}
     elseif code == 400 then
-        if pending.platform == "unknown" then
+        if pending.platform == nil then
             log(obs.LOG_ERROR, "Ukendt platform afvist af DZR. Vælg YouTube eller Twitch i Platform.")
         else
             log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur og det valgfrie YouTube-link.")
@@ -241,7 +243,7 @@ function script_update(settings)
     if platform_setting == "" then platform_setting = "auto" end
     video_link = trim(obs.obs_data_get_string(settings, "video_link"))
     -- A manual selection can repair auto-detection while OBS is already streaming.
-    if session and session.platform == "unknown" and platform() ~= "unknown" then
+    if session and session.platform == nil and platform() ~= nil then
         session.platform = platform()
         enqueue("started", session)
     end

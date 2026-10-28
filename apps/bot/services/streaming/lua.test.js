@@ -22,7 +22,7 @@ test("OBS Lua uses real libcurl multi over TLS; start/heartbeat/stop ordering, r
     req.on("end", () => {
       const parsed = JSON.parse(body);
       requests.push({ body: parsed, authorization: req.headers.authorization, url: req.url });
-      res.writeHead(requests.length === 1 ? 503 : parsed.platform === "unknown" ? 400 : 202, { "Content-Type": "application/json" });
+      res.writeHead(requests.length === 1 ? 503 : parsed.platform === null ? 400 : 202, { "Content-Type": "application/json" });
       res.end('{"accepted":true}');
     });
   });
@@ -111,7 +111,7 @@ script_unload()
   assert.deepEqual(requests.map((r) => r.body.event), ["test", "test", "started", "heartbeat", "stopped",
     "test", "started", "stopped", "started", "started", "stopped", "test", "test"], output);
   assert.deepEqual(requests.map((r) => r.body.platform), ["youtube", "youtube", "youtube", "youtube", "youtube",
-    "twitch", "twitch", "twitch", "unknown", "twitch", "twitch", "unknown", "unknown"]);
+    "twitch", "twitch", "twitch", null, "twitch", "twitch", null, null]);
   assert.deepEqual(requests.slice(2, 5).map((r) => r.body.sequence), [1, 2, 3]);
   assert.equal(requests[2].body.sessionId, requests[4].body.sessionId);
   assert.equal(requests[8].body.sessionId, requests[9].body.sessionId);
