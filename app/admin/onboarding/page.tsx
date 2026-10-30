@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import NextLink from 'next/link'
 import AdminShell from '@/components/admin/AdminShell'
 import TextTemplatesEditor from '@/components/admin/TextTemplatesEditor'
@@ -10,6 +10,7 @@ import {
   Button,
   Heading,
   HStack,
+  Input,
   SimpleGrid,
   Stat,
   StatHelpText,
@@ -26,6 +27,8 @@ import {
 
 type Gap = { id: string; topic: string; category: string; count: number; lastAt: string | null; status: string }
 type Recent = { discordId: string; username: string | null; turns: number; firstAt: string | null; lastAt: string | null; stage: string | null }
+type OnboardingRegistration = { step: string; at: string; result: 'sent' | 'dm_closed' }
+type OnboardingRecipient = { discordId: string; username: string | null; registrations: OnboardingRegistration[] }
 type Data = {
   windowDays: number
   funnel: {
@@ -47,6 +50,7 @@ type Data = {
   feedback: { up: number; down: number }
   gaps: Gap[]
   recent: Recent[]
+  onboardingRecipients: OnboardingRecipient[]
 }
 
 const STEP_LABELS: Record<string, string> = {
@@ -68,6 +72,131 @@ function fmtTime(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
+const onboardingTime = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Copenhagen',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  timeZoneName: 'short',
+})
+
+function OnboardingResult({ result }: { result: OnboardingRegistration['result'] }) {
+  return <Badge colorScheme={result === 'sent' ? 'green' : 'orange'}>{result === 'sent' ? 'Sent' : 'DM rejected'}</Badge>
+}
+
+function OnboardingRecipients({ recipients }: { recipients: OnboardingRecipient[] }) {
+  const [search, setSearch] = useState('')
+  const [visibleCount, setVisibleCount] = useState(25)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+  const query = search.trim().toLowerCase()
+  const matching = recipients.filter((recipient) => recipient.discordId.includes(query) || recipient.username?.toLowerCase().includes(query))
+
+  function toggleSteps(id: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <Box as="section" aria-labelledby="onboarding-recipients-heading" mb={8}>
+      <Heading id="onboarding-recipients-heading" size="md" mb={1}>Onboarding recipients</Heading>
+      <Text color="gray.400" mb={3}>
+        All recorded onboarding steps, including members who have not replied. Several steps may belong to the same DM.
+        Only records still available are shown. Times are shown in Denmark time (CET/CEST).
+      </Text>
+      <Input
+        type="search"
+        aria-label="Search onboarding recipients by name or Discord ID"
+        placeholder="Search name or Discord ID"
+        value={search}
+        onChange={(event) => { setSearch(event.target.value); setVisibleCount(25) }}
+        size="sm"
+        maxW="md"
+        bg="gray.900"
+        color="gray.100"
+        borderColor="gray.600"
+        _placeholder={{ color: 'gray.400' }}
+        mb={3}
+      />
+      <Text color="gray.400" fontSize="sm" mb={2} role="status">
+        Showing {Math.min(visibleCount, matching.length)} of {matching.length} members{query ? ' matching your search' : ''}
+      </Text>
+      <Box overflowX="auto">
+        <Table size="sm" minW="52rem" aria-label="Onboarding recipients">
+          <Thead>
+            <Tr><Th color="gray.400">Member</Th><Th color="gray.400">Latest recorded</Th><Th color="gray.400">Purpose</Th><Th color="gray.400">Result</Th><Th color="gray.400">Details</Th></Tr>
+          </Thead>
+          <Tbody>
+            {matching.slice(0, visibleCount).map((recipient) => {
+              const latest = recipient.registrations[0]
+              const latestRecords = recipient.registrations.filter((registration) => registration.at === latest.at)
+              const purposes = [...new Set(latestRecords.map((registration) => registration.step))]
+              const results = [...new Set(latestRecords.map((registration) => registration.result))]
+              const expanded = expandedIds.has(recipient.discordId)
+              const detailsId = `onboarding-steps-${recipient.discordId}`
+              return (
+                <Fragment key={recipient.discordId}>
+                  <Tr>
+                    <Td>
+                      {recipient.username ? <Text>{recipient.username}</Text> : null}
+                      <Text color={recipient.username ? 'gray.400' : undefined} fontSize="sm">{recipient.discordId}</Text>
+                    </Td>
+                    <Td whiteSpace="nowrap"><time dateTime={latest.at}>{onboardingTime.format(new Date(latest.at))}</time></Td>
+                    <Td>{purposes.map((step) => STEP_LABELS[step] || step).join(' · ')}</Td>
+                    <Td><HStack spacing={1} flexWrap="wrap">{results.map((result) => <OnboardingResult key={result} result={result} />)}</HStack></Td>
+                    <Td>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        color="gray.200"
+                        borderColor="gray.600"
+                        _hover={{ bg: 'gray.800' }}
+                        _active={{ bg: 'gray.700' }}
+                        aria-expanded={expanded}
+                        aria-controls={detailsId}
+                        aria-label={`${expanded ? 'Hide' : 'Show'} steps for ${recipient.username || recipient.discordId}`}
+                        onClick={() => toggleSteps(recipient.discordId)}
+                      >
+                        {expanded ? 'Hide steps' : 'Show steps'}
+                      </Button>
+                    </Td>
+                  </Tr>
+                  {expanded ? (
+                    <Tr id={detailsId}>
+                      <Td colSpan={5} bg="gray.900" py={3}>
+                        <Table size="sm" aria-label={`Recorded steps for ${recipient.username || recipient.discordId}`}>
+                          <Thead><Tr><Th color="gray.400">Recorded time</Th><Th color="gray.400">Step</Th><Th color="gray.400">Result</Th></Tr></Thead>
+                          <Tbody>
+                            {recipient.registrations.map((registration) => (
+                              <Tr key={`${registration.step}-${registration.result}`}>
+                                <Td whiteSpace="nowrap"><time dateTime={registration.at}>{onboardingTime.format(new Date(registration.at))}</time></Td>
+                                <Td>{STEP_LABELS[registration.step] || registration.step}</Td>
+                                <Td><OnboardingResult result={registration.result} /></Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </Td>
+                    </Tr>
+                  ) : null}
+                </Fragment>
+              )
+            })}
+            {!matching.length ? <Tr><Td colSpan={5} color="gray.500">{query ? 'No matching members' : 'No onboarding recipients recorded'}</Td></Tr> : null}
+          </Tbody>
+        </Table>
+      </Box>
+      {matching.length > visibleCount ? <Button size="sm" mt={3} onClick={() => setVisibleCount((count) => count + 25)}>Show more</Button> : null}
+    </Box>
+  )
 }
 
 function StatBox({ label, value, help }: { label: string; value: string | number; help?: string }) {
@@ -151,6 +280,8 @@ export default function OnboardingAdminPage() {
           </Box>
         </>
       ) : null}
+
+      {data ? <OnboardingRecipients recipients={data.onboardingRecipients || []} /> : null}
 
       <TextTemplatesEditor
         apiPath="/api/admin/onboarding/texts"

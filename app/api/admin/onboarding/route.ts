@@ -21,11 +21,17 @@ const STEP_KEYS = [
   'connect_intervals',
 ] as const
 
+type OnboardingRegistration = { step: string; at: string; result: 'sent' | 'dm_closed' }
+
 function ms(value: unknown): number | null {
-  const iso = toIso(value)
-  if (!iso) return null
-  const t = new Date(iso).getTime()
-  return Number.isNaN(t) ? null : t
+  try {
+    const iso = toIso(value)
+    if (!iso) return null
+    const t = new Date(iso).getTime()
+    return Number.isNaN(t) ? null : t
+  } catch {
+    return null
+  }
 }
 
 function within7Days(from: number | null, to: number | null) {
@@ -65,6 +71,7 @@ export async function GET(req: Request) {
   const testIds = new Set<string>()
   const stepSent: Record<string, number> = Object.fromEntries(STEP_KEYS.map((k) => [k, 0]))
   const stageById = new Map<string, string>()
+  const onboardingRows: Array<{ discordId: string; registrations: OnboardingRegistration[] }> = []
   let members = 0
   let dmClosed = 0
   let replied = 0
@@ -83,13 +90,23 @@ export async function GET(req: Request) {
     members++
     let latest: { key: string; at: number } | null = null
     let firstDm: number | null = null
+    const registrations: OnboardingRegistration[] = []
     for (const key of STEP_KEYS) {
       const at = sentAt(key)
       if (at != null) {
+        registrations.push({ step: key, at: new Date(at).toISOString(), result: 'sent' })
         stepSent[key]++
         if (!latest || at > latest.at) latest = { key, at }
         if (firstDm == null || at < firstDm) firstDm = at
       }
+      const failedAt = ms(steps[key]?.dmFailedAt)
+      if (failedAt != null) {
+        registrations.push({ step: key, at: new Date(failedAt).toISOString(), result: 'dm_closed' })
+      }
+    }
+    if (registrations.length) {
+      registrations.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+      onboardingRows.push({ discordId: doc.id, registrations })
     }
     // Per member, not per step: one member with closed DMs can fail several steps.
     if (STEP_KEYS.some((key) => steps[key]?.dmFailedAt)) dmClosed++
@@ -146,12 +163,27 @@ export async function GET(req: Request) {
   })
   gaps.sort((a, b) => (a.status === b.status ? b.count - a.count : a.status === 'open' ? -1 : 1))
 
-  // Recent DM users: counts and stage only. Names come from users/{id}, fetched for these ids only.
+  // Recipient records include members who never replied and are not limited to the usage window.
+  onboardingRows.sort((a, b) => Date.parse(b.registrations[0].at) - Date.parse(a.registrations[0].at) || a.discordId.localeCompare(b.discordId))
+
+  // Share batched name lookups between onboarding recipients and recent DM users.
   const recentRows = usageSnap.docs.filter((doc) => !doc.data()?.test && !testIds.has(doc.id)).slice(0, 30)
-  const userDocs = recentRows.length
-    ? await adminDb.getAll(...recentRows.map((doc) => adminDb.collection(COLLECTIONS.users).doc(doc.id)))
-    : []
-  const nameById = new Map(userDocs.map((doc) => [doc.id, (doc.data()?.username as string) || null]))
+  const userIds = [...new Set([...onboardingRows.map((row) => row.discordId), ...recentRows.map((doc) => doc.id)])]
+  const nameById = new Map<string, string>()
+  try {
+    for (let offset = 0; offset < userIds.length; offset += 100) {
+      const refs = userIds.slice(offset, offset + 100).map((id) => adminDb.collection(COLLECTIONS.users).doc(id))
+      const userDocs = await adminDb.getAll(...refs, { fieldMask: ['username'] })
+      for (const doc of userDocs) {
+        const username = doc.data()?.username
+        if (typeof username === 'string' && username.trim()) nameById.set(doc.id, username)
+      }
+    }
+  } catch {
+    // Names only enrich the report. A lookup failure must not hide recipient records.
+    console.warn('admin/onboarding: could not load member names')
+  }
+  const onboardingRecipients = onboardingRows.map((row) => ({ ...row, username: nameById.get(row.discordId) || null }))
   const recent = recentRows.map((doc) => {
     const u = doc.data() || {}
     return {
@@ -177,6 +209,7 @@ export async function GET(req: Request) {
     feedback: { up, down },
     gaps,
     recent,
+    onboardingRecipients,
   })
 }
 
