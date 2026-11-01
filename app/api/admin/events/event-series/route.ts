@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireEventEditor } from '@/app/api/admin/_lib/auth'
 import { ensureCatalog } from '@/app/lib/seriesCatalog'
 import {
+  deleteEventSeries,
   listAdminSeries,
   plannedRaces,
   readAdminSeries,
@@ -32,6 +33,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ series, routes, schedule: plannedRaces(series, routes) })
     }
     return NextResponse.json({ series: await listAdminSeries() })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+export async function DELETE(req: Request) {
+  const auth = await requireEventEditor(req)
+  if (auth.error) return auth.error
+  const slug = seriesSlug(new URL(req.url).searchParams.get('slug') || '')
+  try {
+    await deleteEventSeries(slug)
+    return NextResponse.json({ ok: true })
   } catch (error) {
     return errorResponse(error)
   }

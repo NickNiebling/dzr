@@ -154,7 +154,8 @@ export default function RouteSetupPage() {
       .then(async (res) => {
         if (!res.ok) return
         const body = await res.json()
-        setExtraSeries(Array.isArray(body.series) ? body.series : [])
+        const rows = Array.isArray(body.series) ? body.series : []
+        setExtraSeries(rows.filter((item: { slug?: string }) => item.slug !== 'after-party' && item.slug !== 'zwifty-fifty'))
       })
       .catch(() => setExtraSeries([]))
   }, [])

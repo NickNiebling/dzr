@@ -5,7 +5,7 @@ import { catalogRouteByName, ensureCatalog } from '@/app/lib/seriesCatalog'
 import { findZwiftRoute } from '@/app/lib/zwiftRouteLookup'
 import { loadUpcomingDzrEvents } from '@/app/lib/zwiftPublicEvents'
 import { flaskData } from '@/app/api/admin/_lib/flask'
-import { SeriesError } from '@/app/lib/seriesSchedule'
+import { ensureSeries, SeriesError, type SeriesId } from '@/app/lib/seriesSchedule'
 import { courseLength, addDays, displayDate, parseIsoDate, routeForDate } from '@/packages/shared/seriesRotation'
 import { zwiftInsiderUrl } from '@/packages/shared/routeProfile'
 import type { CatalogRoute } from '@/app/lib/catalogRoute'
@@ -69,6 +69,78 @@ export type PlannedRace = {
 type StoredSeries = EventSeries & { discordWebhook: string }
 
 const RESERVED = new Set(['after-party', 'zwifty-fifty'])
+
+const LEGACY_SERIES: Array<{
+  slug: SeriesId
+  name: string
+  intro: string
+  timeLabel: string
+  zwiftName: string
+  icon: string
+}> = [
+  {
+    slug: 'after-party',
+    name: 'DZR After Party',
+    intro: 'A weekly race series with carefully selected routes all finishing uphill (aka after parties).',
+    timeLabel: 'Thursdays 17:15 CET | 11:15 AM EST',
+    zwiftName: 'After Party',
+    icon: 'mountain',
+  },
+  {
+    slug: 'zwifty-fifty',
+    name: 'The Zwifty Fifty',
+    intro: 'Weekly races of about 50 km, every Sunday 14:45 CET | 8:45 AM EST. Long enough to build stamina, short enough to finish.',
+    timeLabel: 'Sundays 14:45 CET | 8:45 AM EST',
+    zwiftName: 'Zwifty Fifty',
+    icon: 'fifty',
+  },
+]
+
+function isLegacySlug(slug: string): slug is SeriesId {
+  return slug === 'after-party' || slug === 'zwifty-fifty'
+}
+
+/** The original weekly series share the route catalogs already used by the rotation. */
+async function ensureLegacySeries() {
+  for (const legacy of LEGACY_SERIES) {
+    if (await readStored(legacy.slug)) continue
+    const schedule = await ensureSeries(legacy.slug)
+    const stored: StoredSeries = {
+      slug: legacy.slug,
+      name: legacy.name,
+      intro: legacy.intro,
+      timeLabel: legacy.timeLabel,
+      kind: 'weekly',
+      zwiftName: legacy.zwiftName,
+      published: false,
+      logoUrl: '',
+      rules: [],
+      carousel: false,
+      icon: seriesMenuIconId(legacy.icon),
+      pointsNote: '',
+      pointsRows: [],
+      leagueUrl: '',
+      anchorDate: schedule.anchorDate,
+      anchorIndex: schedule.anchorIndex,
+      overrides: schedule.overrides,
+      races: [],
+      discordWebhook: '',
+    }
+    await refFor(legacy.slug).set(stored)
+  }
+}
+
+async function keepLegacySchedule(slug: string, stored: Pick<StoredSeries, 'anchorDate' | 'anchorIndex' | 'overrides'>) {
+  if (!isLegacySlug(slug) || !stored.anchorDate) return
+  await adminDb.collection('series_schedules').doc(slug).set(
+    {
+      anchorDate: stored.anchorDate,
+      anchorIndex: stored.anchorIndex,
+      overrides: stored.overrides,
+    },
+    { merge: true }
+  )
+}
 
 export function seriesSlug(value: string) {
   return String(value || '')
@@ -196,6 +268,7 @@ function withoutWebhook(series: StoredSeries): AdminSeries {
 }
 
 export async function listAdminSeries(): Promise<AdminSeries[]> {
+  await ensureLegacySeries()
   const snap = await adminDb.collection(COLLECTION).get()
   return snap.docs
     .map((doc) => asStored(doc.id, doc.data()))
@@ -207,6 +280,7 @@ export async function listAdminSeries(): Promise<AdminSeries[]> {
 export async function readAdminSeries(slug: string): Promise<AdminSeries | null> {
   const id = seriesSlug(slug)
   if (!id) return null
+  if (isLegacySlug(id)) await ensureLegacySeries()
   const snap = await refFor(id).get()
   const stored = asStored(id, snap.data())
   return stored ? withoutWebhook(stored) : null
@@ -224,7 +298,7 @@ export async function saveEventSeries(
   webhook?: { value?: string; clear?: boolean }
 ) {
   const slug = seriesSlug(String(input.slug || input.name || ''))
-  if (!slug || RESERVED.has(slug)) throw new SeriesError('Choose a page address that is not already used')
+  if (!slug) throw new SeriesError('Choose a page address')
   const name = String(input.name || '').trim()
   if (!name) throw new SeriesError('A series name is required')
   const existing = await readStored(slug)
@@ -259,7 +333,24 @@ export async function saveEventSeries(
   }
   await refFor(slug).set(stored)
   await ensureCatalog(slug)
+  await keepLegacySchedule(slug, stored)
   return withoutWebhook(stored)
+}
+
+/** Removes one event series, its route list, and its logo. The original After Party and Zwifty Fifty catalogs stay. */
+export async function deleteEventSeries(slugInput: string) {
+  const slug = seriesSlug(slugInput)
+  if (!slug || RESERVED.has(slug)) throw new SeriesError('That series cannot be deleted')
+  const existing = await readStored(slug)
+  if (!existing) throw new SeriesError('Series not found', 404)
+  await refFor(slug).delete()
+  await adminDb.collection('series_catalogs').doc(slug).delete()
+  const bucket = admin.storage().bucket(LOGO_BUCKET)
+  await Promise.all(
+    LOGO_EXTENSIONS.map((extension) =>
+      bucket.file(`event-series/${slug}/logo.${extension}`).delete({ ignoreNotFound: true }).catch(() => undefined)
+    )
+  )
 }
 
 function logoExtension(contentType: string) {
@@ -365,7 +456,13 @@ export async function listPublishedSeries() {
   return snap.docs
     .map((doc) => asStored(doc.id, doc.data()))
     .filter((row): row is StoredSeries => Boolean(row))
-    .map((row) => ({ slug: row.slug, name: row.name, icon: row.icon }))
+    .map((row) => ({
+      slug: row.slug,
+      name: row.name,
+      icon: row.icon,
+      intro: row.intro,
+      timeLabel: row.timeLabel,
+    }))
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
@@ -511,5 +608,6 @@ export async function setWeeklyOverride(slug: string, date: string, routeName: s
   if (canonical === natural) delete overrides[iso]
   else overrides[iso] = canonical
   await refFor(series.slug).update({ overrides })
+  await keepLegacySchedule(series.slug, { ...series, overrides })
   return readAdminSeries(series.slug)
 }

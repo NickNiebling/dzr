@@ -405,6 +405,23 @@ export default function EventSeriesAdminPage() {
     return true
   }
 
+  async function removeSeries() {
+    if (!saved || !draft.slug) return
+    if (!window.confirm(`Delete ${draft.name}? This removes the series, its route list, and its logo.`)) return
+    setBusy('delete')
+    setError('')
+    setNotice('')
+    const res = await fetch(`/api/admin/events/event-series?slug=${encodeURIComponent(draft.slug)}`, { method: 'DELETE' })
+    setBusy('')
+    if (!res.ok) {
+      setError(await errorMessage(res))
+      return
+    }
+    startNew()
+    setNotice('Series deleted.')
+    await loadList()
+  }
+
   async function changeWeek(date: string, route: string) {
     setBusy(date)
     setError('')
@@ -482,7 +499,7 @@ export default function EventSeriesAdminPage() {
     <AdminShell title="Event series">
       <Text color="gray.400" mb={4}>
         Save the series, add its routes, then put those routes on the calendar. Apply updates the Zwift event and posts the race to Discord.
-        After Party and The Zwifty Fifty stay on their current pages.{' '}
+        DZR After Party and The Zwifty Fifty use the route lists the weekly rotation already has.{' '}
         <Link href="/admin/events" style={{ color: '#F6AD55' }}>Back to events</Link>
       </Text>
       {error ? (
@@ -556,9 +573,9 @@ export default function EventSeriesAdminPage() {
           </Field>
           <Flex align="center" gap={3}>
             <Switch colorScheme="red" isChecked={draft.published} onChange={(e) => patch({ published: e.target.checked })} />
-            <Text color="white">Show in the menu</Text>
+            <Text color="white">Show on the site</Text>
           </Flex>
-          <Text color="gray.500" fontSize="sm" mt={-2}>The page address works as soon as the series is saved. This adds it to the menu.</Text>
+          <Text color="gray.500" fontSize="sm" mt={-2}>The page address works as soon as the series is saved. This adds it to the menu and as a card on the landing page.</Text>
           <Field label="Menu icon" hint="Shown next to the name when the series is in the menu.">
             <Flex gap={2} wrap="wrap">
               <SeriesIconChoices value={draft.icon} onChange={(icon) => patch({ icon })} />
@@ -740,6 +757,11 @@ export default function EventSeriesAdminPage() {
             {saved ? (
               <Button as={Link} href={`/series/${draft.slug}`}>
                 View page
+              </Button>
+            ) : null}
+            {saved && draft.slug !== 'after-party' && draft.slug !== 'zwifty-fifty' ? (
+              <Button variant="outline" colorScheme="red" isLoading={busy === 'delete'} onClick={() => void removeSeries()}>
+                Delete series
               </Button>
             ) : null}
           </Flex>
