@@ -125,16 +125,21 @@ function EventLinks({ starts }: { starts: RaceStart[] }) {
   return (
     <Stack spacing={1} align="center">
       {linked.map((start) => (
-        <Text key={start.eventId} color="white">
-          {start.time ? `${start.time} ` : ''}
-          <ChakraLink color="orange" href={`https://zwiftpower.com/events.php?zid=${start.eventId}`} isExternal>
-            ZwiftPower<ExternalLinkIcon mx="2px" />
-          </ChakraLink>
-          {' · '}
-          <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${start.eventId}`} isExternal>
-            Zwift<ExternalLinkIcon mx="2px" />
-          </ChakraLink>
-        </Text>
+        <Stack key={start.eventId} spacing={1} align="center">
+          {start.time ? <Text color="white">{start.time}</Text> : null}
+          <Text color="white">
+            ZwiftPower:{' '}
+            <ChakraLink color="orange" href={`https://zwiftpower.com/events.php?zid=${start.eventId}`} isExternal>
+              ZwiftPower<ExternalLinkIcon mx="2px" />
+            </ChakraLink>
+          </Text>
+          <Text color="white">
+            Race Pass:{' '}
+            <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${start.eventId}`} isExternal>
+              Zwift<ExternalLinkIcon mx="2px" />
+            </ChakraLink>
+          </Text>
+        </Stack>
       ))}
     </Stack>
   )
