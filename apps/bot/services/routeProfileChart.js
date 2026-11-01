@@ -198,12 +198,18 @@ async function renderRouteProfile(profile, { name = "", subtitle = "", powerups 
     ctx.stroke();
 
     if (profile.leadInKm > 0) drawDashedGuide(ctx, x, profile.leadInKm, pad.top, bottom);
-    if (profile.leadInKm > km[0] + 0.05 && x(profile.leadInKm) - x(km[0]) >= 36) {
-      ctx.fillStyle = AXIS_TEXT;
-      ctx.font = `11px ${FONT}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillText("Lead-in", (x(km[0]) + x(profile.leadInKm)) / 2, pad.top + 6);
+    if (profile.leadInKm > km[0] + 0.05) {
+      const xStart = x(km[0]);
+      const xLead = x(profile.leadInKm);
+      ctx.font = `bold 12px ${FONT}`;
+      const label = "Lead-in";
+      const widthPx = ctx.measureText(label).width;
+      if (xLead - xStart >= widthPx + 8) {
+        ctx.fillStyle = TITLE;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, (xStart + xLead) / 2, (pad.top + bottom) / 2);
+      }
     }
     for (const km of flyingPowerupKm(profile, powerups)) drawDashedGuide(ctx, x, km, pad.top, bottom);
 

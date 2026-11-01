@@ -180,6 +180,39 @@ function SegmentNames({
   )
 }
 
+function LeadInLabel({
+  fromKm,
+  toKm,
+  xDomain,
+}: {
+  fromKm: number
+  toKm: number
+  xDomain: [number, number]
+}) {
+  const plot = usePlotArea()
+  if (!plot || plot.width <= 0 || !(toKm > fromKm)) return null
+  const [x0, x1] = xDomain
+  const span = x1 - x0 || 1
+  const text = 'Lead-in'
+  const width = textWidth(text)
+  const bandLeft = plot.x + ((Math.max(fromKm, x0) - x0) / span) * plot.width
+  const bandRight = plot.x + ((Math.min(toKm, x1) - x0) / span) * plot.width
+  if (bandRight - bandLeft < width + 8) return null
+  return (
+    <text
+      x={(bandLeft + bandRight) / 2}
+      y={plot.y + plot.height / 2}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      fill="white"
+      fontSize={12}
+      fontWeight={600}
+    >
+      {text}
+    </text>
+  )
+}
+
 function elevationDomain(points: { altitude: number }[]): [number, number] {
   const altitudes = points.map((point) => point.altitude)
   const low = Math.min(...altitudes)
@@ -472,15 +505,12 @@ function ProfileChart({
           ) : null}
           <Area type="monotone" dataKey="altitude" stroke="#E2E8F0" fill="#2D3748" fillOpacity={0.9} dot={false} />
           {profile.leadInKm > fromKm + 0.05 && profile.leadInKm < toKm ? (
-            <ReferenceLine
-              x={profile.leadInKm}
-              stroke="#E2E8F0"
-              strokeDasharray="4 4"
-              ifOverflow="hidden"
-              label={{ value: 'Lead-in', position: 'insideTopLeft', fill: '#E2E8F0', fontSize: 11 }}
-            />
+            <ReferenceLine x={profile.leadInKm} stroke="#E2E8F0" strokeDasharray="4 4" ifOverflow="hidden" />
           ) : null}
           {named ? <SegmentNames bands={bands} bonusLabels={bonusLabels} xDomain={xDomain} /> : null}
+          {profile.leadInKm > fromKm + 0.05 && profile.leadInKm < toKm ? (
+            <LeadInLabel fromKm={fromKm} toKm={profile.leadInKm} xDomain={xDomain} />
+          ) : null}
           {bands.map((segment) => {
                 const bonusName = bonusLabels.get(segmentId(segment))
                 const color = bonusName ? COLORS.bonus : COLORS[segment.type] || COLORS.segment
