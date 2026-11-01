@@ -828,7 +828,8 @@ class ZwiftPower:
         if preview["pending"] or not loaded["changes"]:
             return preview
         payload = dict(loaded["fields"])
-        payload["edit_results"] = "\n".join(change["line"] for change in loaded["changes"])
+        # The paste replaces the whole edit. Keep riders already moved on an earlier run.
+        payload["edit_results"] = merge_result_edits(payload.get("edit_results") or "", loaded["changes"])
         payload["post"] = "Update Results"
         response = self.session.post(loaded["action"], data=payload, allow_redirects=True)
         if response.status_code >= 400:
@@ -860,7 +861,7 @@ class ZwiftPower:
             payload = {}
         rows = payload.get("data") if isinstance(payload, dict) else None
         textarea = form.find("textarea", attrs={"name": "all_riders"})
-        riders = textarea.string if textarea is not None and textarea.string is not None else ""
+        riders = _textarea_value(textarea)
         if not isinstance(rows, list) or not riders.strip():
             return {"pending": True, "changes": [], "skipped": [], "fields": {}, "action": ""}
         pens = {}
@@ -877,7 +878,7 @@ class ZwiftPower:
         }
         for area in form.find_all("textarea"):
             if area.get("name"):
-                fields[area["name"]] = area.string if area.string is not None else ""
+                fields[area["name"]] = _textarea_value(area)
         changes = []
         skipped = []
         for raw_line in riders.splitlines():
@@ -933,6 +934,46 @@ def retarget_wkg_line(line: str, category: str) -> str:
     if prefix.strip() != "WKG" or not separator:
         raise ValueError("Line is not a WKG result")
     return f"{category}{separator}{rest}"
+
+
+def _textarea_value(tag) -> str:
+    if tag is None:
+        return ""
+    if tag.string is not None:
+        return str(tag.string)
+    return tag.get_text() or ""
+
+
+def rider_zwid(line: str) -> str:
+    parts = [part.strip() for part in str(line or "").split(",")]
+    return parts[5] if len(parts) > 5 else ""
+
+
+def merge_result_edits(existing: str, changes: list) -> str:
+    """Keep category lines already pasted. Append riders who were still WKG."""
+    incoming = {}
+    for change in changes or []:
+        zwid = str(change.get("zwid") or "").strip()
+        line = str(change.get("line") or "").strip()
+        if zwid and line:
+            incoming[zwid] = line
+    kept = []
+    seen = set()
+    for raw in str(existing or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        zwid = rider_zwid(line)
+        category = line.split(",", 1)[0].strip()
+        if zwid and zwid in incoming and category == "WKG":
+            line = incoming[zwid]
+        kept.append(line)
+        if zwid:
+            seen.add(zwid)
+    for zwid, line in incoming.items():
+        if zwid not in seen:
+            kept.append(line)
+    return "\n".join(kept)
 
 
 # ZwiftPower's Primes list does not use the official segment name.
