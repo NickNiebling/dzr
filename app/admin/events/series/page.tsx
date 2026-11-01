@@ -621,8 +621,9 @@ export default function EventSeriesAdminPage() {
             ))}
           </Stack>
 
-          <Heading size="sm" color="white">Logo</Heading>
-          {draft.logoUrl ? <Image src={draft.logoUrl} alt="" maxH="120px" objectFit="contain" /> : null}
+          <Heading size="sm" color="white">Banner</Heading>
+          <Text color="gray.500" fontSize="sm">Shown across the top of the public page.</Text>
+          {draft.logoUrl ? <Image src={draft.logoUrl} alt="" maxH="160px" objectFit="contain" /> : null}
           <Field label="PNG, JPEG, or WebP, under 2 MB">
             <Input
               type="file"

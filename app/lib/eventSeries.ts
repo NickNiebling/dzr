@@ -89,7 +89,7 @@ const LEGACY_SERIES: Array<{
   {
     slug: 'zwifty-fifty',
     name: 'The Zwifty Fifty',
-    intro: 'Weekly races of about 50 km, every Sunday 14:45 CET | 8:45 AM EST. Long enough to build stamina, short enough to finish.',
+    intro: 'Weekly races of about 50 km, every Sunday 14:45 CET | 8:45 AM EST.',
     timeLabel: 'Sundays 14:45 CET | 8:45 AM EST',
     zwiftName: 'Zwifty Fifty',
     icon: 'fifty',
@@ -262,6 +262,27 @@ function refFor(slug: string) {
   return adminDb.collection(COLLECTION).doc(slug)
 }
 
+/** Event ids already saved for the weekly rotation, used when this series has not stored one itself. */
+async function withKnownStarts(series: StoredSeries): Promise<StoredSeries> {
+  if (!isLegacySlug(series.slug) || series.kind !== 'weekly') return series
+  const schedule = await ensureSeries(series.slug)
+  const races = series.races.map((race) => ({ ...race, starts: race.starts.map((start) => ({ ...start })) }))
+  for (const [date, event] of Object.entries(schedule.events)) {
+    const eventId = String(event?.id || '').trim()
+    const route = String(event?.route || '').trim()
+    if (!eventId || !route) continue
+    const index = races.findIndex((race) => race.date === date && race.route.toLowerCase() === route.toLowerCase())
+    if (index >= 0) {
+      if (!races[index].starts.some((start) => start.eventId)) {
+        races[index] = { ...races[index], starts: [{ time: races[index].starts[0]?.time || '', eventId }] }
+      }
+      continue
+    }
+    races.push({ date, route, label: '', match: '', starts: [{ time: '', eventId }] })
+  }
+  return { ...series, races }
+}
+
 function withoutWebhook(series: StoredSeries): AdminSeries {
   const { discordWebhook, ...rest } = series
   return { ...rest, discordWebhookSet: Boolean(discordWebhook) }
@@ -283,7 +304,7 @@ export async function readAdminSeries(slug: string): Promise<AdminSeries | null>
   if (isLegacySlug(id)) await ensureLegacySeries()
   const snap = await refFor(id).get()
   const stored = asStored(id, snap.data())
-  return stored ? withoutWebhook(stored) : null
+  return stored ? withoutWebhook(await withKnownStarts(stored)) : null
 }
 
 async function readStored(slug: string) {
@@ -446,8 +467,9 @@ export function plannedRaces(series: EventSeries, routes: CatalogRoute[], today 
 export async function publicSeries(slug: string): Promise<PublicSeries | null> {
   const stored = await readStored(slug)
   if (!stored) return null
-  const { discordWebhook: _webhook, ...series } = stored
-  const routes = await ensureCatalog(stored.slug)
+  const ready = await withKnownStarts(stored)
+  const { discordWebhook: _webhook, ...series } = ready
+  const routes = await ensureCatalog(ready.slug)
   return { ...series, routes, schedule: plannedRaces(series, routes) }
 }
 

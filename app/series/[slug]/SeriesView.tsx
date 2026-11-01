@@ -150,51 +150,13 @@ function RulesBlock({ rules }: { rules: string[] }) {
   )
 }
 
-function ComingRaces({ series }: { series: SeriesPageData }) {
-  if (series.schedule.length < 2) return null
-  return (
-    <Stack spacing={3}>
-      <Heading color="white" fontSize="2xl">Coming races</Heading>
-      <TableContainer textAlign="center">
-        <Table size="sm" color="white" borderColor="white" border="1px">
-          <Thead>
-            <Tr>
-              <Th textAlign="center" color="white">Date</Th>
-              <Th textAlign="center" color="white">Route</Th>
-              <Th textAlign="center" color="white">Zwift</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {series.schedule.map((week) => {
-              const event = week.starts.find((start) => start.eventId)
-              return (
-                <Tr key={week.date}>
-                  <Td textAlign="center">{week.label || week.date}</Td>
-                  <Td textAlign="center">{week.routeName}</Td>
-                  <Td textAlign="center">
-                    {event ? (
-                      <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${event.eventId}`} isExternal>
-                        Zwift
-                      </ChakraLink>
-                    ) : '—'}
-                  </Td>
-                </Tr>
-              )
-            })}
-          </Tbody>
-        </Table>
-      </TableContainer>
-    </Stack>
-  )
-}
-
 function PointsSection({ route }: { route: CatalogRoute }) {
   const sprints = sprintColumns(route)
   const bonuses = bonusValues(route)
   if (!sprints.length && !bonuses.length) return null
   return (
     <Stack spacing={4}>
-      <Heading color="white" fontSize="2xl">Points</Heading>
+      <Heading as="h1" size="lg" color="white">Bonus Sprints</Heading>
       {sprints.length ? (
         <>
           <Heading color="white" fontSize="md">First across line (FAL) bonus seconds on segments below</Heading>
@@ -254,11 +216,13 @@ function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: Seri
   const start = race.starts.find((item) => item.eventId)
   return (
     <Stack spacing={6}>
+      <Heading color="white">{series.name}</Heading>
       {series.intro ? (
         <Text color="white" fontSize="lg" whiteSpace="pre-line">{series.intro}</Text>
       ) : null}
-      <Heading as="h1" color="white">{race.label || race.date}</Heading>
-      {series.timeLabel ? <Heading color="white" fontSize="md">{series.timeLabel}</Heading> : null}
+      <RulesBlock rules={series.rules} />
+      <Heading as="h1" size="lg" color="white">{race.label || race.date}</Heading>
+      {series.timeLabel ? <Heading as="h2" size="md" color="white">{series.timeLabel}</Heading> : null}
       {route ? (
         <TableContainer>
           <Table size="sm" color="white" borderColor="white" border="1px">
@@ -301,15 +265,14 @@ function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: Seri
           </Table>
         </TableContainer>
       ) : null}
-      <RulesBlock rules={series.rules} />
-      {route ? <PointsSection route={route} /> : null}
-      <Heading color="white" fontSize="2xl">Profile</Heading>
+      <Heading as="h1" size="lg" color="white">Route Profile and Key Climbs</Heading>
+      {route ? <Heading as="h2" size="lg" color="white">{route.route}</Heading> : null}
       {route ? (
         <CourseProfile route={route} carousel={series.carousel} />
       ) : (
         <Text color="gray.400">Add a route in the series setup to show the course here.</Text>
       )}
-      <ComingRaces series={series} />
+      {route ? <PointsSection route={route} /> : null}
     </Stack>
   )
 }
@@ -353,13 +316,12 @@ function WeeklyRace({ series, race }: { series: SeriesPageData; race: SeriesRace
         </Center>
       ) : null}
       <Center><Divider width="75%" /></Center>
-      <Center><Heading color="white">Profile</Heading></Center>
+      <Center><Heading color="white">Profiles</Heading></Center>
       {route ? (
         <CourseProfile route={route} carousel={series.carousel} />
       ) : (
         <Text color="gray.400" align="center">Add a route in the series setup to show the course here.</Text>
       )}
-      <ComingRaces series={series} />
     </Stack>
   )
 }
@@ -493,7 +455,7 @@ export default function SeriesView({ series }: { series: SeriesPageData }) {
       <SimpleGrid columns={1} spacing={10}>
         {series.logoUrl ? (
           <Flex>
-            <Image rounded="md" alt={`${series.name} logo`} src={series.logoUrl} objectFit="contain" />
+            <Image rounded="md" alt={`${series.name} banner`} src={series.logoUrl} objectFit="contain" w="100%" />
           </Flex>
         ) : null}
         {series.kind === 'weekly' ? (
