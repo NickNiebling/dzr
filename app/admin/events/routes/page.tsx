@@ -118,6 +118,7 @@ export default function RouteSetupPage() {
   const [namedSearch, setNamedSearch] = useState<Record<number, boolean>>({})
   const [routeNameSearch, setRouteNameSearch] = useState(false)
   const [query, setQuery] = useState('')
+  const [bonusText, setBonusText] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState('')
@@ -163,11 +164,14 @@ export default function RouteSetupPage() {
   useEffect(() => {
     void fetch('/api/admin/events/world-routes', { cache: 'no-store' })
       .then(async (res) => {
-        if (!res.ok) return
+        if (!res.ok) {
+          setError(await errorMessage(res))
+          return
+        }
         const body = await res.json()
         setWorlds(Array.isArray(body.worlds) ? body.worlds : [])
       })
-      .catch(() => setWorlds([]))
+      .catch(() => setError('The Zwift game dictionary is unavailable right now.'))
   }, [])
 
   useEffect(() => {
@@ -181,6 +185,7 @@ export default function RouteSetupPage() {
   useEffect(() => {
     setIndex(null)
     setDraft(emptyCatalogRoute())
+    setBonusText('')
     setLengthMode('distance')
     setKomProfiles(false)
     setSegmentPoints(false)
@@ -199,6 +204,7 @@ export default function RouteSetupPage() {
     if (!route) return
     setIndex(routeIndex)
     setDraft(route)
+    setBonusText(listToText(route.bonus))
     setLengthMode(usesLapCount(route.laps) ? 'laps' : 'distance')
     setKomProfiles(hasKomProfiles(route))
     setSegmentPoints(hasSegmentPoints(route))
@@ -219,6 +225,7 @@ export default function RouteSetupPage() {
   function startAdd() {
     setIndex(null)
     setDraft(emptyCatalogRoute())
+    setBonusText('')
     setLengthMode('distance')
     setKomProfiles(false)
     setSegmentPoints(false)
@@ -977,8 +984,12 @@ export default function RouteSetupPage() {
                   </Stack>
                 <Input
                   placeholder="Bonus seconds for each segment, separated by commas"
-                  value={listToText(draft.bonus)}
-                  onChange={(e) => setField({ bonus: textToList(e.target.value) })}
+                  value={bonusText}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setBonusText(value)
+                    setField({ bonus: textToList(value) })
+                  }}
                   {...field}
                 />
               </Box>

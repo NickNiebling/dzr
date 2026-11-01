@@ -363,16 +363,30 @@ class ZwiftAPI:
             )
 
     def _load_game_dictionary(self) -> dict:
-        if getattr(ZwiftAPI, "_game_dict_cache", None) is not None:
-            return ZwiftAPI._game_dict_cache
-        response = requests.get(
-            GAME_DICTIONARY_URL,
-            headers={"Accept": "application/json"},
-            timeout=20,
-        )
-        response.raise_for_status()
-        ZwiftAPI._game_dict_cache = response.json()
-        return ZwiftAPI._game_dict_cache
+        """Public game dictionary, refreshed once a day. A failed refresh keeps the last copy."""
+        cached = getattr(ZwiftAPI, "_game_dict_cache", None)
+        cached_at = getattr(ZwiftAPI, "_game_dict_cached_at", 0)
+        if cached is not None and time.time() - cached_at < 24 * 60 * 60:
+            return cached
+        try:
+            response = requests.get(
+                GAME_DICTIONARY_URL,
+                headers={"Accept": "application/json", "Source": "zwift-web"},
+                timeout=20,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except (requests.RequestException, ValueError):
+            if cached is not None:
+                return cached
+            raise
+        if not isinstance(data, dict) or "ROUTES" not in data:
+            if cached is not None:
+                return cached
+            raise ZwiftError("Game dictionary unavailable")
+        ZwiftAPI._game_dict_cache = data
+        ZwiftAPI._game_dict_cached_at = time.time()
+        return data
 
     def get_route_metadata(self, route_id: int) -> Optional[dict]:
         """Route dict from the public game dictionary, or None."""

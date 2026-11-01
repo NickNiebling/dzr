@@ -1,5 +1,7 @@
 import html
+import re
 import time
+import unicodedata
 from collections import defaultdict
 from urllib.parse import urljoin
 
@@ -933,6 +935,89 @@ def retarget_wkg_line(line: str, category: str) -> str:
     return f"{category}{separator}{rest}"
 
 
+# ZwiftPower's Primes list does not use the official segment name.
+# "Zwift KOM" is "Watopia KOM Forward", "Titans Grove KOM" is "Titans Grove Forward",
+# "Fuego Flats" is "Fuego Flats Short", and a reverse is often "Rev".
+_PRIME_ALIASES = {
+    "zwift kom": "watopia kom",
+    "epic kom": "watopia epic kom",
+    "new york kom": "ny climb",
+    "ny kom": "ny climb",
+    "volcano kom": "volcano climb",
+    "fox hill": "london fox hill",
+    "box hill": "london box hill",
+    "keith hill": "london keith hill",
+    "leith hill": "london leith hill",
+    "broad st": "richmond sprint",
+    "broad street": "richmond sprint",
+    "titans grove kom": "titans grove",
+}
+_PRIME_WORLDS = ("london ", "watopia ", "richmond ", "yorkshire ", "innsbruck ")
+_FORWARD_WHEN_BARE = {"watopia kom", "watopia epic kom", "ny climb", "titans grove"}
+
+
+def _prime_text(value: str) -> str:
+    text = unicodedata.normalize("NFD", html.unescape(str(value or "")))
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = text.casefold().replace("groove", "grove")
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    text = re.sub(r"\brev\b", "reverse", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _prime_parts(text: str) -> tuple[str, str]:
+    direction = ""
+    for word in ("reverse", "forward", "long", "short"):
+        if re.search(rf"\b{word}\b", text):
+            direction = word
+            text = re.sub(rf"\b{word}\b", " ", text)
+            break
+    return re.sub(r"\s+", " ", text).strip(), direction
+
+
+def _prime_query(name: str) -> tuple[str, str]:
+    base, direction = _prime_parts(_prime_text(name))
+    if base == "fuego flats" and direction == "reverse":
+        return "fuego flats", "long"
+    if base == "fuego flats" and direction in {"", "forward"}:
+        return "fuego flats", "short"
+    base = _PRIME_ALIASES.get(base, base)
+    if not direction and base in _FORWARD_WHEN_BARE:
+        direction = "forward"
+    return base, direction
+
+
+def _prime_option(option_name: str, query_base: str) -> tuple[str, str]:
+    base, direction = _prime_parts(_prime_text(option_name))
+    for world in _PRIME_WORLDS:
+        if base.startswith(world) and base[len(world):] == query_base:
+            base = query_base
+            break
+    return base, direction
+
+
+def _prime_hit(options: dict, name: str):
+    exact = options.get(str(name or "").casefold())
+    if exact:
+        return exact
+    base, direction = _prime_query(name)
+    if len(base) < 3:
+        return None
+    hits = []
+    for option in options.values():
+        opt_base, opt_dir = _prime_option(option["name"], base)
+        if opt_base != base:
+            continue
+        if direction and opt_dir != direction:
+            continue
+        if not direction and opt_dir in {"reverse", "long"}:
+            continue
+        hits.append(option)
+    if len(hits) == 1:
+        return hits[0]
+    return None
+
+
 def _match_primes(options: dict, sprints: list, points: str) -> dict:
     if len(sprints) > 8:
         raise ValueError("ZwiftPower accepts at most 8 sprints")
@@ -940,7 +1025,7 @@ def _match_primes(options: dict, sprints: list, points: str) -> dict:
     for item in sprints:
         name = str(item.get("name") or "").strip()
         laps = str(item.get("laps") or "1").strip() or "1"
-        hit = options.get(name.casefold())
+        hit = _prime_hit(options, name)
         rows.append({
             "name": name,
             "laps": laps,

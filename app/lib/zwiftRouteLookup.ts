@@ -1,14 +1,10 @@
-import { flaskData } from '@/app/api/admin/_lib/flask'
+import { searchDictionaryRoutes } from '@/app/lib/gameDictionary'
 import { chooseZwiftRoute, foldRouteName } from '@/packages/shared/zwiftRouteMatch'
 
 export type ZwiftRouteHit = { routeId: number; name: string; world: string | null }
 
 async function searchRoutes(query: string): Promise<ZwiftRouteHit[]> {
-  const result = await flaskData(`/api/zwift/routes?q=${encodeURIComponent(query)}`)
-  if (result.status >= 400) {
-    throw new Error(String(result.body?.error || 'Route search failed'))
-  }
-  return Array.isArray(result.body) ? result.body : []
+  return searchDictionaryRoutes(query)
 }
 
 function asHit(hit: ZwiftRouteHit): ZwiftRouteHit | null {

@@ -52,6 +52,89 @@ export function dictionarySegmentRows(data: Dictionary) {
   return asRows(rows)
 }
 
+const WORLD_SLUGS: Record<string, string> = {
+  WATOPIA: 'watopia',
+  RICHMOND: 'richmond',
+  LONDON: 'london',
+  NEWYORK: 'new-york',
+  INNSBRUCK: 'innsbruck',
+  BOLOGNA: 'bologna',
+  BOLOGNATT: 'bologna',
+  YORKSHIRE: 'yorkshire',
+  CRITCITY: 'crit-city',
+  CRIT_CITY: 'crit-city',
+  MAKURIISLANDS: 'makuri-islands',
+  MAKURI_ISLANDS: 'makuri-islands',
+  FRANCE: 'france',
+  PARIS: 'paris',
+  SCOTLAND: 'scotland',
+  'GRAVEL MOUNTAIN': 'gravel-mountain',
+}
+
+export type DictionaryRouteHit = { routeId: number; name: string; world: string }
+
+function worldSlug(map: unknown) {
+  const key = String(map || '').trim().toUpperCase()
+  if (!key) return ''
+  return WORLD_SLUGS[key] || key.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function rideableRoute(row: Record<string, unknown>): DictionaryRouteHit | null {
+  if (String(row.sports ?? '') === '2') return null
+  const routeId = Number(row.signature ?? row.routeSignature)
+  const name = String(row.name || '').trim()
+  const world = worldSlug(row.map)
+  if (!world || !name || !Number.isInteger(routeId) || routeId <= 0) return null
+  return { routeId, name, world }
+}
+
+function rideableRoutes(data: Dictionary) {
+  const seen = new Set<number>()
+  const routes: DictionaryRouteHit[] = []
+  for (const row of dictionaryRouteRows(data)) {
+    const route = rideableRoute(row)
+    if (!route || seen.has(route.routeId)) continue
+    seen.add(route.routeId)
+    routes.push(route)
+  }
+  return routes
+}
+
+/** Cycling routes from the live game dictionary, grouped for the route picker. */
+export async function listDictionaryWorldRoutes(): Promise<{ world: string; routes: DictionaryRouteHit[] }[]> {
+  const worlds = new Map<string, DictionaryRouteHit[]>()
+  for (const route of rideableRoutes(await gameDictionary())) {
+    const list = worlds.get(route.world) || []
+    list.push(route)
+    worlds.set(route.world, list)
+  }
+  return [...worlds.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([world, listed]) => ({
+      world,
+      routes: listed.sort((left, right) => left.name.localeCompare(right.name)),
+    }))
+}
+
+function foldRouteQuery(value: string) {
+  return value.toLowerCase().replace(/['’‘`]/g, '')
+}
+
+/** Match dictionary routes by name, or by an exact route id. */
+export async function searchDictionaryRoutes(query: string, limit = 20): Promise<DictionaryRouteHit[]> {
+  const text = String(query || '').trim()
+  const folded = foldRouteQuery(text)
+  if (folded.length < 2 && !/^\d+$/.test(text)) return []
+  const matches: DictionaryRouteHit[] = []
+  for (const route of rideableRoutes(await gameDictionary())) {
+    const idMatch = /^\d+$/.test(text) && String(route.routeId) === text
+    if (!idMatch && !foldRouteQuery(route.name).includes(folded)) continue
+    matches.push(route)
+    if (matches.length >= limit) break
+  }
+  return matches
+}
+
 export function resolveDictionaryRoute(
   data: Dictionary,
   query: { routeId?: string; name?: string; world?: string },
