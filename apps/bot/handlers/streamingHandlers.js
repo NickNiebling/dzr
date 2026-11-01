@@ -9,6 +9,9 @@ const button = (action, userId, label, style = ButtonStyle.Primary, value) => ne
   .setCustomId(`streaming:${action}:${userId}${value !== undefined ? `:${value}` : ""}`).setLabel(label).setStyle(style);
 const row = (...buttons) => new ActionRowBuilder().addComponents(...buttons);
 const checkButton = (interaction) => button("result", interaction.user.id, "Kontrollér resultat", ButtonStyle.Primary, interaction.createdTimestamp);
+const setupOptions = (userId) => row(
+  button("guide", userId, "Guidet opsætning", ButtonStyle.Secondary).setEmoji("🧭"),
+  button("status", userId, "Test forbindelse (valgfrit)", ButtonStyle.Secondary).setEmoji("🧪"));
 
 function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, channelId, getClubRoleId = async () => null }) {
   const baseUrl = publicUrl.replace(/\/$/, "");
@@ -44,7 +47,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
       const [, action, owner, value] = String(interaction.customId || "").split(":");
       if (interaction.customId && owner !== userId) throw new StreamingError("not_owner", "Start dit eget flow med /streaming_add.", 403);
 
-      if (["streaming_add", "streaming_remove"].includes(interaction.commandName) || ["channels", "save", "remove", "status", "result"].includes(action)) {
+      if (["streaming_add", "streaming_remove"].includes(interaction.commandName) || ["channels", "save", "remove", "status", "result", "guide", "finish"].includes(action)) {
         const clubRoleId = await getClubRoleId();
         const eligible = clubRoleId && (interaction.member?.roles?.cache?.has(clubRoleId) || interaction.member?.roles?.includes?.(clubRoleId));
         if (!eligible) throw new StreamingError("club_member_required", "Streaming er kun tilgængelig for Club Members.", 403);
@@ -63,7 +66,8 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         return true;
       }
 
-      if (interaction.isButton() && action === "result") await interaction.deferUpdate();
+      // Open help separately from the key message; navigation only edits that private reply.
+      if (interaction.isButton() && (["result", "finish"].includes(action) || (action === "guide" && value !== undefined))) await interaction.deferUpdate();
       else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       if (interaction.isModalSubmit() && action === "save") {
         const { registration, token } = await service.enroll(userId, interaction.user.username, {
@@ -79,13 +83,14 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
           + "Nøglen vises kun her. Del den ikke. En tidligere nøgle er nu ugyldig. "
           + "Du kan få en ny med /streaming_add og afmelde dig med /streaming_remove.\n"
           + `Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.`,
-          components: [row(button("status", userId, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))], allowedMentions: { parse: [] } });
+          components: [setupOptions(userId)], allowedMentions: { parse: [] } });
       } else if (interaction.commandName === "streaming_add") {
         const existing = await service.getRegistration(userId);
         await interaction.editReply({ content: "**Tilmeld din streaming til DZR**\n"
           + "Først angiver du dine egne YouTube- og/eller Twitch-kanaler. Derefter får du OBS-scriptet, en installationsvejledning og din personlige nøgle.\n\n"
           + (existing ? "Du er allerede tilmeldt. Når du gemmer formularen, erstattes kanalerne og din gamle nøgle. Opdatér derefter nøglen i OBS." : "Du behøver ikke forbinde din Google- eller Twitch-konto. Opsætningen er kun synlig for dig."),
-          components: [row(button("channels", userId, existing ? "Redigér kanaler og få ny nøgle" : "Angiv streamingkanaler"))] });
+          components: [row(button("channels", userId, existing ? "Redigér kanaler og få ny nøgle" : "Angiv streamingkanaler")),
+            ...(existing ? [setupOptions(userId)] : [])] });
       } else if (interaction.commandName === "streaming_remove") {
         await interaction.editReply({ content: "Vil du afmelde din streaming? Din DZR-nøgle spærres, og ventende annonceringer stoppes. Fjern også scriptet fra OBS bagefter.",
           components: [row(button("remove", userId, "Afmeld min streaming", ButtonStyle.Danger), button("cancel", userId, "Behold tilmelding", ButtonStyle.Secondary))] });
@@ -94,6 +99,23 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         await interaction.editReply({ content: removed ? "Du er afmeldt. Din nøgle virker ikke længere. Du kan nu fjerne dzr-stream.lua fra OBS." : "Du er ikke tilmeldt streaming." });
       } else if (interaction.isButton() && action === "cancel") {
         await interaction.editReply({ content: "Din tilmelding er uændret." });
+      } else if (interaction.isButton() && action === "guide") {
+        const step = Number(value ?? 0);
+        const steps = [
+          `**1/4 · Download**\n[Hent dzr-stream.lua](${baseUrl}/streaming/dzr-stream.lua), og gem filen på din computer.`,
+          "**2/4 · Installér**\nÅbn **OBS → Værktøjer / Tools → Scripts → +**, og vælg **dzr-stream.lua**.",
+          `**3/4 · Konfigurér**\nIndsæt \`${baseUrl}/streaming/obs\` i **DZR endpoint** og nøglen fra din tilmeldingsbesked i **DZR key**. Vælg din tilmeldte platform eller Automatisk.`,
+          "**4/4 · Verificér (valgfrit)**\nTryk **Test forbindelse** i OBS nu, og derefter **Kontrollér resultat** her. Testen sender ingen offentlig Discord-besked.",
+        ];
+        if (!steps[step]) throw new StreamingError("invalid_step", "Åbn Guidet opsætning igen.");
+        if (!await service.getRegistration(userId)) throw new StreamingError("not_registered", "Du er ikke tilmeldt streaming. Brug /streaming_add først.", 404);
+        await interaction.editReply({ content: `🧭 **Guidet opsætning**\n${steps[step]}\n\nDu er allerede tilmeldt. Guiden og testen er valgfrie; du kan afslutte når som helst.`,
+          components: [...(step === 3 ? [row(checkButton(interaction))] : []), row(
+            button("guide", userId, "Tilbage", ButtonStyle.Secondary, Math.max(0, step - 1)).setDisabled(step === 0),
+            button("guide", userId, "Næste", ButtonStyle.Primary, Math.min(3, step + 1)).setDisabled(step === 3),
+            button("finish", userId, "Afslut", ButtonStyle.Secondary))] });
+      } else if (interaction.isButton() && action === "finish") {
+        await interaction.editReply({ content: "Guiden er afsluttet. Du kan bruge streaming uden at gennemføre en test.", components: [] });
       } else if (interaction.isButton() && ["status", "result"].includes(action)) {
         const registration = await service.getRegistration(userId);
         if (!registration) throw new StreamingError("not_registered", "Du er ikke tilmeldt streaming. Brug /streaming_add først.", 404);
