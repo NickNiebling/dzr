@@ -4,7 +4,7 @@ import {
 
   } from '@chakra-ui/react'
 
-export default function LoadingSpinner() {
+export default function LoadingSpinner({ label = 'Loading race data...' }: { label?: string }) {
     return (
         <Box
           position="fixed"
@@ -55,7 +55,7 @@ export default function LoadingSpinner() {
               />
             ))}
           </Box>
-          <Text color="white" mt={4}>Loading race data...</Text>
+          <Text color="white" mt={4}>{label}</Text>
           <style>
             {`
               @keyframes spin {

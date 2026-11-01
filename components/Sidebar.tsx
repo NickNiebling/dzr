@@ -44,11 +44,11 @@ import { IconType } from 'react-icons'
 import { FaTrophy } from "react-icons/fa6";
 import { AiOutlineAim } from "react-icons/ai";
 import Sparkles from 'react-sparkle'
-import { useEffect, useState } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import { FaUser, FaUserCircle } from 'react-icons/fa'
 import { HOLDKAPTAJN_ROLE_ID } from '@/app/lib/sharedConstants'
 import { seriesMenuIcon } from '@/components/series/SeriesMenuIcons'
+import type { PublishedSeriesLink } from '@/app/lib/publishedSeriesLink'
 
 interface LinkItemProps {
   name: string
@@ -69,6 +69,7 @@ interface MobileProps extends FlexProps {
 
 interface SidebarProps extends BoxProps {
   onClose: () => void
+  series: PublishedSeriesLink[]
 }
 
 const LinkItems: Array<LinkItemProps> = [
@@ -82,23 +83,13 @@ const LinkItems: Array<LinkItemProps> = [
   { name: 'In The Zone 2', href: '/in-the-zone-2', icon: AiOutlineAim },
 ]
 
-const SidebarContent = ({ onClose, ...rest }: SidebarProps) => {
-  const [published, setPublished] = useState<{ slug: string; name: string; icon?: string }[]>([])
-  useEffect(() => {
-    void fetch('/api/series/published', { cache: 'no-store' })
-      .then(async (res) => {
-        if (!res.ok) return
-        const body = await res.json()
-        setPublished(Array.isArray(body.series) ? body.series : [])
-      })
-      .catch(() => setPublished([]))
-  }, [])
+const SidebarContent = ({ onClose, series, ...rest }: SidebarProps) => {
   const links: LinkItemProps[] = [
     ...LinkItems,
-    ...published.map((series) => ({
-      name: series.name,
-      href: `/series/${series.slug}`,
-      icon: seriesMenuIcon(series.icon),
+    ...series.map((item) => ({
+      name: item.name,
+      href: `/series/${item.slug}`,
+      icon: seriesMenuIcon(item.icon),
     })),
   ]
   return (
@@ -355,12 +346,12 @@ const MobileNav = ({ onOpen, ...rest }: MobileProps) => {
   )
 }
 
-const SidebarWithHeader = () => {
+const SidebarWithHeader = ({ series }: { series: PublishedSeriesLink[] }) => {
   const { isOpen, onOpen, onClose } = useDisclosure()
 
   return (
     <Box>
-      <SidebarContent onClose={() => onClose} display={'none'} />
+      <SidebarContent onClose={() => onClose} display={'none'} series={series} />
       <Drawer
         isOpen={isOpen}
         placement="left"
@@ -373,7 +364,7 @@ const SidebarWithHeader = () => {
         <DrawerOverlay bg="rgba(173, 26, 45, 0.95)" />
         <DrawerContent>
           <DrawerCloseButton color={'red'} />
-          <SidebarContent onClose={onClose} />
+          <SidebarContent onClose={onClose} series={series} />
         </DrawerContent>
       </Drawer>
       {/* mobilenav */}

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import AppShell from './AppShell';
+import { getPublishedSeries } from '@/app/lib/publishedSeries';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.dzrracingseries.com'),
@@ -12,15 +13,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const series = await getPublishedSeries();
   return (
     <html lang="en">
       <body>
-        <AppShell>{children}</AppShell>
+        <AppShell series={series}>{children}</AppShell>
       </body>
     </html>
   );

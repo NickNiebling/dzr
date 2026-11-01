@@ -2,6 +2,7 @@ import HeroSection from '@/components/HeroSection';
 import Features from '@/components/Features';
 import { Metadata } from 'next';
 import { JsonLd, sportsClubJsonLd } from '@/components/seo/JsonLd';
+import { getPublishedSeries } from '@/app/lib/publishedSeries';
 
 export const metadata: Metadata = {
   title: 'Danish Zwift Racers — Danish Zwift club and DCU E-Serien',
@@ -26,12 +27,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Home() {
+export default async function Home() {
+  const series = await getPublishedSeries();
   return (
     <>
       <JsonLd data={sportsClubJsonLd} />
       <HeroSection />
-      <Features />
+      <Features series={series} />
     </>
   );
 }

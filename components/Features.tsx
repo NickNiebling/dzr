@@ -11,7 +11,6 @@ import {
   Stack,
   Text,
   useColorModeValue,
-  Link,
   Divider,
   Center,
   AbsoluteCenter,
@@ -27,12 +26,13 @@ import {
 import { keyframes } from '@emotion/react'
 import { IconType } from 'react-icons';
 
-import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import NextLink from 'next/link';
 
 import { AiOutlineAim } from "react-icons/ai";
 import { MdInfo } from "react-icons/md";
 import { seriesMenuIcon } from '@/components/series/SeriesMenuIcons'
+import type { PublishedSeriesLink } from '@/app/lib/publishedSeriesLink'
 
 
 
@@ -46,7 +46,7 @@ interface Props {
 
 const CustomCard: React.FC<Props> = ({ href, icon, heading, text1, text2 }) => {
   return (
-    <Link href={href} style={{ textDecoration: 'none' }}>
+    <NextLink href={href} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
       <Card className='hover-animation' as={motion.div} height='100%' bg={'black'} borderWidth={{ base: '2px', sm: '3px', md: '4px' }} borderRadius="lg" borderColor={'white'}>
         <CardHeader>
           <Flex justify="center" align="center" bg="white" borderRadius="full" p={2} width={{ base: '10', sm: '14', md: '16' }} height={{ base: '10', sm: '14', md: '16' }}>
@@ -64,24 +64,11 @@ const CustomCard: React.FC<Props> = ({ href, icon, heading, text1, text2 }) => {
           </Stack>
         </CardBody>
       </Card>
-    </Link>
+    </NextLink>
   );
 };
 
-type PublishedSeries = { slug: string; name: string; icon?: string; intro?: string; timeLabel?: string }
-
-export default function Features() {
-  const [published, setPublished] = useState<PublishedSeries[]>([])
-  useEffect(() => {
-    void fetch('/api/series/published', { cache: 'no-store' })
-      .then(async (res) => {
-        if (!res.ok) return
-        const body = await res.json()
-        setPublished(Array.isArray(body.series) ? body.series : [])
-      })
-      .catch(() => setPublished([]))
-  }, [])
-
+export default function Features({ series }: { series: PublishedSeriesLink[] }) {
   return (
     <Container
       maxW="5xl"
@@ -100,14 +87,14 @@ export default function Features() {
         <SimpleGrid spacing={4} minChildWidth={{ base: '100%', sm: '280px' }} marginBlockEnd={4}>
           
           <CustomCard href='/about' icon={MdInfo} heading='About DZR' text1='Learn about our community' text2='& memberships.' />
-          {published.map((series) => (
+          {series.map((item) => (
             <CustomCard
-              key={series.slug}
-              href={`/series/${series.slug}`}
-              icon={seriesMenuIcon(series.icon)}
-              heading={series.name}
-              text1={series.intro || ''}
-              text2={series.timeLabel || ''}
+              key={item.slug}
+              href={`/series/${item.slug}`}
+              icon={seriesMenuIcon(item.icon)}
+              heading={item.name}
+              text1={item.intro || ''}
+              text2={item.timeLabel || ''}
             />
           ))}
           <CustomCard href='/in-the-zone-2' icon={AiOutlineAim} heading='In The Zone 2' text1='Structured zone 2 group workouts' text2='Saturdays 9:30 CET & 14:30 CET' />
