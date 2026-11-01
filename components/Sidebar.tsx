@@ -39,15 +39,10 @@ import {
   FiLogIn,
 } from 'react-icons/fi'
 import { HamburgerIcon } from '@chakra-ui/icons'
-import { LiaMountainSolid } from "react-icons/lia";
-import { Im500Px } from "react-icons/im";
 import { MdDirectionsBike, MdInsights, MdInfo, MdCalendarMonth } from "react-icons/md";
 import { IconType } from 'react-icons'
 import { FaTrophy } from "react-icons/fa6";
 import { AiOutlineAim } from "react-icons/ai";
-import { RiBoxingFill } from "react-icons/ri";
-import { MdOutlineTimer } from "react-icons/md";
-import { GiDevilMask } from "react-icons/gi";
 import Sparkles from 'react-sparkle'
 import { useEffect, useState } from 'react'
 import { useSession, signIn, signOut } from 'next-auth/react'
@@ -84,13 +79,7 @@ const LinkItems: Array<LinkItemProps> = [
     icon: MdInfo,
     children: [{ name: 'Løb', href: '/about/racing', icon: FaTrophy }],
   },
-  { name: 'Puncheurs Summer Cup', href: '/puncheurs-summer-cup', icon: RiBoxingFill },
-  //{ name: 'STAGES by DZR', href: '/stages', icon: MdOutlineTimer },
-  // { name: 'The SANTA league', href: '/santa', icon: LiaMountainSolid },
-  { name: 'DZR After Party Series', href: '/dzr-after-party', icon: LiaMountainSolid },
-  // { name: 'A Sunday in Hell', href: '/asundayinhell', icon: GiDevilMask },
   { name: 'In The Zone 2', href: '/in-the-zone-2', icon: AiOutlineAim },
-  { name: 'The Zwifty Fifty', href: '/the-zwifty-fifty', icon: Im500Px },
 ]
 
 const SidebarContent = ({ onClose, ...rest }: SidebarProps) => {
