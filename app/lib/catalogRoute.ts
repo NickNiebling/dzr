@@ -16,7 +16,11 @@ export type CatalogRoute = {
   customClimbs: CustomClimb[]
   sprints: string[]
   sprintLaps: string[]
+  /** Seconds or points. Missing values are seconds, which is how older routes were saved. */
+  award: 'seconds' | 'points'
   bonus: string[]
+  /** Points for the ZwiftPower finish segment, ** Event Finish Banner. */
+  finishPoints: string[]
   zwiftRouteId: number | null
   zwiftRouteName: string
 }
@@ -34,7 +38,9 @@ export function emptyCatalogRoute(): CatalogRoute {
     customClimbs: [],
     sprints: [],
     sprintLaps: [],
+    award: 'seconds',
     bonus: [],
+    finishPoints: [],
     zwiftRouteId: null,
     zwiftRouteName: '',
   }
@@ -84,7 +90,9 @@ export function asCatalogRoute(value: unknown): CatalogRoute | null {
     customClimbs: readCustomClimbs(row.customClimbs),
     sprints: Array.isArray(row.sprints) ? row.sprints.map(String) : [],
     sprintLaps: Array.isArray(row.sprintLaps) ? row.sprintLaps.map(String) : [],
+    award: row.award === 'points' ? 'points' : 'seconds',
     bonus: Array.isArray(row.bonus) ? row.bonus.map(String) : [],
+    finishPoints: Array.isArray(row.finishPoints) ? row.finishPoints.map(String) : [],
     zwiftRouteId: Number.isInteger(zwiftRouteId) && zwiftRouteId > 0 ? zwiftRouteId : null,
     zwiftRouteName: String(row.zwiftRouteName || ''),
   }

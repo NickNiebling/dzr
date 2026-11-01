@@ -16,7 +16,7 @@ from zwift import ZwiftAPI, ZwiftError
 import pytz
 from bisect import bisect_right
 from typing import Optional
-from zwiftpower import ZwiftPower
+from zwiftpower import ZwiftPower, prime_points
 import ladder
 from zwiftcommentator import ZwiftCommentator
 
@@ -703,20 +703,33 @@ def _fix_due_fifty_results() -> dict:
     return {"checked": len(due) + len([row for row in results if row.get("expired")]), "results": results}
 
 
-def _prime_points(bonus) -> str:
-    parts = []
-    for item in bonus if isinstance(bonus, list) else []:
-        text = str(item).strip()
-        if not text:
-            continue
-        try:
-            seconds = float(text.replace(",", "."))
-        except ValueError:
-            raise ValueError(f"Bonus {text} is not a number of seconds")
-        parts.append(str(int(round(seconds * -1000))))
-    if not parts:
-        raise ValueError("This route has no bonus seconds")
-    return ",".join(parts)
+FINISH_BANNER = "** Event Finish Banner"
+
+
+def _catalog_entry(series_id: str, route_name: str):
+    catalog = firebase.get_document("series_catalogs", series_id) or {}
+    for row in catalog.get("routes") or []:
+        if isinstance(row, dict) and str(row.get("route") or "").strip().casefold() == route_name.casefold():
+            return row
+    return None
+
+
+def _event_series_route(event_id: int):
+    """A race saved on any event series, not only the two original weekly schedules."""
+    wanted = str(event_id)
+    for doc in firebase.db.collection("event_series").limit(50).stream():
+        data = doc.to_dict() or {}
+        for race in data.get("races") or []:
+            if not isinstance(race, dict):
+                continue
+            starts = race.get("starts") if isinstance(race.get("starts"), list) else []
+            if not any(isinstance(start, dict) and str(start.get("eventId") or "").strip() == wanted for start in starts):
+                continue
+            route_name = str(race.get("route") or "").strip()
+            entry = _catalog_entry(doc.id, route_name)
+            if entry:
+                return doc.id, route_name, entry
+    return None
 
 
 def _series_sprints(event_id: int):
@@ -741,6 +754,8 @@ def _series_sprints(event_id: int):
         found = (series_id, route_name, entry)
         break
     if not found:
+        found = _event_series_route(event_id)
+    if not found:
         raise ValueError("This event is not a saved series race")
     series_id, route_name, entry = found
     names = entry.get("sprints") if isinstance(entry.get("sprints"), list) else []
@@ -751,10 +766,19 @@ def _series_sprints(event_id: int):
         cleaned = str(name).strip()
         if cleaned:
             sprints.append({"name": cleaned, "laps": str(lap).strip() or "1"})
+    award = "points" if str(entry.get("award") or "").strip().lower() == "points" else "seconds"
+    segment_points = prime_points(entry.get("bonus") or [], award)
+    if sprints and not segment_points:
+        label = "points" if award == "points" else "bonus seconds"
+        raise ValueError(f"{route_name} has no {label}")
+    for row in sprints:
+        row["points"] = segment_points
+    finish_points = prime_points(entry.get("finishPoints") or [], "points") if award == "points" else ""
+    if finish_points:
+        sprints.append({"name": FINISH_BANNER, "laps": "1", "points": finish_points})
     if not sprints:
         raise ValueError(f"{route_name} has no bonus segments")
-    points = _prime_points(entry.get("bonus") or [])
-    return series_id, route_name, sprints, points
+    return series_id, route_name, sprints, segment_points or finish_points
 
 
 def _mark_series_primes(series_id: str, event_id: int, updated: int, skipped: int):

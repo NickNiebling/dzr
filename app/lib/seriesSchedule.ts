@@ -313,7 +313,7 @@ export async function listSeriesViews(): Promise<SeriesView[]> {
         const stored = await ensureSeries(seriesId)
         const catalog = await ensureCatalog(seriesId)
         const primeRoutes = catalog
-          .filter((route) => route.sprints.some((sprint) => sprint.trim()))
+          .filter((route) => route.sprints.some((sprint) => sprint.trim()) || route.finishPoints.some((points) => points.trim()))
           .map((route) => route.route)
         return toView(seriesId, stored, feedUnavailable ? null : events, await routeNames(seriesId), primeRoutes)
       } catch (error) {

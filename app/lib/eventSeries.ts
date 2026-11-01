@@ -624,8 +624,14 @@ async function postEventDiscord(series: StoredSeries, route: CatalogRoute, date:
   ]
   if (route.finish.trim()) lines.push(`**Finish:** ${route.finish}`)
   if (sprints.length) lines.push(`**Sprints:** ${sprints.join(', ')}`)
-  const bonus = route.bonus.map((seconds) => seconds.trim()).filter(Boolean)
-  if (bonus.length) lines.push(`**Bonus seconds:** ${bonus.map((seconds) => `${seconds}s`).join(', ')}`)
+  const bonus = route.bonus.map((value) => value.trim()).filter(Boolean)
+  if (route.award === 'points') {
+    if (bonus.length) lines.push(`**Segment points:** ${bonus.join(', ')}`)
+    const finish = route.finishPoints.map((value) => value.trim()).filter(Boolean)
+    if (finish.length) lines.push(`**Finish points:** ${finish.join(', ')}`)
+  } else if (bonus.length) {
+    lines.push(`**Bonus seconds:** ${bonus.map((seconds) => `${seconds}s`).join(', ')}`)
+  }
   if (passes) lines.push(`**Race pass:** ${passes}`)
   lines.push(`**More information:** https://www.dzrracingseries.com/series/${series.slug}`)
   const body: { content: string; embeds?: { image: { url: string } }[] } = { content: lines.join('\n') }

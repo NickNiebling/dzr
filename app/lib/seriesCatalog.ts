@@ -22,7 +22,9 @@ function seedRoutes(seriesId: string): CatalogRoute[] | null {
       customClimbs: [],
       sprints: [],
       sprintLaps: [],
+      award: 'seconds',
       bonus: [],
+      finishPoints: [],
       zwiftRouteId: null,
       zwiftRouteName: '',
     }))
@@ -40,7 +42,9 @@ function seedRoutes(seriesId: string): CatalogRoute[] | null {
     customClimbs: [],
     sprints: race.sprints || [],
     sprintLaps: race.sprintLaps || [],
+    award: 'seconds',
     bonus: race.bonus || [],
+    finishPoints: [],
     zwiftRouteId: null,
     zwiftRouteName: '',
   }))

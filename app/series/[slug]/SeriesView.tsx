@@ -155,16 +155,48 @@ function RulesBlock({ rules }: { rules: string[] }) {
   )
 }
 
+function AwardTable({ label, values, suffix = '' }: { label: string; values: string[]; suffix?: string }) {
+  if (!values.length) return null
+  return (
+    <TableContainer>
+      <Table size="sm" color="white" borderColor="white" border="1px">
+        <Thead>
+          <Tr>
+            <Th textAlign="left" color="white" borderRight="1px solid white">Position</Th>
+            {values.map((_, index) => (
+              <Th key={index} textAlign="center" color="white" borderRight="1px solid white">{index + 1}</Th>
+            ))}
+          </Tr>
+        </Thead>
+        <Tbody>
+          <Tr>
+            <Td textAlign="left" borderRight="1px solid white" fontWeight="700">{label}</Td>
+            {values.map((value, index) => (
+              <Td key={index} textAlign="center" borderRight="1px solid white">{value}{suffix}</Td>
+            ))}
+          </Tr>
+        </Tbody>
+      </Table>
+    </TableContainer>
+  )
+}
+
 function PointsSection({ route }: { route: CatalogRoute }) {
   const sprints = sprintColumns(route)
   const bonuses = bonusValues(route)
-  if (!sprints.length && !bonuses.length) return null
+  const finish = route.award === 'points' ? route.finishPoints.map((value) => value.trim()).filter(Boolean) : []
+  const points = route.award === 'points'
+  if (!sprints.length && !bonuses.length && !finish.length) return null
   return (
     <Stack spacing={4}>
-      <Heading as="h1" size="lg" color="white">Bonus Sprints</Heading>
+      <Heading as="h1" size="lg" color="white">{points ? 'Points' : 'Bonus Sprints'}</Heading>
       {sprints.length ? (
         <>
-          <Heading color="white" fontSize="md">First across line (FAL) bonus seconds on segments below</Heading>
+          <Heading color="white" fontSize="md">
+            {points
+              ? 'First across line (FAL) points are awarded on segments below'
+              : 'First across line (FAL) bonus seconds on segments below'}
+          </Heading>
           <TableContainer>
             <Table size="sm" color="white" borderColor="white" border="1px">
               <Thead>
@@ -189,27 +221,16 @@ function PointsSection({ route }: { route: CatalogRoute }) {
       ) : null}
       {bonuses.length ? (
         <>
-          <Heading color="white" fontSize="md">Bonus seconds on each sprint are awarded according to</Heading>
-          <TableContainer>
-            <Table size="sm" color="white" borderColor="white" border="1px">
-              <Thead>
-                <Tr>
-                  <Th textAlign="left" color="white" borderRight="1px solid white">Position</Th>
-                  {bonuses.map((_, index) => (
-                    <Th key={index} textAlign="center" color="white" borderRight="1px solid white">{index + 1}</Th>
-                  ))}
-                </Tr>
-              </Thead>
-              <Tbody>
-                <Tr>
-                  <Td textAlign="left" borderRight="1px solid white" fontWeight="700">Bonus</Td>
-                  {bonuses.map((bonus, index) => (
-                    <Td key={index} textAlign="center" borderRight="1px solid white">{bonus}s</Td>
-                  ))}
-                </Tr>
-              </Tbody>
-            </Table>
-          </TableContainer>
+          <Heading color="white" fontSize="md">
+            {points ? 'Points on each segment are awarded according to' : 'Bonus seconds on each sprint are awarded according to'}
+          </Heading>
+          <AwardTable label={points ? 'Points' : 'Bonus'} values={bonuses} suffix={points ? '' : 's'} />
+        </>
+      ) : null}
+      {finish.length ? (
+        <>
+          <Heading color="white" fontSize="md">First across line (FAL) points are awarded on the finish according to</Heading>
+          <AwardTable label="Points" values={finish} />
         </>
       ) : null}
     </Stack>

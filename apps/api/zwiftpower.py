@@ -735,7 +735,7 @@ class ZwiftPower:
                 fields[f"segment_id_{index}"] = row["segmentId"]
                 fields[f"segment_category_type_{index}"] = "0"
                 fields[f"segment_laps_{index}"] = row["laps"]
-                fields[f"segment_points_{index}"] = preview["points"]
+                fields[f"segment_points_{index}"] = str(row.get("points") or preview["points"])
                 fields[f"segment_points_all_{index}"] = ""
                 fields[f"segment_culling_{index}"] = "0"
             else:
@@ -1000,6 +1000,11 @@ def _prime_hit(options: dict, name: str):
     exact = options.get(str(name or "").casefold())
     if exact:
         return exact
+    if _prime_text(name) == "event finish banner":
+        for option in options.values():
+            if _prime_text(option["name"]) == "event finish banner":
+                return option
+        return None
     base, direction = _prime_query(name)
     if len(base) < 3:
         return None
@@ -1018,6 +1023,28 @@ def _prime_hit(options: dict, name: str):
     return None
 
 
+def prime_points(values, kind: str) -> str:
+    """ZwiftPower uses one field for both. One second is -1000. Ten points is 10."""
+    seconds = kind != "points"
+    parts = []
+    for item in values if isinstance(values, list) else []:
+        text = str(item).strip()
+        if not text:
+            continue
+        try:
+            number = float(text.replace(",", "."))
+        except ValueError:
+            label = "seconds" if seconds else "points"
+            raise ValueError(f"{text} is not a number of {label}")
+        if seconds:
+            parts.append(str(int(round(number * -1000))))
+        else:
+            if number < 0:
+                raise ValueError(f"Points cannot be negative ({text})")
+            parts.append(str(int(round(number))))
+    return ",".join(parts)
+
+
 def _match_primes(options: dict, sprints: list, points: str) -> dict:
     if len(sprints) > 8:
         raise ValueError("ZwiftPower accepts at most 8 sprints")
@@ -1025,10 +1052,12 @@ def _match_primes(options: dict, sprints: list, points: str) -> dict:
     for item in sprints:
         name = str(item.get("name") or "").strip()
         laps = str(item.get("laps") or "1").strip() or "1"
+        row_points = str(item.get("points") or points)
         hit = _prime_hit(options, name)
         rows.append({
             "name": name,
             "laps": laps,
+            "points": row_points,
             "segment": hit["name"] if hit else "",
             "segmentId": hit["id"] if hit else "",
             "matched": bool(hit),
@@ -1044,6 +1073,7 @@ def _public_sprints(preview: dict) -> dict:
             {
                 "name": row.get("name") or "",
                 "laps": row.get("laps") or "",
+                "points": row.get("points") or preview.get("points") or "",
                 "segment": row.get("segment") or "",
                 "matched": bool(row.get("matched")),
             }

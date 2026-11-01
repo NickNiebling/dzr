@@ -2,7 +2,7 @@
 
 import unittest
 
-from zwiftpower import _match_primes
+from zwiftpower import _match_primes, prime_points
 
 LIBRARY = [
     "London Fox Hill", "London Box Hill", "London Keith Hill", "London Leith Hill",
@@ -68,6 +68,19 @@ class PrimeNameMatchTest(unittest.TestCase):
     def test_reverse_does_not_take_the_forward_segment(self):
         self.assertEqual(matched(LIBRARY, "Zwift KOM"), "Watopia KOM Forward")
         self.assertEqual(matched(LIBRARY, "Jarvis KOM"), "Jarvis KOM")
+
+    def test_the_finish_banner_is_the_zwiftpower_finish_segment(self):
+        names = LIBRARY + ["** Event finish banner"]
+        self.assertEqual(matched(names, "** Event Finish Banner"), "** Event finish banner")
+
+    def test_one_second_is_minus_1000_and_points_stay_positive(self):
+        self.assertEqual(prime_points(["1", "2"], "seconds"), "-1000,-2000")
+        self.assertEqual(prime_points(["10", "9", "8", "1"], "points"), "10,9,8,1")
+
+    def test_a_sprint_can_carry_its_own_points(self):
+        row = _match_primes(options(["** Event finish banner"]), [{"name": "** Event Finish Banner", "laps": "1", "points": "10,9,8"}], "-1000,-6000")["sprints"][0]
+        self.assertEqual(row["points"], "10,9,8")
+        self.assertTrue(row["matched"])
 
 
 if __name__ == "__main__":

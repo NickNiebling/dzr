@@ -23,7 +23,7 @@ type Preview = {
   updated?: CategoryChange[]
 }
 
-type SprintRow = { name: string; laps: string; segment: string; matched: boolean }
+type SprintRow = { name: string; laps: string; segment: string; matched: boolean; points?: string }
 type SprintPreview = {
   eventId: number
   route: string
@@ -157,7 +157,7 @@ export function FiftyDetail({
             <Text key={`${sprint.name}-${sprint.laps}`} color={sprint.matched ? 'white' : 'orange.300'}>
               {sprint.name}
               {sprint.matched
-                ? `: ${sprint.laps} lap${sprint.laps === '1' ? '' : 's'}, ${sprints.points}`
+                ? `: ${sprint.laps} lap${sprint.laps === '1' ? '' : 's'}, ${sprint.points || sprints.points}`
                 : ' is not a ZwiftPower segment'}
             </Text>
           ))}

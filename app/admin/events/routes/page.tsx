@@ -86,7 +86,7 @@ function hasKomProfiles(route: CatalogRoute) {
 }
 
 function hasSegmentPoints(route: CatalogRoute) {
-  return route.sprints.some((sprint) => sprint.trim()) || route.bonus.some((seconds) => seconds.trim())
+  return route.sprints.some((sprint) => sprint.trim()) || route.bonus.some((value) => value.trim()) || route.finishPoints.some((value) => value.trim())
 }
 
 function lapCourse(count: number, stats: RaceProfile) {
@@ -119,6 +119,7 @@ export default function RouteSetupPage() {
   const [routeNameSearch, setRouteNameSearch] = useState(false)
   const [query, setQuery] = useState('')
   const [bonusText, setBonusText] = useState('')
+  const [finishText, setFinishText] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState('')
@@ -186,6 +187,7 @@ export default function RouteSetupPage() {
     setIndex(null)
     setDraft(emptyCatalogRoute())
     setBonusText('')
+    setFinishText('')
     setLengthMode('distance')
     setKomProfiles(false)
     setSegmentPoints(false)
@@ -205,6 +207,7 @@ export default function RouteSetupPage() {
     setIndex(routeIndex)
     setDraft(route)
     setBonusText(listToText(route.bonus))
+    setFinishText(listToText(route.finishPoints))
     setLengthMode(usesLapCount(route.laps) ? 'laps' : 'distance')
     setKomProfiles(hasKomProfiles(route))
     setSegmentPoints(hasSegmentPoints(route))
@@ -226,6 +229,7 @@ export default function RouteSetupPage() {
     setIndex(null)
     setDraft(emptyCatalogRoute())
     setBonusText('')
+    setFinishText('')
     setLengthMode('distance')
     setKomProfiles(false)
     setSegmentPoints(false)
@@ -429,7 +433,9 @@ export default function RouteSetupPage() {
       customClimbs: komProfiles ? draft.customClimbs : [],
       sprints: segmentPoints ? draft.sprints : [],
       sprintLaps: segmentPoints ? draft.sprintLaps : [],
+      award: segmentPoints && draft.award === 'points' ? 'points' : 'seconds',
       bonus: segmentPoints ? draft.bonus : [],
+      finishPoints: segmentPoints && draft.award === 'points' ? draft.finishPoints : [],
     }
     if (!route.route) {
       setError('A route name is required')
@@ -806,13 +812,24 @@ export default function RouteSetupPage() {
                     Segment points
                   </Text>
                   <Text fontSize="sm" color="gray.400">
-                    Timed segments that award bonus seconds in the race and on ZwiftPower.
+                    Timed segments that award bonus seconds or points. ZwiftPower uses the same field for both: 1 second is -1000, and 10 points is 10. The finish segment is ** Event Finish Banner.
                   </Text>
                 </Box>
                 <Switch colorScheme="red" isChecked={segmentPoints} onChange={(e) => setSegmentPoints(e.target.checked)} />
               </Flex>
               {segmentPoints ? (
               <Box mt={3}>
+                  <Select
+                    mb={3}
+                    maxW="240px"
+                    bg="gray.900"
+                    borderColor="gray.700"
+                    value={draft.award}
+                    onChange={(e) => setField({ award: e.target.value === 'points' ? 'points' : 'seconds' })}
+                  >
+                    <option value="seconds">Bonus seconds</option>
+                    <option value="points">Points</option>
+                  </Select>
                   <Text fontSize="sm" color="gray.400" mb={2}>
                     Pick a timed segment on this route. A typed name is for an older row: Find still searches ZwiftPower.
                   </Text>
@@ -983,7 +1000,8 @@ export default function RouteSetupPage() {
                     </Button>
                   </Stack>
                 <Input
-                  placeholder="Bonus seconds for each segment, separated by commas"
+                  mt={3}
+                  placeholder={draft.award === 'points' ? 'Points for each segment, such as 10, 9, 8, 7, 6, 5, 4, 3, 2, 1' : 'Bonus seconds for each segment, separated by commas'}
                   value={bonusText}
                   onChange={(e) => {
                     const value = e.target.value
@@ -992,6 +1010,19 @@ export default function RouteSetupPage() {
                   }}
                   {...field}
                 />
+                {draft.award === 'points' ? (
+                  <Input
+                    mt={2}
+                    placeholder="Points on the finish, separated by commas"
+                    value={finishText}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setFinishText(value)
+                      setField({ finishPoints: textToList(value) })
+                    }}
+                    {...field}
+                  />
+                ) : null}
               </Box>
               ) : null}
             </Box>
