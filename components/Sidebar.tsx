@@ -254,6 +254,7 @@ const MobileNav = ({ onOpen, ...rest }: MobileProps) => {
       right={0}
       bg={'transparent'}
       zIndex={10}
+      pointerEvents="none"
 
       borderBottomWidth="0px"
       borderBottomColor={('transparent')}
@@ -272,6 +273,7 @@ const MobileNav = ({ onOpen, ...rest }: MobileProps) => {
         color={'white'}
         icon={<HamburgerIcon />}
         zIndex={10}
+        pointerEvents="auto"
         _hover={{ bg: 'gray.700', borderColor: 'gray.700' }}
         fontSize={{ base: "34px", md: "44px" }}
         fontWeight='900'
@@ -296,6 +298,7 @@ const MobileNav = ({ onOpen, ...rest }: MobileProps) => {
           color={'white'}
           icon={<Icon as={FaUserCircle} />}
           zIndex={10}
+          pointerEvents="auto"
           _hover={{ bg: 'gray.700', borderColor: 'gray.700' }}
           fontSize={{ base: "34px", md: "44px" }}
           fontWeight='900'
