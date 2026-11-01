@@ -32,7 +32,7 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
       }
       const registration = { id: target.id, kind: "member", guildId, discordId, discordName, channels, tokenHash,
         registrationId: crypto.randomUUID(), createdAt: previous?.createdAt || now(), updatedAt: now(),
-        lastLiveAt: previous?.lastLiveAt || null, lastStreams: previous?.lastStreams || {}, lastCallbackAt: null };
+        lastLiveAt: previous?.lastLiveAt || null, lastStreams: previous?.lastStreams || {}, lastCallbackAt: null, lastTest: null };
       for (const [platform, channel] of Object.entries(previous?.channels || {})) {
         if (channels[platform]?.id !== channel.id) tx.delete(channelRef(guildId, platform, channel));
       }
@@ -55,18 +55,22 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
     });
   }
 
-  async function acceptEvent(registration, event) {
+  async function acceptEvent(registration, event, testResult = "success") {
     return db.runTransaction(async (tx) => {
       const current = read(await tx.get(ref(registration.id)));
-      const target = ref(sessionKey(registration, event.platform));
-      const previous = read(await tx.get(target));
-      if (!current || current.registrationId !== registration.registrationId || !current.channels[event.platform]) {
+      if (!current || current.registrationId !== registration.registrationId
+          || (testResult === "success" && !current.channels[event.platform])) {
         throw new StreamingError("invalid_key", "DZR-nøglen er ikke gyldig.", 401);
       }
       if (event.event === "test") {
-        tx.update(ref(current.id), { lastCallbackAt: now() });
+        if (current.lastTest?.result === "success" && event.startedAt < current.lastTest.startedAt) return { accepted: true, duplicate: true };
+        tx.update(ref(current.id), { lastTest: { at: now(), result: testResult,
+          startedAt: Number.isSafeInteger(event.startedAt) ? event.startedAt : null,
+          platform: ["youtube", "twitch"].includes(event.platform) ? event.platform : null } });
         return { accepted: true, test: true };
       }
+      const target = ref(sessionKey(registration, event.platform));
+      const previous = read(await tx.get(target));
       const sameSession = previous?.sessionId === event.sessionId;
       if (previous && (sameSession ? event.sequence <= previous.sequence : event.startedAt <= previous.startedAt)) return { accepted: true, duplicate: true };
       // A late heartbeat must never reactivate a stopped session.

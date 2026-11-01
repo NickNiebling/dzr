@@ -141,9 +141,11 @@ After the updated commands are registered, open **Server Settings → Integratio
 
 After OBS starts, the bot verifies public live status immediately, then waits 15, 30, 60, 120, 240 and at most 300 seconds between attempts. Discovery stops on confirmation or after one hour from OBS start. Heartbeats do not extend that deadline; a new OBS session opens a new window. Scheduled streams and OBS preview do not qualify. Optional per-broadcast YouTube links bypass search; search otherwise uses the daily cap above. API/indexing delays can extend notification latency. Authenticated callback, verification and delivery errors, including discovery timeout, are reported to `#it` with repeated errors coalesced.
 
+Connection testing is optional and never blocks enrollment or public-stream discovery. **Kontrollér OBS-forbindelse** in Discord starts a fresh test check: press **Test forbindelse** in OBS, then **Kontrollér resultat** in Discord. Old callbacks and tests do not count. New Lua versions post to `/streaming/test`; old `/streaming/obs` test events remain supported. Tests store their own result and never post announcements or IT reports. Success confirms the OBS connection, not public live visibility on YouTube/Twitch.
+
 Roll out first to one or two test streamers. Exercise Test forbindelse, a public start, a scheduled YouTube preview and reconnect on Windows/macOS OBS as applicable. CI tests Lua HTTPS/libcurl on Linux; native OBS still needs this acceptance run. See [streaming architecture](docs/architecture/streaming.md) for the callback contract and failure handling.
 
-Also test auto-detection for YouTube/Twitch and an unknown/custom OBS service: unknown platforms must produce an `unknown_platform` report in `#it` without an announcement. Select YouTube or Twitch manually in Lua settings to repair detection.
+Also test auto-detection for YouTube/Twitch and an unknown/custom OBS service: unknown platforms on streaming events must produce an `unknown_platform` report in `#it` without an announcement. Connection tests show the error privately without an IT report. Select YouTube or Twitch manually in Lua settings to repair detection.
 
 Streaming tests are part of the bot suite. Install `luajit`, `libcurl` and `openssl` to run the real Lua transport test locally (or set `LUAJIT_BIN`); CI provides these. Without LuaJIT, that test is explicitly skipped. Tests do not post to Discord or read production Firestore.
 

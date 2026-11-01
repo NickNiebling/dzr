@@ -16,7 +16,8 @@ function createStreamingRouter(service, { now = Date.now } = {}) {
     res.set("Cache-Control", "public, max-age=300");
     res.download(path.join(__dirname, "../../assets/dzr-stream.lua"), "dzr-stream.lua");
   });
-  router.post("/obs", (req, res, next) => {
+  // Both routes share authentication, payload limits and the same rate-limit buckets.
+  router.post(["/obs", "/test"], (req, res, next) => {
     res.set("Cache-Control", "no-store");
     if (limited(`ip:${req.ip}`, 300)) return res.status(429).json({ error: "rate_limited" });
     const token = /^Bearer (\S{1,120})$/i.exec(req.headers.authorization || "")?.[1];
@@ -26,7 +27,7 @@ function createStreamingRouter(service, { now = Date.now } = {}) {
     res.locals.streamingToken = token;
     next();
   }, express.json({ limit: "2kb", strict: true }), async (req, res) => {
-    try { res.status(202).json(await service.callback(res.locals.streamingToken, req.body)); }
+    try { res.status(202).json(await service.callback(res.locals.streamingToken, req.body, req.path === "/test")); }
     catch (error) { res.status(error instanceof StreamingError ? error.status : 503).json({ error: error instanceof StreamingError ? error.code : "temporarily_unavailable" }); }
   });
   router.use((error, req, res, next) => {

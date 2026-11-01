@@ -1,4 +1,4 @@
--- DZR Streaming v1. Install through OBS > Tools > Scripts, then paste your personal DZR key.
+-- DZR Streaming v2. Install through OBS > Tools > Scripts, then paste your personal DZR key.
 -- Uses OBS's LuaJIT FFI and libcurl multi: no shell, Python, stream keys or Google login.
 local obs = obslua
 local ffi = require("ffi")
@@ -28,10 +28,25 @@ int curl_multi_remove_handle(dzr_CURLM *multi, dzr_CURL *easy);
 int curl_multi_perform(dzr_CURLM *multi, int *running);
 struct dzr_CURLMsg *curl_multi_info_read(dzr_CURLM *multi, int *remaining);
 int curl_multi_cleanup(dzr_CURLM *multi);
+struct dzr_timeval { long tv_sec; long tv_usec; };
+int gettimeofday(struct dzr_timeval *time, void *zone);
+struct dzr_filetime { unsigned int low; unsigned int high; };
+void __stdcall GetSystemTimeAsFileTime(struct dzr_filetime *time);
 ]]
 
 local function log(level, text) obs.script_log(level, "DZR: " .. text) end
-local function millis() return os.time() * 1000 end
+local clock_lib = ffi.os == "Windows" and ffi.load("kernel32") or ffi.C
+local function millis()
+    -- Test freshness is compared with Discord's request time, so retain subsecond precision.
+    if ffi.os == "Windows" then
+        local time = ffi.new("struct dzr_filetime[1]")
+        clock_lib.GetSystemTimeAsFileTime(time)
+        return math.floor((tonumber(time[0].high) * 4294967296 + tonumber(time[0].low)) / 10000 - 11644473600000)
+    end
+    local time = ffi.new("struct dzr_timeval[1]")
+    if clock_lib.gettimeofday(time, nil) ~= 0 then return os.time() * 1000 end
+    return tonumber(time[0].tv_sec) * 1000 + math.floor(tonumber(time[0].tv_usec) / 1000)
+end
 local function trim(value) return (value or ""):match("^%s*(.-)%s*$") end
 
 local function load_curl()
@@ -148,7 +163,8 @@ local function send(job)
     current = curl.curl_easy_init()
     if current == nil then return false end
     -- These strings/callbacks must outlive curl_multi_perform: libcurl borrows POSTFIELDS.
-    retained.body, retained.url = body_for(job), endpoint
+    retained.body = body_for(job)
+    retained.url = job.event == "test" and endpoint:gsub("/obs$", "/test") or endpoint
     retained.headers = curl.curl_slist_append(nil, "Content-Type: application/json")
     retained.headers = curl.curl_slist_append(retained.headers, "Authorization: Bearer " .. key)
     retained.headers = curl.curl_slist_append(retained.headers, "Expect:")
@@ -183,23 +199,36 @@ local function pump()
     local code, success = tonumber(status[0]), message.data.result == 0
     close_request()
     if success and code == 202 then
-        if pending.event == "test" or pending.event == "started" then
+        if pending.event == "test" then
+            log(obs.LOG_INFO, "Forbundet! DZR modtager signaler fra OBS. Tryk Kontrollér resultat i Discord. Testen bekræfter forbindelsen, ikke om en offentlig livestream kan findes.")
+        elseif pending.event == "started" then
             log(obs.LOG_INFO, "Signal modtaget af DZR. Kun en bekræftet offentlig livestream annonceres.")
         end
-    elseif code == 401 or code == 403 then
-        log(obs.LOG_ERROR, "Nøgle eller platform afvist. Kør /streaming_add, og kontrollér opsætningen.")
-        queue = {}
+    elseif code == 401 then
+        log(obs.LOG_ERROR, "DZR-nøglen blev afvist. Kontrollér, at den matcher din seneste nøgle fra /streaming_add.")
+        if pending.event ~= "test" then queue = {} end
+    elseif code == 403 then
+        log(obs.LOG_ERROR, "Platformen er ikke tilmeldt. Vælg en tilmeldt platform i OBS, eller redigér dine kanaler med /streaming_add.")
     elseif code == 400 then
         if pending.platform == nil then
             log(obs.LOG_ERROR, "Ukendt platform afvist af DZR. Vælg YouTube eller Twitch i Platform.")
         else
             log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur og det valgfrie YouTube-link.")
         end
+    elseif code == 404 then
+        log(obs.LOG_ERROR, "DZR-adressen blev ikke fundet. Kontrollér endpoint fra Discord, eller prøv igen når DZR er opdateret.")
+    elseif code == 429 then
+        log(obs.LOG_WARNING, "For mange signaler til DZR. Vent et minut, og tryk Test forbindelse igen.")
     elseif pending.attempts < 5 then
+        if pending.event == "test" and pending.attempts == 1 then
+            log(obs.LOG_WARNING, success and "DZR er midlertidigt utilgængelig; testen prøver igen automatisk."
+                or "Kan ikke forbinde til DZR. Kontrollér internet og HTTPS-adresse; testen prøver igen automatisk.")
+        end
         pending.retry_at = os.time() + math.min(30, 2 ^ pending.attempts)
         table.insert(queue, 1, pending)
     else
-        log(obs.LOG_WARNING, "DZR kunne ikke nås. Næste livstegn prøver igen automatisk.")
+        log(obs.LOG_WARNING, pending.event == "test" and "Testen kunne ikke gennemføres. Kontrollér internet og DZR-adresse, og tryk Test forbindelse igen."
+            or "DZR kunne ikke nås. Næste livstegn prøver igen automatisk.")
     end
     pending = nil
 end

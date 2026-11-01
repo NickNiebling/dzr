@@ -6,10 +6,11 @@ const { createStreamingHandlers } = require("../../handlers/streamingHandlers");
 const guildId = "1195850595014299669", userId = "111111111111111111";
 function interaction(overrides = {}) {
   const calls = [];
-  const item = { guildId, user: { id: userId, username: "Rider", bot: false }, memberPermissions: new PermissionsBitField(0n),
+  const item = { guildId, createdTimestamp: 1700000000000, user: { id: userId, username: "Rider", bot: false }, memberPermissions: new PermissionsBitField(0n),
     member: { roles: ["club-role"] },
     isButton: () => false, isModalSubmit: () => false, options: { getInteger: () => null },
     async deferReply(value) { calls.push(["defer", value]); item.deferred = true; },
+    async deferUpdate() { calls.push(["update"]); item.deferred = true; },
     async reply(value) { calls.push(["reply", value]); }, async editReply(value) { calls.push(["edit", value]); },
     async showModal(value) { calls.push(["modal", value.toJSON()]); }, calls, ...overrides };
   return item;
@@ -84,13 +85,45 @@ test("Club Member role is required on command, button and modal, even for admini
   const h = handler({ getRegistration() { assert.fail("must reject before accessing registration"); }, enroll() { assert.fail(); }, remove() { assert.fail(); } });
   for (const entry of [{ commandName: "streaming_add" }, { commandName: "streaming_remove" },
     { customId: `streaming:remove:${userId}`, isButton: () => true }, { customId: `streaming:channels:${userId}`, isButton: () => true },
-    { customId: `streaming:save:${userId}`, isModalSubmit: () => true }]) {
+    { customId: `streaming:save:${userId}`, isModalSubmit: () => true },
+    { customId: `streaming:status:${userId}`, isButton: () => true },
+    { customId: `streaming:result:${userId}:request`, isButton: () => true }]) {
     const i = interaction({ ...entry, member: { roles: ["verified-role", "admin-role"] },
       memberPermissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator) });
     await h.handle(i);
     assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
     assert.match(i.calls[0][1].content, /kun.*Club Members/);
   }
+});
+
+test("manual OBS checks accept only a test started after opening, without enrolling or rotating keys", async () => {
+  const since = 1700000000000;
+  let registration = { lastCallbackAt: since + 10000 };
+  const h = handler({ async getRegistration(id) { assert.equal(id, userId); return registration; }, enroll() { assert.fail(); } });
+  const start = interaction({ customId: `streaming:status:${userId}`, isButton: () => true });
+  await h.handle(start);
+  assert.equal(start.calls[0][1].flags, MessageFlags.Ephemeral);
+  assert.match(start.calls[1][1].content, /allerede tilmeldt/);
+  const checkId = start.calls[1][1].components[0].toJSON().components[0].custom_id;
+  assert.equal(checkId, `streaming:result:${userId}:${since}`);
+  for (const [lastTest, expected] of [
+    [null, /endnu ikke modtaget en ny test/],
+    [{ at: since + 1000, startedAt: since - 1, result: "success" }, /endnu ikke modtaget en ny test/],
+    [{ at: since + 1000, startedAt: since, result: "success" }, /endnu ikke modtaget en ny test/],
+    [{ at: since + 1000, startedAt: since + 1, result: "unknown_platform" }, /Testen blev afvist/],
+    [{ at: since + 1000, startedAt: since + 1, result: "success" }, /✅ Forbundet! DZR modtager signaler fra OBS/],
+  ]) {
+    registration.lastTest = lastTest;
+    const i = interaction({ customId: checkId, isButton: () => true });
+    await h.handle(i);
+    assert.equal(i.calls[0][0], "update");
+    assert.match(i.calls[1][1].content, expected);
+    assert.equal(i.calls[1][1].components, undefined, "checking preserves existing controls");
+  }
+  registration = null;
+  const removed = interaction({ customId: checkId, isButton: () => true });
+  await h.handle(removed);
+  assert.match(removed.calls[1][1].content, /ikke tilmeldt/);
 });
 
 test("missing Club Member role configuration fails closed", async () => {
