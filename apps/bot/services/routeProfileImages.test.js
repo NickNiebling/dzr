@@ -48,9 +48,44 @@ test("adds close-ups of the route's climbs when asked", async () => {
   assert.deepEqual(result.files.map((f) => f.name), ["road-to-sky-profile.png", "alpe-du-zwift-closeup.png"]);
 });
 
-test("reports a route it cannot find instead of guessing", async () => {
-  const result = await buildRouteProfileImages({ route: "No Such Route 2099" }, { render, getRouteProfile: async () => assert.fail() });
-  assert.equal(result.success, false);
+test("asks the site for a route the catalog does not know", async () => {
+  const requests = [];
+  const result = await buildRouteProfileImages({ route: "Caldera Coaster", world: "Watopia" }, {
+    render,
+    getRouteProfile: async (req) => {
+      requests.push(req);
+      return { success: true, profile: { ...profile, routeName: "Caldera Coaster" } };
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(requests[0].route, "Caldera Coaster");
+  assert.equal(requests[0].world, "Watopia");
+});
+
+test("passes a site miss through instead of guessing another route", async () => {
+  const result = await buildRouteProfileImages({ route: "No Such Route 2099" }, {
+    render,
+    getRouteProfile: async () => ({ success: false, message: "No Zwift route matched that name" }),
+  });
+  assert.deepEqual(result, { success: false, message: "No Zwift route matched that name" });
+});
+
+test("an event route id still requests a profile when the catalog has no name", async () => {
+  const requests = [];
+  const result = await buildRouteProfileImages({ event: "5754003" }, {
+    render,
+    getZwiftEvent: async () => ({
+      success: true,
+      event: { id: 5754003, route: null, world: null, route_id: 3266658632, laps: 1, distance_km: null },
+    }),
+    getRouteProfile: async (req) => {
+      requests.push(req);
+      return { success: true, profile: { ...profile, routeName: "Caldera Coaster", world: "Watopia" } };
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(requests[0].routeId, 3266658632);
+  assert.match(result.caption, /\*\*Caldera Coaster\*\* · Watopia/);
 });
 
 test("passes on the site's error", async () => {

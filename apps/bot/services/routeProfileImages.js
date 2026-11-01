@@ -16,17 +16,27 @@ function fileSlug(value) {
   return String(value || "route").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "route";
 }
 
-/** The exact route name and world, from the website route catalog, so the site API gets names it can match. */
+/**
+ * A catalog hit supplies the canonical spelling. A miss still goes to the site, which resolves
+ * the name from the live game dictionary. Several catalog matches stay a choice.
+ */
 function resolveRoute(route, world) {
-  if (world) {
-    const found = searchRoutes({ query: route, world, limit: 5 });
-    if (!found.success) return found;
-    if (!found.routes.length) return { success: false, message: `No route called '${route}' in ${world}.` };
-    return { success: true, name: found.routes[0].name, world: found.routes[0].world };
+  const typed = String(route || "").trim();
+  const typedWorld = String(world || "").trim();
+  if (!typed) return { success: false, message: "Give a route name." };
+  if (typedWorld) {
+    const found = searchRoutes({ query: typed, world: typedWorld, limit: 5 });
+    if (found.success && found.routes?.length) {
+      return { success: true, name: found.routes[0].name, world: found.routes[0].world };
+    }
+    return { success: true, name: typed, world: typedWorld };
   }
-  const details = routeDetails(route);
-  if (!details.success) return details;
-  return { success: true, name: details.route.name, world: details.route.world };
+  const details = routeDetails(typed);
+  if (details.success) return { success: true, name: details.route.name, world: details.route.world };
+  if (Array.isArray(details.candidates) && details.candidates.length) {
+    return { success: false, message: details.message, candidates: details.candidates };
+  }
+  return { success: true, name: typed, world: "" };
 }
 
 /** Custom KOMs as the site expects them, dropping any that cannot be drawn. */
@@ -58,7 +68,9 @@ function closeupWindows(profile, nameCount) {
 }
 
 function facts(profile, world, laps) {
-  const parts = [world, `${Number(profile.raceKm).toFixed(1)} km`, `${Math.round(totalGainM(profile.altitudeM))} m`];
+  const parts = [];
+  if (world) parts.push(world);
+  parts.push(`${Number(profile.raceKm).toFixed(1)} km`, `${Math.round(totalGainM(profile.altitudeM))} m`);
   if (laps > 1) parts.push(`${laps} laps`);
   if (profile.leadInKm > 0) parts.push(`incl. ${Number(profile.leadInKm).toFixed(1)} km lead-in`);
   return parts.join(" · ");
@@ -74,10 +86,15 @@ async function withEvent(args, readEvent) {
   if (!read.success) return { error: read.message };
   const event = read.event;
   const merged = { ...args };
-  if (!String(merged.route || "").trim()) {
-    if (!event.route) return { error: `Zwift event ${event.id} has a route the catalog does not know.` };
-    merged.route = event.route;
-    merged.world = event.world;
+  if (!String(merged.route || "").trim() && !merged.routeId) {
+    if (event.route) {
+      merged.route = event.route;
+      merged.world = event.world;
+    } else if (event.route_id) {
+      merged.routeId = event.route_id;
+    } else {
+      return { error: `Zwift event ${event.id} has no route.` };
+    }
     if (!(Number(merged.distance_km) > 0) && !(Number(merged.laps) > 0)) {
       if (event.distance_km) merged.distance_km = event.distance_km;
       else merged.laps = event.laps;
@@ -108,22 +125,32 @@ async function buildRouteProfileImages(args = {}, deps = {}) {
   const fromEvent = await withEvent(args, deps.getZwiftEvent || getZwiftEvent);
   if (fromEvent.error) return { success: false, message: fromEvent.error };
   args = fromEvent.args;
-  if (!String(args.route || "").trim()) return { success: false, message: "Give a route name or a Zwift event." };
+  if (!String(args.route || "").trim() && !args.routeId) return { success: false, message: "Give a route name or a Zwift event." };
 
-  const resolved = resolveRoute(String(args.route || "").trim(), String(args.world || "").trim());
-  if (!resolved.success) return { success: false, message: resolved.message, candidates: resolved.candidates };
+  let name = String(args.route || "").trim();
+  let world = String(args.world || "").trim();
+  if (name) {
+    const resolved = resolveRoute(name, world);
+    if (!resolved.success) return { success: false, message: resolved.message, candidates: resolved.candidates };
+    name = resolved.name;
+    world = resolved.world;
+  }
 
   const distanceKm = Number(args.distance_km) > 0 ? Number(args.distance_km) : 0;
   const laps = distanceKm ? 1 : Math.max(1, Math.min(20, Number.parseInt(args.laps, 10) || 1));
   const climbs = Array.isArray(args.climbs) ? args.climbs.filter(Boolean).slice(0, MAX_CLOSEUPS) : [];
   const ranges = customRanges(args.custom_koms);
   const finish = String(args.finish || "").trim();
-  const loaded = await fetchProfile({ world: resolved.world, route: resolved.name, laps, distanceKm, climbs, ranges, finish });
+  const request = { world, route: name, laps, distanceKm, climbs, ranges, finish };
+  if (args.routeId) request.routeId = args.routeId;
+  const loaded = await fetchProfile(request);
   if (!loaded.success) return { success: false, message: loaded.message };
   const profile = loaded.profile;
+  const title = profile.routeName || name || "Route";
+  const worldLabel = world || profile.world || "";
 
-  const details = facts(profile, resolved.world, laps);
-  let text = `**${resolved.name}** · ${details}`;
+  const details = facts(profile, worldLabel, laps);
+  let text = `**${title}** · ${details}`;
   const event = fromEvent.powerups;
   const powerups = event ? placePowerups(profile, event) : [];
   if (event) {
@@ -133,9 +160,9 @@ async function buildRouteProfileImages(args = {}, deps = {}) {
     if (event.start) parts.push(`start: ${event.start}`);
     text += parts.length || powerups.length ? `\nPowerups: ${parts.join(" · ")}` : "\nPowerups: none set for this event";
   }
-  const main = await render.renderRouteProfile(profile, { name: resolved.name, subtitle: details, powerups });
+  const main = await render.renderRouteProfile(profile, { name: title, subtitle: details, powerups });
   if (!main) return { success: false, message: "Could not draw the profile image." };
-  const files = [{ name: `${fileSlug(resolved.name)}-profile.png`, buffer: main }];
+  const files = [{ name: `${fileSlug(title)}-profile.png`, buffer: main }];
 
   const missing = [];
   if (climbs.length || ranges.length || finish || args.closeups === true) {

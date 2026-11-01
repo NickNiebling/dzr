@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import { elevationForSlug, segmentLatLng } from '@/app/lib/routeElevation'
-import { sauceSegmentsForRoute, withArchIds } from '@/app/lib/sauceRouteSegments'
-import { resolveCatalogRoute, segmentsToLocate } from '@/app/lib/zwiftCatalog'
-import { buildRaceProfile, mergePositionedSegments, placeOnRoute, prepareLap, raceDistanceKm, shiftProfileSegments, type CustomClimbRange, type ProfileSegment } from '@/packages/shared/routeProfile'
+import { dictionarySegmentRows, gameDictionary, resolveDictionaryRoute } from '@/app/lib/gameDictionary'
+import { measuredProfileSegments, routeElevation, routeLeadinProfile } from '@/packages/shared/sauceProfile'
+import { buildRaceProfile, raceDistanceKm, type CustomClimbRange } from '@/packages/shared/routeProfile'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -26,52 +25,45 @@ function parseRanges(value: string | null): CustomClimbRange[] {
   }
 }
 
-function locatedSegments(world: string, placed: ProfileSegment[], distanceM: number[], latlng: number[][]) {
-  if (latlng.length !== distanceM.length || latlng.length < 2) return []
-  const found: ProfileSegment[] = []
-  for (const candidate of segmentsToLocate(world, placed)) {
-    const points = segmentLatLng(candidate.slug)
-    if (!points) continue
-    const hit = placeOnRoute(latlng, distanceM, points)
-    if (!hit) continue
-    found.push({
-      name: candidate.name,
-      type: candidate.type,
-      fromKm: hit.fromM / 1000,
-      toKm: hit.toM / 1000,
-      direction: candidate.direction,
-    })
-  }
-  return found
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url)
-  const world = url.searchParams.get('world') || ''
-  const route = url.searchParams.get('route') || ''
-  const match = resolveCatalogRoute(world, route)
-  if (!match) {
-    return NextResponse.json({ error: 'No Zwift route with elevation matched that name' }, { status: 404 })
+  let dictionary
+  try {
+    dictionary = await gameDictionary()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'The Zwift game dictionary is unavailable right now.'
+    return NextResponse.json({ error: message }, { status: 502 })
+  }
+
+  const resolved = resolveDictionaryRoute(dictionary, {
+    routeId: url.searchParams.get('routeId') || '',
+    name: url.searchParams.get('route') || '',
+    world: url.searchParams.get('world') || '',
+  })
+  if ('error' in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: 404 })
   }
 
   try {
-    const streams = await elevationForSlug(match.slug)
-    const lap = prepareLap(streams.distance, streams.altitude, match.leadInKm, match.lapKm, streams.latlng)
+    const lap = routeElevation(resolved.id)
+    if (lap.distance.length < 2) {
+      return NextResponse.json({ error: 'No Sauce profile for that route' }, { status: 404 })
+    }
+    const lead = routeLeadinProfile(resolved.id)
+    const sampledLeadKm = lead.distance.length ? lead.distance[lead.distance.length - 1] / 1000 : 0
+    const leadInKm = resolved.leadInKm > 0 ? resolved.leadInKm : sampledLeadKm
+    const lapKm = lap.distance[lap.distance.length - 1] / 1000
     const raceKm = raceDistanceKm(
-      match.lapKm,
+      lapKm,
       url.searchParams.get('laps'),
       url.searchParams.get('distance'),
-      match.leadInKm,
+      leadInKm,
     )
     const climbs = (url.searchParams.get('climbs') || '')
       .split(',')
       .map((name) => name.trim())
       .filter(Boolean)
-    const positioned = shiftProfileSegments(
-      mergePositionedSegments(match.segments, sauceSegmentsForRoute(match.id)),
-      lap.leadInKm,
-    )
-    const segments = withArchIds([...positioned, ...locatedSegments(match.world, positioned, lap.distance, lap.latlng)])
+    const segments = measuredProfileSegments(resolved.id, dictionarySegmentRows(dictionary))
     const profile = buildRaceProfile({
       distanceM: lap.distance,
       altitudeM: lap.altitude,
@@ -80,9 +72,9 @@ export async function GET(req: Request) {
       finishText: url.searchParams.get('finish') || '',
       climbNames: climbs,
       customClimbs: parseRanges(url.searchParams.get('ranges')),
-      leadInKm: match.leadInKm,
+      leadInKm,
     })
-    return NextResponse.json({ routeName: match.name, ...profile })
+    return NextResponse.json({ routeName: resolved.name, world: resolved.world, ...profile })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not load the route profile'
     return NextResponse.json({ error: message }, { status: 502 })

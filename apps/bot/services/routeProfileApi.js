@@ -1,7 +1,7 @@
 /**
  * Route profiles from the DZR site's public /api/route-profile, the same data the series pages
- * draw. Using the site keeps one source of truth for elevation streams, lead-ins, laps and where
- * climbs and sprints sit; the bot only draws.
+ * draw. Using the site keeps one source of truth for Sauce elevation, dictionary segments, laps and
+ * where climbs and sprints sit; the bot only draws.
  */
 const axios = require("axios");
 const config = require("../config/config");
@@ -15,8 +15,9 @@ const cache = new Map();
  * ranges (km from the start of the lead-in, as on the profile axis) and a finish such as
  * "banner on top of Epic KOM".
  */
-function profileUrl({ world = "", route, laps, distanceKm, climbs, ranges, finish } = {}, origin = config.intervals.siteOrigin) {
+function profileUrl({ world = "", route, routeId, laps, distanceKm, climbs, ranges, finish } = {}, origin = config.intervals.siteOrigin) {
   const params = new URLSearchParams({ world: String(world || ""), route: String(route || "") });
+  if (routeId) params.set("routeId", String(routeId));
   const distance = Number(distanceKm);
   const lapCount = Number.parseInt(laps, 10);
   if (distance > 0) params.set("distance", String(Math.min(distance, 500)));
