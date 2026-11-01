@@ -43,6 +43,7 @@ test("modal returns download, endpoint and personal key only in an ephemeral res
   assert.match(reply, /personal-key/);
   assert.match(reply, /https:\/\/bot\.example\.test\/streaming\/dzr-stream.lua/);
   assert.match(reply, /https:\/\/bot\.example\.test\/streaming\/obs/);
+  assert.deepEqual(i.calls[1][1].components[0].toJSON().components.map((entry) => entry.label), ["Guidet opsætning", "Test forbindelse (valgfrit)"]);
 });
 
 test("forged modal owner and DM commands cannot enroll or remove other members", async () => {
@@ -87,7 +88,9 @@ test("Club Member role is required on command, button and modal, even for admini
     { customId: `streaming:remove:${userId}`, isButton: () => true }, { customId: `streaming:channels:${userId}`, isButton: () => true },
     { customId: `streaming:save:${userId}`, isModalSubmit: () => true },
     { customId: `streaming:status:${userId}`, isButton: () => true },
-    { customId: `streaming:result:${userId}:request`, isButton: () => true }]) {
+    { customId: `streaming:result:${userId}:request`, isButton: () => true },
+    { customId: `streaming:guide:${userId}:1`, isButton: () => true },
+    { customId: `streaming:finish:${userId}`, isButton: () => true }]) {
     const i = interaction({ ...entry, member: { roles: ["verified-role", "admin-role"] },
       memberPermissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator) });
     await h.handle(i);
@@ -122,6 +125,42 @@ test("manual OBS checks accept only a test started after opening, without enroll
   }
   registration = null;
   const removed = interaction({ customId: checkId, isButton: () => true });
+  await h.handle(removed);
+  assert.match(removed.calls[1][1].content, /ikke tilmeldt/);
+});
+
+test("optional guide opens privately, navigates four steps and exits without changing enrollment", async () => {
+  let registration = {};
+  const h = handler({ async getRegistration() { return registration; }, enroll() { assert.fail("help cannot rotate keys"); } });
+  const start = interaction({ commandName: "streaming_add" });
+  await h.handle(start);
+  const guideId = start.calls[1][1].components[1].toJSON().components[0].custom_id;
+  for (let step = 0; step < 4; step++) {
+    const i = interaction({ customId: step ? `${guideId}:${step}` : guideId, isButton: () => true });
+    await h.handle(i);
+    assert.equal(i.calls[0][0], step ? "update" : "defer");
+    if (!step) assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral, "preserve the original key message");
+    const reply = i.calls[1][1];
+    assert.ok(reply.content.includes(`${step + 1}/4`));
+    assert.match(reply.content, /allerede tilmeldt.*valgfrie/);
+    const nav = reply.components.at(-1).toJSON().components;
+    assert.deepEqual(nav.map((entry) => entry.label), ["Tilbage", "Næste", "Afslut"]);
+    assert.equal(nav[0].disabled, step === 0);
+    assert.equal(nav[1].disabled, step === 3);
+    if (step) assert.equal(nav[0].custom_id, `${guideId}:${step - 1}`);
+    if (step === 3) assert.equal(reply.components[0].toJSON().components[0].custom_id, `streaming:result:${userId}:${i.createdTimestamp}`);
+    const exit = interaction({ customId: nav[2].custom_id, isButton: () => true });
+    await h.handle(exit);
+    assert.equal(exit.calls[0][0], "update");
+    assert.deepEqual(exit.calls[1][1].components, []);
+  }
+  for (const step of ["-1", "4", "invalid"]) {
+    const i = interaction({ customId: `${guideId}:${step}`, isButton: () => true });
+    await h.handle(i);
+    assert.match(i.calls[1][1].content, /Åbn Guidet opsætning igen/);
+  }
+  registration = null;
+  const removed = interaction({ customId: guideId, isButton: () => true });
   await h.handle(removed);
   assert.match(removed.calls[1][1].content, /ikke tilmeldt/);
 });
