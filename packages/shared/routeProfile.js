@@ -458,9 +458,35 @@ function shiftKm(segments, leadInKm) {
   }))
 }
 
-function buildRaceProfile({ distanceM, altitudeM, segments, raceKm, finishText, climbNames, customClimbs, leadInKm }) {
+/** Pens-to-banner samples, once, in front of a lap that already starts at the banner. */
+function prependLeadIn(distanceKm, altitudeM, leadDistanceM, leadAltitudeM) {
+  const leadD = Array.isArray(leadDistanceM) ? leadDistanceM.map(Number) : []
+  const leadA = Array.isArray(leadAltitudeM) ? leadAltitudeM.map(Number) : []
+  if (leadD.length < 2 || leadD.length !== leadA.length || !distanceKm.length) {
+    return { distanceKm, altitudeM }
+  }
+  const leadM = leadD[leadD.length - 1]
+  if (!(leadM > 1)) return { distanceKm, altitudeM }
+  const bannerAlt = Number(altitudeM[0]) || 0
+  const delta = bannerAlt - (Number(leadA[leadA.length - 1]) || 0)
+  const startKm = distanceKm[0]
+  const outD = []
+  const outA = []
+  for (let index = 0; index < leadD.length; index += 1) {
+    const km = roundKm(leadD[index] / 1000)
+    if (km >= startKm - 0.01) break
+    outD.push(km)
+    outA.push(Math.round((leadA[index] + delta) * 100) / 100)
+  }
+  if (outD.length < 2) return { distanceKm, altitudeM }
+  return { distanceKm: [...outD, ...distanceKm], altitudeM: [...outA, ...altitudeM] }
+}
+
+function buildRaceProfile({ distanceM, altitudeM, segments, raceKm, finishText, climbNames, customClimbs, leadInKm, leadDistanceM, leadAltitudeM }) {
   const shift = Number(leadInKm) > 0 ? Number(leadInKm) : 0
   const tiled = tileLap(distanceM, altitudeM, segments, raceKm)
+  const shiftedKm = tiled.distanceKm.map((km) => roundKm(km + shift))
+  const joined = prependLeadIn(shiftedKm, tiled.altitude, leadDistanceM, leadAltitudeM)
   const limit = roundKm((tiled.distanceKm[tiled.distanceKm.length - 1] || raceKm) + shift)
   const placed = shiftKm(tiled.segments, shift)
   return {
@@ -468,8 +494,8 @@ function buildRaceProfile({ distanceM, altitudeM, segments, raceKm, finishText, 
     lapGainM: elevationGainM(altitudeM),
     leadInKm: roundKm(shift),
     raceKm: roundKm(raceKm + shift),
-    distanceKm: tiled.distanceKm.map((km) => roundKm(km + shift)),
-    altitudeM: tiled.altitude,
+    distanceKm: joined.distanceKm,
+    altitudeM: joined.altitudeM,
     segments: placed,
     finish: finishZoom(placed, finishText, limit),
     climbs: climbZooms(placed, climbNames, limit, customClimbs),

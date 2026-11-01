@@ -460,7 +460,26 @@ function ProfileChart({
               return <ProfileHover distance={distance} altitude={altitude} grade={gradeAt(data, distance)} />
             }}
           />
+          {profile.leadInKm > fromKm + 0.05 ? (
+            <ReferenceArea
+              x1={fromKm}
+              x2={Math.min(profile.leadInKm, toKm)}
+              fill="#A0AEC0"
+              fillOpacity={0.28}
+              strokeOpacity={0}
+              ifOverflow="hidden"
+            />
+          ) : null}
           <Area type="monotone" dataKey="altitude" stroke="#E2E8F0" fill="#2D3748" fillOpacity={0.9} dot={false} />
+          {profile.leadInKm > fromKm + 0.05 && profile.leadInKm < toKm ? (
+            <ReferenceLine
+              x={profile.leadInKm}
+              stroke="#E2E8F0"
+              strokeDasharray="4 4"
+              ifOverflow="hidden"
+              label={{ value: 'Lead-in', position: 'insideTopLeft', fill: '#E2E8F0', fontSize: 11 }}
+            />
+          ) : null}
           {named ? <SegmentNames bands={bands} bonusLabels={bonusLabels} xDomain={xDomain} /> : null}
           {bands.map((segment) => {
                 const bonusName = bonusLabels.get(segmentId(segment))
@@ -696,7 +715,7 @@ export function RouteProfilePreview({
       </Box>
       <ProfileChart
         profile={profile}
-        fromKm={profile.leadInKm || 0}
+        fromKm={profile.distanceKm[0] ?? 0}
         toKm={profile.raceKm || profile.distanceKm[profile.distanceKm.length - 1]}
         bonusSprints={bonusSprints}
         named

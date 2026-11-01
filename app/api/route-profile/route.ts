@@ -73,6 +73,8 @@ export async function GET(req: Request) {
       climbNames: climbs,
       customClimbs: parseRanges(url.searchParams.get('ranges')),
       leadInKm,
+      leadDistanceM: lead.distance,
+      leadAltitudeM: lead.altitude,
     })
     return NextResponse.json({ routeName: resolved.name, world: resolved.world, ...profile })
   } catch (error) {

@@ -177,6 +177,13 @@ async function renderRouteProfile(profile, { name = "", subtitle = "", powerups 
       ctx.fillText(label, left + 2, pad.top - 28 - row * 15);
     }
 
+    if (profile.leadInKm > km[0] + 0.05) {
+      const xLead = x(profile.leadInKm);
+      const xStart = x(km[0]);
+      ctx.fillStyle = "rgba(160, 174, 192, 0.18)";
+      ctx.fillRect(xStart, pad.top, Math.max(0, xLead - xStart), bottom - pad.top);
+    }
+
     ctx.beginPath();
     ctx.moveTo(x(km[0]), bottom);
     for (let i = 0; i < km.length; i += 1) ctx.lineTo(x(km[i]), y(alt[i]));
@@ -191,6 +198,13 @@ async function renderRouteProfile(profile, { name = "", subtitle = "", powerups 
     ctx.stroke();
 
     if (profile.leadInKm > 0) drawDashedGuide(ctx, x, profile.leadInKm, pad.top, bottom);
+    if (profile.leadInKm > km[0] + 0.05 && x(profile.leadInKm) - x(km[0]) >= 36) {
+      ctx.fillStyle = AXIS_TEXT;
+      ctx.font = `11px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText("Lead-in", (x(km[0]) + x(profile.leadInKm)) / 2, pad.top + 6);
+    }
     for (const km of flyingPowerupKm(profile, powerups)) drawDashedGuide(ctx, x, km, pad.top, bottom);
 
     if (powerups.length) await drawPowerupIcons(ctx, x, powerups, pad.top);

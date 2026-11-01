@@ -182,6 +182,24 @@ test("a KOM close-up is drawn only for a chosen climb or a custom span", () => {
   assert.strictEqual(chosen.lapGainM, 30)
 })
 
+test("the lead-in elevation is drawn once in front of the banner", () => {
+  const profile = buildRaceProfile({
+    distanceM: [0, 5000, 10000],
+    altitudeM: [40, 80, 20],
+    segments: [{ name: "Libby Hill", type: "climb", fromKm: 5, toKm: 8, direction: "forward" }],
+    raceKm: 10,
+    leadInKm: 2,
+    leadDistanceM: [0, 1000, 2000],
+    leadAltitudeM: [10, 30, 25],
+  })
+  assert.strictEqual(profile.distanceKm[0], 0)
+  assert.ok(profile.distanceKm.some((km) => Math.abs(km - 2) < 0.01))
+  assert.strictEqual(profile.altitudeM[profile.distanceKm.indexOf(2)], 40)
+  assert.strictEqual(profile.altitudeM[0], 25)
+  assert.ok(Math.abs(profile.segments[0].fromKm - 7) < 0.01)
+  assert.strictEqual(profile.raceKm, 12)
+})
+
 test("kilometre marks start at the lead-in so a custom finish lands on the climb", () => {
   const profile = buildRaceProfile({
     distanceM: [0, 10251, 12859, 20149],
