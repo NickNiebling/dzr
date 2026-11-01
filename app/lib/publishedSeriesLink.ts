@@ -3,5 +3,6 @@ export type PublishedSeriesLink = {
   name: string
   icon: string
   intro: string
+  cardText: string
   timeLabel: string
 }

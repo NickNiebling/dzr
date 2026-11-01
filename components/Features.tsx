@@ -46,19 +46,21 @@ interface Props {
 
 const CustomCard: React.FC<Props> = ({ href, icon, heading, text1, text2 }) => {
   return (
-    <NextLink href={href} style={{ textDecoration: 'none', display: 'block', height: '100%' }}>
-      <Card className='hover-animation' as={motion.div} height='100%' bg={'black'} borderWidth={{ base: '2px', sm: '3px', md: '4px' }} borderRadius="lg" borderColor={'white'}>
+    <NextLink href={href} style={{ textDecoration: 'none', display: 'flex', height: '100%' }}>
+      <Card className='hover-animation' as={motion.div} minH="300px" height='100%' width='100%' display='flex' flexDirection='column' bg={'black'} borderWidth={{ base: '2px', sm: '3px', md: '4px' }} borderRadius="lg" borderColor={'white'}>
         <CardHeader>
           <Flex justify="center" align="center" bg="white" borderRadius="full" p={2} width={{ base: '10', sm: '14', md: '16' }} height={{ base: '10', sm: '14', md: '16' }}>
             <Icon as={icon} boxSize={'90%'} color='black' />
           </Flex>
         </CardHeader>
-        <CardBody>
-          <Stack align={'start'} spacing={5}>
+        <CardBody flex='1'>
+          <Stack align={'start'} spacing={5} height='100%'>
             <Box mt={2}>
               <Heading size={['sm', 'sm', 'md']} color={'white'}>{heading}</Heading>
-              <Text mt={1} fontSize={['small', 'medium', 'medium']} color={'white'} whiteSpace="pre-line" >
-                {text1} <br /> {text2}
+              <Text mt={1} fontSize={['small', 'medium', 'medium']} color={'white'}>
+                {text1}
+                {text1 && text2 ? <br /> : null}
+                {text2}
               </Text>
             </Box>
           </Stack>
@@ -84,7 +86,7 @@ export default function Features({ series }: { series: PublishedSeriesLink[] }) 
         </Box>
       </Stack>
       <Box width={'100%'}>
-        <SimpleGrid spacing={4} minChildWidth={{ base: '100%', sm: '280px' }} marginBlockEnd={4}>
+        <SimpleGrid spacing={4} minChildWidth={{ base: '100%', sm: '280px' }} gridAutoRows="1fr" marginBlockEnd={4}>
           
           <CustomCard href='/about' icon={MdInfo} heading='About DZR' text1='Learn about our community' text2='& memberships.' />
           {series.map((item) => (
@@ -93,7 +95,7 @@ export default function Features({ series }: { series: PublishedSeriesLink[] }) 
               href={`/series/${item.slug}`}
               icon={seriesMenuIcon(item.icon)}
               heading={item.name}
-              text1={item.intro || ''}
+              text1={item.cardText || ''}
               text2={item.timeLabel || ''}
             />
           ))}

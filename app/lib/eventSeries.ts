@@ -34,6 +34,7 @@ export type EventSeries = {
   slug: string
   name: string
   intro: string
+  cardText: string
   timeLabel: string
   kind: SeriesKind
   zwiftName: string
@@ -74,6 +75,7 @@ const LEGACY_SERIES: Array<{
   slug: SeriesId
   name: string
   intro: string
+  cardText: string
   timeLabel: string
   zwiftName: string
   icon: string
@@ -82,6 +84,7 @@ const LEGACY_SERIES: Array<{
     slug: 'after-party',
     name: 'DZR After Party',
     intro: 'A weekly race series with carefully selected routes all finishing uphill (aka after parties).',
+    cardText: 'Uphill finishes',
     timeLabel: 'Thursdays 17:15 CET | 11:15 AM EST',
     zwiftName: 'After Party',
     icon: 'mountain',
@@ -90,6 +93,7 @@ const LEGACY_SERIES: Array<{
     slug: 'zwifty-fifty',
     name: 'The Zwifty Fifty',
     intro: 'Weekly races of about 50 km, every Sunday 14:45 CET | 8:45 AM EST.',
+    cardText: '50km (ish) races with sprints for bonus seconds',
     timeLabel: 'Sundays 14:45 CET | 8:45 AM EST',
     zwiftName: 'Zwifty Fifty',
     icon: 'fifty',
@@ -109,6 +113,7 @@ async function ensureLegacySeries() {
       slug: legacy.slug,
       name: legacy.name,
       intro: legacy.intro,
+      cardText: legacy.cardText,
       timeLabel: legacy.timeLabel,
       kind: 'weekly',
       zwiftName: legacy.zwiftName,
@@ -230,6 +235,11 @@ function overridesOf(value: unknown) {
   return overrides
 }
 
+function cardTextOf(slug: string, data: Record<string, unknown>) {
+  if ('cardText' in data) return String(data.cardText || '').trim()
+  return LEGACY_SERIES.find((item) => item.slug === slug)?.cardText || ''
+}
+
 function asStored(id: string, data: Record<string, unknown> | undefined): StoredSeries | null {
   if (!data) return null
   const name = String(data.name || '').trim()
@@ -239,6 +249,7 @@ function asStored(id: string, data: Record<string, unknown> | undefined): Stored
     slug: seriesSlug(String(data.slug || id)) || id,
     name,
     intro: String(data.intro || ''),
+    cardText: cardTextOf(seriesSlug(String(data.slug || id)) || id, data),
     timeLabel: String(data.timeLabel || ''),
     kind,
     zwiftName: String(data.zwiftName || '').trim(),
@@ -335,6 +346,7 @@ export async function saveEventSeries(
     slug,
     name,
     intro: String(input.intro || ''),
+    cardText: input.cardText == null ? existing?.cardText || '' : String(input.cardText).trim(),
     timeLabel: String(input.timeLabel || ''),
     kind,
     zwiftName: String(input.zwiftName || '').trim(),
@@ -475,6 +487,15 @@ export async function publicSeries(slug: string): Promise<PublicSeries | null> {
 
 export async function listPublishedSeries() {
   const snap = await adminDb.collection(COLLECTION).where('published', '==', true).get()
+  await Promise.all(
+    snap.docs.map(async (doc) => {
+      const data = doc.data()
+      if ('cardText' in data) return
+      const cardText = LEGACY_SERIES.find((item) => item.slug === doc.id)?.cardText
+      if (!cardText) return
+      await doc.ref.set({ cardText }, { merge: true }).catch(() => undefined)
+    })
+  )
   return snap.docs
     .map((doc) => asStored(doc.id, doc.data()))
     .filter((row): row is StoredSeries => Boolean(row))
@@ -483,6 +504,7 @@ export async function listPublishedSeries() {
       name: row.name,
       icon: row.icon,
       intro: row.intro,
+      cardText: row.cardText,
       timeLabel: row.timeLabel,
     }))
     .sort((left, right) => left.name.localeCompare(right.name))

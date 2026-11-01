@@ -20,6 +20,7 @@ type SeriesDraft = {
   slug: string
   name: string
   intro: string
+  cardText: string
   timeLabel: string
   kind: Kind
   zwiftName: string
@@ -42,6 +43,7 @@ const emptyDraft = (): SeriesDraft => ({
   slug: '',
   name: '',
   intro: '',
+  cardText: '',
   timeLabel: '',
   kind: 'weekly',
   zwiftName: '',
@@ -181,6 +183,7 @@ function fromApi(series: Record<string, unknown>): SeriesDraft {
     slug: String(series.slug || ''),
     name: String(series.name || ''),
     intro: String(series.intro || ''),
+    cardText: String(series.cardText || ''),
     timeLabel: String(series.timeLabel || ''),
     kind: series.kind === 'limited' ? 'limited' : 'weekly',
     zwiftName: String(series.zwiftName || ''),
@@ -554,7 +557,10 @@ export default function EventSeriesAdminPage() {
           <Field label="Introduction" hint="Shown under the title on the public page.">
             <Textarea minH="90px" value={draft.intro} onChange={(e) => patch({ intro: e.target.value })} {...field} />
           </Field>
-          <Field label="Time" hint="For example, Sundays 14:45 CET.">
+          <Field label="Card line" hint="The short line on the landing page card, under the series name.">
+            <Input value={draft.cardText} onChange={(e) => patch({ cardText: e.target.value })} {...field} />
+          </Field>
+          <Field label="Time" hint="Shown on the landing page card, under the card line.">
             <Input value={draft.timeLabel} onChange={(e) => patch({ timeLabel: e.target.value })} {...field} />
           </Field>
           <Field label="Words in the Zwift event name" hint="Apply uses these words when the event id is empty. The series does not create the Zwift event.">
