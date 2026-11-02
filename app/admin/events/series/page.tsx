@@ -554,7 +554,7 @@ export default function EventSeriesAdminPage() {
               {...field}
             />
           </Field>
-          <Field label="Introduction" hint="Shown under the title on the public page.">
+          <Field label="Introduction" hint="Shown under the title on the public page. A web address becomes a link. For your own words, write [the words](https://example.com).">
             <Textarea minH="90px" value={draft.intro} onChange={(e) => patch({ intro: e.target.value })} {...field} />
           </Field>
           <Field label="Card line" hint="The short line on the landing page card, under the series name.">

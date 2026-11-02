@@ -19,7 +19,9 @@ import {
   Th,
   Thead,
   Tr,
+  type TextProps,
 } from '@chakra-ui/react'
+import type { ReactNode } from 'react'
 import { RouteProfilePreview } from '@/components/route-profile/RouteProfilePreview'
 import { SeriesRulesList } from '@/components/series/SeriesRules'
 import { zwiftInsiderUrl } from '@/packages/shared/routeProfile'
@@ -53,6 +55,85 @@ export type SeriesPageData = {
 
 function insiderLink(route: CatalogRoute) {
   return route.linkRoute.trim() || zwiftInsiderUrl(route.zwiftRouteName || route.route)
+}
+
+const TEXT_LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|<a\s+[^>]*href=["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>|(https?:\/\/[^\s<]+)/gi
+
+function linkNodes(value: string) {
+  const nodes: ReactNode[] = []
+  const pattern = new RegExp(TEXT_LINK.source, 'gi')
+  let cursor = 0
+  for (const match of value.matchAll(pattern)) {
+    const index = match.index ?? 0
+    if (index > cursor) nodes.push(value.slice(cursor, index))
+    const markdownLabel = match[1]
+    const markdownUrl = match[2]
+    const htmlUrl = match[3]
+    const htmlLabel = match[4]
+    const bare = match[5]
+    if (markdownLabel && markdownUrl) {
+      nodes.push(<ChakraLink key={index} color="orange" href={markdownUrl} isExternal>{markdownLabel}</ChakraLink>)
+    } else if (htmlUrl) {
+      nodes.push(<ChakraLink key={index} color="orange" href={htmlUrl} isExternal>{htmlLabel || htmlUrl}</ChakraLink>)
+    } else if (bare) {
+      const trimmed = bare.replace(/[.,;:!?]+$/, '')
+      const trailing = bare.slice(trimmed.length)
+      nodes.push(<ChakraLink key={index} color="orange" href={trimmed} isExternal>{trimmed}</ChakraLink>)
+      if (trailing) nodes.push(trailing)
+    }
+    cursor = index + match[0].length
+  }
+  if (cursor < value.length) nodes.push(value.slice(cursor))
+  return nodes
+}
+
+function LinkedText({ text, ...props }: TextProps & { text: string }) {
+  return (
+    <Text color="white" whiteSpace="pre-line" {...props}>
+      {linkNodes(text)}
+    </Text>
+  )
+}
+
+function PointsTable({ rows }: { rows: { label: string; points: string }[] }) {
+  if (!rows.length) return null
+  const last = rows.length - 1
+  return (
+    <TableContainer maxW="100%" border="1px solid white">
+      <Table
+        size="sm"
+        variant="unstyled"
+        color="white"
+        sx={{ borderCollapse: 'separate', borderSpacing: 0 }}
+      >
+        <Tbody>
+          {rows.map((row, index) => {
+            const rule = index === last ? undefined : '1px solid white'
+            return (
+              <Tr key={`${row.label}-${index}`}>
+                <Td
+                  position="sticky"
+                  left={0}
+                  zIndex={2}
+                  w="1%"
+                  bg="black"
+                  textAlign="left"
+                  whiteSpace="nowrap"
+                  borderRight="1px solid white"
+                  borderBottom={rule}
+                >
+                  {row.label}
+                </Td>
+                <Td textAlign="left" whiteSpace="nowrap" borderBottom={rule}>
+                  {row.points}
+                </Td>
+              </Tr>
+            )
+          })}
+        </Tbody>
+      </Table>
+    </TableContainer>
+  )
 }
 
 function todayIso() {
@@ -244,7 +325,7 @@ function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: Seri
     <Stack spacing={6}>
       <Heading color="white">{series.name}</Heading>
       {series.intro ? (
-        <Text color="white" fontSize="lg" whiteSpace="pre-line">{series.intro}</Text>
+        <LinkedText text={series.intro} fontSize="lg" />
       ) : null}
       <RulesBlock rules={series.rules} />
       <Heading as="h1" size="lg" color="white">{race.label || race.date}</Heading>
@@ -309,7 +390,7 @@ function WeeklyRace({ series, race }: { series: SeriesPageData; race: SeriesRace
   return (
     <Stack spacing={6}>
       {series.intro ? (
-        <Text color="white" fontSize="md" align="center" whiteSpace="pre-line">{series.intro}</Text>
+        <LinkedText text={series.intro} fontSize="md" align="center" />
       ) : null}
       <RulesBlock rules={series.rules} />
       <Center><Divider width="50%" /></Center>
@@ -359,7 +440,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
     <Stack spacing={4}>
       <Heading color="white">{series.name}</Heading>
       {series.intro ? (
-        <Text color="white" fontSize="lg" whiteSpace="pre-line">{series.intro}</Text>
+        <LinkedText text={series.intro} fontSize="lg" />
       ) : null}
       {series.rules.length ? (
         <>
@@ -442,22 +523,9 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
         <>
           <Heading color="white" fontSize="2xl">Point Structure</Heading>
           {series.pointsNote.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => (
-            <Heading key={line} color="white" fontSize="md">{line}</Heading>
+            <Heading key={line} color="white" fontSize="md">{linkNodes(line)}</Heading>
           ))}
-          {series.pointsRows.length ? (
-            <TableContainer textAlign="center">
-              <Table size="sm" color="white" borderColor="white" border="1px">
-                <Tbody>
-                  {series.pointsRows.map((row) => (
-                    <Tr key={`${row.label}-${row.points}`}>
-                      <Td textAlign="center">{row.label}</Td>
-                      <Td textAlign="center">{row.points}</Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </TableContainer>
-          ) : null}
+          <PointsTable rows={series.pointsRows} />
           {series.leagueUrl ? (
             <>
               <Heading color="white" fontSize="2xl">Results</Heading>
@@ -488,7 +556,7 @@ export default function SeriesView({ series }: { series: SeriesPageData }) {
           next ? <WeeklyRace series={series} race={next} /> : (
             <Stack spacing={4}>
               {!series.logoUrl ? <Heading color="white">{series.name}</Heading> : null}
-              {series.intro ? <Text color="white" align="center" whiteSpace="pre-line">{series.intro}</Text> : null}
+              {series.intro ? <LinkedText text={series.intro} align="center" /> : null}
             </Stack>
           )
         ) : (
