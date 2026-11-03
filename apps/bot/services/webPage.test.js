@@ -31,7 +31,7 @@ test("turns HTML into text and absolute links, without scripts", () => {
 
 test("collects Zwift event links once each, from links and text", () => {
   const found = zwiftEventLinks(
-    [{ href: "https://www.zwift.com/eu-de/events/tag/dcu/view/2539801", label: "Løb 1" }, { href: "https://zwift.com/events/view/2539801", label: "dup" }],
+    [{ href: "https://www.zwift.com/eu-de/events/tag/dcu/view/2539801", label: "Løb 1" }, { href: "https://zwift.com/events/view/2539801", label: "dup" }], // zwift-link-check: allow-input
     "Tilmeld: https://www.zwift.com/events/view/2539786"
   );
   assert.deepEqual(found, [{ event_id: "2539801", label: "Løb 1" }, { event_id: "2539786", label: null }]);

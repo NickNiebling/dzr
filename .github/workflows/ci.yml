@@ -15,6 +15,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Check Zwift event links
+        run: npm run check:zwift-links
       - run: npm ci
       # Production dependencies only. braces has no patched release and is pulled in by the
       # ESLint toolchain, so a full audit would stay red after the runtime fixes.

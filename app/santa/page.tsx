@@ -124,9 +124,9 @@ export default function santapage() {
                 <Tbody>
                     <Tr>
                     <Td textAlign="center">27</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274851' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274853' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274854' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274851' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274853' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274854' target='_Blank' isExternal>Race Pass</Link></Td>
                     <Td textAlign="center">Watopia</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/shisa-shakedown/' target='_Blank' isExternal>Shisa Shakedown</Link></Td>
                     <Td textAlign="center">1</Td>
@@ -136,9 +136,9 @@ export default function santapage() {
 
                     <Tr>
                     <Td textAlign="center">28</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274856' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274858' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274859' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274856' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274858' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274859' target='_Blank' isExternal>Race Pass</Link></Td>
                     <Td textAlign="center">Watopia</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/loopin-lava/' target='_Blank' isExternal>Loopin Lava</Link></Td>
                     <Td textAlign="center">2</Td>
@@ -148,9 +148,9 @@ export default function santapage() {
 
                     <Tr>
                     <Td textAlign="center">29</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274863' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274864' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274865' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274863' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274864' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274865' target='_Blank' isExternal>Race Pass</Link></Td>
                     <Td textAlign="center">New York</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/nyc-kom-after-party/' target='_Blank' isExternal>New York KOM After Party</Link></Td>
                     <Td textAlign="center">1</Td>
@@ -159,9 +159,9 @@ export default function santapage() {
                     </Tr>   
                     <Tr>
                     <Td textAlign="center">30</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274866' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274867' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274868' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274866' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274867' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274868' target='_Blank' isExternal>Race Pass</Link></Td>
                     <Td textAlign="center">Watopia</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/triple-twist/' target='_Blank' isExternal>Triple Twist</Link></Td>
                     <Td textAlign="center">2</Td>
@@ -170,9 +170,9 @@ export default function santapage() {
                     </Tr>  
                     <Tr>
                     <Td textAlign="center">31</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274869' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274870' target='_Blank' isExternal>Race Pass</Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrsanta/view/5274871' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274869' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274870' target='_Blank' isExternal>Race Pass</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5274871' target='_Blank' isExternal>Race Pass</Link></Td>
                     <Td textAlign="center">Watopia</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/accelerate-to-elevate/' target='_Blank' isExternal>Accelerate to Elevate</Link></Td>
                     <Td textAlign="center">1</Td>

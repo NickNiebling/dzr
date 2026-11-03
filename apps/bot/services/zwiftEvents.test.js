@@ -13,7 +13,7 @@ setZwiftCatalog({
 test("event ids come from numbers and any Zwift event link", () => {
   assert.equal(parseEventId("5380255"), 5380255);
   assert.equal(parseEventId(5380255), 5380255);
-  assert.equal(parseEventId("https://www.zwift.com/eu-de/events/tag/dcu/view/2539801"), 2539801);
+  assert.equal(parseEventId("https://www.zwift.com/eu-de/events/tag/dcu/view/2539801"), 2539801); // zwift-link-check: allow-input
   assert.equal(parseEventId("https://www.zwift.com/events/view/5380255?eventSecret=abc"), 5380255);
   assert.equal(parseEventId("not an event"), null);
 });

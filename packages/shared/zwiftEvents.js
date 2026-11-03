@@ -135,4 +135,16 @@ function eventIdFromInput(value) {
   return /^\d+$/.test(id) ? id : null;
 }
 
-module.exports = { compactZwiftEvents, suggestedSubgroup, localParts, eventIdFromInput, TZ, DZR_UPCOMING_EVENTS_URL };
+/** Canonical Companion link for event URLs pasted into series text. Keep event secrets intact. */
+function normalizeZwiftEventUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!/^https?:$/.test(url.protocol) || !/^(?:www\.)?zwift\.com$/i.test(url.hostname)) return value;
+    const event = url.pathname.match(/^\/(?:[a-z-]+\/)?events\/(?:tag\/[^/]+\/)?view\/(\d+)\/?$/i);
+    return event ? `https://www.zwift.com/events/view/${event[1]}${url.search}${url.hash}` : value;
+  } catch {
+    return value;
+  }
+}
+
+module.exports = { compactZwiftEvents, suggestedSubgroup, localParts, eventIdFromInput, normalizeZwiftEventUrl, TZ, DZR_UPCOMING_EVENTS_URL };

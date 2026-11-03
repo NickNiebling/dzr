@@ -611,7 +611,7 @@ async function postEventDiscord(series: StoredSeries, route: CatalogRoute, date:
   if (!series.discordWebhook) throw new SeriesError('No Discord webhook is saved for this series')
   const passes = starts
     .filter((start) => start.eventId)
-    .map((start) => `[${start.time || 'Zwift'}](https://www.zwift.com/eu/events/view/${start.eventId})`)
+    .map((start) => `[${start.time || 'Zwift'}](https://www.zwift.com/events/view/${start.eventId})`)
     .join(', ')
   const sprints = route.sprints.filter((sprint) => sprint.trim())
   const lines = [

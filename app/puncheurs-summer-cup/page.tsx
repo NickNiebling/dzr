@@ -84,7 +84,7 @@ export default function puncheurssummercuppage() {
                 </Thead>
                 <Tbody>
                     <Tr>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589078' target='_Blank' isExternal>Stage 1</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5589078' target='_Blank' isExternal>Stage 1</Link></Td>
                     <Td textAlign="center">2nd</Td>
                     <Td textAlign="center">Richmond</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/2015-worlds-course/' target='_Blank' isExternal>Cobbled Climbs</Link></Td>
@@ -94,7 +94,7 @@ export default function puncheurssummercuppage() {
                     </Tr>    
 
                     <Tr>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589080' target='_Blank' isExternal>Stage 2</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5589080' target='_Blank' isExternal>Stage 2</Link></Td>
                     <Td textAlign="center">9th</Td>
                     <Td textAlign="center">Yorkshire</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/royal-pump-room-8/' target='_Blank' isExternal>Royal Pump Room 8</Link></Td>
@@ -104,7 +104,7 @@ export default function puncheurssummercuppage() {
                     </Tr>    
 
                     <Tr>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589081' target='_Blank' isExternal>Stage 3</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5589081' target='_Blank' isExternal>Stage 3</Link></Td>
                     <Td textAlign="center">16th</Td>
                     <Td textAlign="center">New York</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/everything-bagel/' target='_Blank' isExternal>Everything Bagel</Link></Td>
@@ -114,7 +114,7 @@ export default function puncheurssummercuppage() {
                     </Tr>   
 
                     <Tr>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589082' target='_Blank' isExternal>Stage 4</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5589082' target='_Blank' isExternal>Stage 4</Link></Td>
                     <Td textAlign="center">23rd</Td>
                     <Td textAlign="center">New York</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/double-parked/' target='_Blank' isExternal>Double Parked</Link></Td>
@@ -124,7 +124,7 @@ export default function puncheurssummercuppage() {
                     </Tr>
 
                     <Tr>
-                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589083' target='_Blank' isExternal>Stage 5</Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = 'https://www.zwift.com/events/view/5589083' target='_Blank' isExternal>Stage 5</Link></Td>
                     <Td textAlign="center">30th</Td>
                     <Td textAlign="center">Scotland</Td>
                     <Td textAlign="center"><Link  color={'orange'} href = 'https://zwiftinsider.com/route/the-muckle-yin/' target='_Blank' isExternal>The Muckle Yin</Link></Td>
