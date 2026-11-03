@@ -17,7 +17,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           if [ "$SOURCE_REPOSITORY" != "$TARGET_REPOSITORY" ]; then
-            echo "::error::The PR branch must belong to the target repository. Review changes in your fork first; when explicitly asked to promote them, create a branch in upstream and open the PR there."
+            echo "::error::PRs must originate from a branch in their target repository."
             exit 1
           fi
 
