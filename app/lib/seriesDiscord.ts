@@ -30,7 +30,7 @@ async function messageFor(seriesId: SeriesId, date: string, route: string, raceI
       : fileRoute
     if (!details) throw new SeriesError(`${route} is not an After Party route`)
     const race = apsInfo(row, details)
-    const message = `**Race Details for ${race.date}** \n **World:** ${race.world} \n **Route:** [${race.route}](${race.linkRoute}) \n **Laps:** ${race.laps} \n **Distance:** ${race.distance} km \n **Elevation:** ${race.elevation} hm \n **Race Pass:** [Zwift](https://www.zwift.com/eu/events/view/${race.raceID}) \n **More information on:** [www.dzrracingseries.com/dzr-after-party](https://www.dzrracingseries.com/${race.raceSeries.toLowerCase().replace(/\s+/g, '-')}/)`
+    const message = `**Race Details for ${race.date}** \n **World:** ${race.world} \n **Route:** [${race.route}](${race.linkRoute}) \n **Laps:** ${race.laps} \n **Distance:** ${race.distance} km \n **Elevation:** ${race.elevation} hm \n **Race Pass:** [Zwift](https://www.zwift.com/events/view/${race.raceID}) \n **More information on:** [www.dzrracingseries.com/dzr-after-party](https://www.dzrracingseries.com/${race.raceSeries.toLowerCase().replace(/\s+/g, '-')}/)`
     return {
       message,
       imageUrl: `https://www.dzrracingseries.com/dzr-after-party/${route.toLowerCase().replace(/\s+/g, '-')}/${route.split(' ').join('-')}-profile.png`,
@@ -44,7 +44,7 @@ async function messageFor(seriesId: SeriesId, date: string, route: string, raceI
     : fileRoute
   if (!details) throw new SeriesError(`${route} is not a Zwifty Fifty route`)
   const race = zfInfo(row, details)
-  const message = `**Race Details for ${race.date}** \n **World:** ${race.world} \n **Route:** [${race.route}](${race.linkRoute}) \n **Laps:** ${race.laps} \n **Distance:** ${race.distance} km \n **Elevation:** ${race.elevation} hm \n **Sprints:** ${race.sprints.join(', ')} \n **Bonus Seconds:** ${race.bonus.join('s, ')}s\n **Race Pass:** [Zwift](https://www.zwift.com/eu/events/view/${race.raceID}) \n **More information on:** [www.dzrracingseries.com/the-zwifty-fifty](https://www.dzrracingseries.com/${race.raceSeries.toLowerCase().replace(/\s+/g, '-')}/)`
+  const message = `**Race Details for ${race.date}** \n **World:** ${race.world} \n **Route:** [${race.route}](${race.linkRoute}) \n **Laps:** ${race.laps} \n **Distance:** ${race.distance} km \n **Elevation:** ${race.elevation} hm \n **Sprints:** ${race.sprints.join(', ')} \n **Bonus Seconds:** ${race.bonus.join('s, ')}s\n **Race Pass:** [Zwift](https://www.zwift.com/events/view/${race.raceID}) \n **More information on:** [www.dzrracingseries.com/the-zwifty-fifty](https://www.dzrracingseries.com/${race.raceSeries.toLowerCase().replace(/\s+/g, '-')}/)`
   return {
     message,
     imageUrl: `https://www.dzrracingseries.com/the-zwifty-fifty/${route.toLowerCase().replace(/\s+/g, '-')}/${route.split(' ').join('-')}-profile.png`,
