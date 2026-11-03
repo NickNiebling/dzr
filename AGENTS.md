@@ -2,17 +2,17 @@
 
 ## Repository and pull request workflow
 
-- The user's fork is `NickNiebling/dzr` (`origin`). Upstream is `T00few2/dzr`
-  (`upstream`). Verify these identities before any push or PR operation.
+- Identify the contributor's fork and the upstream repository from the Git
+  remotes and the user's instructions. Verify them before any push or PR operation.
 - At the start of every new task, inspect the working tree and fetch upstream.
   Sync the fork's `main` with `upstream/main` by fast-forward before branching.
   Preserve existing work; never force-push or overwrite a divergent branch.
-- Always create the initial review PR inside `NickNiebling/dzr`, from a branch
-  in that same fork to its `main`. A general request to make a PR means this.
-- Never push changes or open a PR in `T00few2/dzr` until the user explicitly
-  requests upstream promotion. Review approval alone is not that request.
+- Always create the initial review PR inside the contributor's fork, from a
+  branch in that same fork to its `main`. A general request to make a PR means this.
+- Never push changes or open a PR in upstream until the user explicitly requests
+  upstream promotion. Review approval alone is not that request.
 - When upstream promotion is explicitly requested, create a branch directly in
-  `T00few2/dzr` and open the upstream PR from that upstream branch. Never open
+  the upstream repository and open the upstream PR from that branch. Never open
   an upstream PR whose head branch belongs to a fork.
 - Do not merge a review PR or deploy changes without the user's instruction.
 
