@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "lint:bot": "eslint apps/bot --config eslint.bot.config.mjs --max-warnings 25",
     "test": "node --test \"packages/shared/**/*.test.js\"",
+    "check:zwift-links": "node scripts/check-zwift-links.js",
     "sync:shared": "node scripts/sync-shared.js",
     "check:shared": "node scripts/sync-shared.js --check"
   },

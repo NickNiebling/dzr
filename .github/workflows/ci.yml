@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  pr-source:
+    name: PR branch belongs to target repository
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject cross-repository PRs
+        env:
+          TARGET_REPOSITORY: ${{ github.repository }}
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$SOURCE_REPOSITORY" != "$TARGET_REPOSITORY" ]; then
+            echo "::error::PRs must originate from a branch in their target repository."
+            exit 1
+          fi
+
   site:
     name: Site (typecheck + lint)
     runs-on: ubuntu-latest
@@ -15,6 +30,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Check Zwift event links
+        run: npm run check:zwift-links
       - run: npm ci
       # Production dependencies only. braces has no patched release and is pulled in by the
       # ESLint toolchain, so a full audit would stay red after the runtime fixes.

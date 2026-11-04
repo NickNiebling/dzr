@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const { compactZwiftEvents, suggestedSubgroup, eventIdFromInput } = require("./zwiftEvents");
+const { compactZwiftEvents, suggestedSubgroup, eventIdFromInput, normalizeZwiftEventUrl } = require("./zwiftEvents");
 
 /**
  * Trimmed from the live feed, 2026-09-07. The timestamps are verbatim: the whole point of these
@@ -104,7 +104,7 @@ test("suggestedSubgroup picks the band a racing score falls in", () => {
 
 test("an event id can be typed or pasted from the Zwift event page", () => {
   assert.strictEqual(eventIdFromInput("5589078"), "5589078");
-  assert.strictEqual(eventIdFromInput("https://www.zwift.com/eu/events/view/5589078"), "5589078");
+  assert.strictEqual(eventIdFromInput("https://www.zwift.com/eu/events/view/5589078"), "5589078"); // zwift-link-check: allow-input
   assert.strictEqual(eventIdFromInput(""), "");
   assert.strictEqual(eventIdFromInput("not an event"), null);
 });
@@ -115,4 +115,30 @@ test("suggestedSubgroup declines rather than guessing", () => {
   assert.strictEqual(suggestedSubgroup(afterParty, NaN), null);
   assert.strictEqual(suggestedSubgroup(afterParty, 2000), null, "outside every band");
   assert.strictEqual(suggestedSubgroup(zone2, 400), null, "event does not enforce categories");
+});
+
+test("pasted event links lose only /eu and preserve all other URL content", () => {
+  for (const [input, expected] of [
+    ["https://www.zwift.com/eu/events/view/5763806?eventSecret=abc%2B123#details", "https://www.zwift.com/events/view/5763806?eventSecret=abc%2B123#details"], // zwift-link-check: allow-input
+    ["http://zwift.com/eu/events/tag/dzr/view/5763806/?eventSecret=abc%2B123#details", "http://zwift.com/events/tag/dzr/view/5763806/?eventSecret=abc%2B123#details"], // zwift-link-check: allow-input
+    ["//www.zwift.com/eu/events/tag/dzr/view/5763806#details", "//www.zwift.com/events/tag/dzr/view/5763806#details"], // zwift-link-check: allow-input
+  ]) {
+    assert.strictEqual(normalizeZwiftEventUrl(input), expected);
+  }
+});
+
+test("normalization leaves unrelated and malformed URLs alone", () => {
+  for (const input of [
+    "https://www.zwift.com/uk/events/tag/dzrpuncheurs/view/5589078",
+    "http://zwift.com/eu-de/events/tag/dzr/view/5763806/?eventSecret=abc%2B123#details",
+    "https://www.zwift.com/events/tag/dzr/view/5763806?eventSecret=abc%2B123#details",
+    "https://www.zwift.com/events/view/5763806",
+    "https://zwiftinsider.com/route/the-mega-pretzel/",
+    "https://www.zwift.com/eu/",
+    "https://example.com/eu/events/view/5763806",
+    "https://www.zwift.com.example.com/eu/events/view/5763806",
+    "not a URL",
+  ]) {
+    assert.strictEqual(normalizeZwiftEventUrl(input), input);
+  }
 });
