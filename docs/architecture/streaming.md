@@ -60,7 +60,7 @@ The member installs Lua in OBS Studio. OBS dispatches frontend events and timer 
 
 `/streaming_remove` revokes the invoking Club Member's key and sessions. Losing the role blocks both commands and their effectful components; it does not itself delete an existing registration. Leaving the guild revokes enrollment. `/streaming_overview [page]` requires Administrator or the configured DZR Admin role and shows Discord users, channel links, last verified live starts, broadcast links and errors. Responses are private and components are bound to their owner.
 
-Command visibility and execution authorization are separate. Add/remove declare `default_member_permissions: "0"`; an administrator must grant the Club Member role access in Discord's Integrations settings. `setDefaultMemberPermissions` accepts permission bits, not role IDs. Discord administrators bypass command visibility restrictions, but the handler still requires Club Member for add/remove.
+Add/remove are visible by default, like `/coach`, and enforce Club Member access at runtime rather than requiring a separate role grant in Discord Integrations. Existing Discord app, role and channel restrictions still apply. The handler checks the configured Club Member role on both commands and effectful component submissions, including for administrators. The overview retains its Administrator default permission and runtime admin check.
 
 Channel ownership is trusted, without provider OAuth. Exclusive channel claims prevent two members registering the same channel; they do not prove ownership. Live verification checks the registered channel, not whether the Discord user owns it.
 
