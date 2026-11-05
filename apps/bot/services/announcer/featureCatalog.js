@@ -27,11 +27,6 @@ const INTERNAL = new Set([
   "remove_team_member",
 ]);
 
-function isMemberCommand(command) {
-  const permissions = command.default_member_permissions;
-  return permissions == null || String(permissions) === "0";
-}
-
 /** A tool that is the same feature as a slash command. */
 const ALIASES = { start_quiz: "quiz" };
 
@@ -49,10 +44,8 @@ function buildFeatureCatalog({ tools = [], commands = [], usage = {} }) {
     return byKey.get(key);
   };
   for (const command of commands) {
-    // A command that needs a permission (Administrator, Manage Messages, ...) is for admins. "0"
-    // is not: it hides the command until an admin grants it to a role, as for the streamers'
-    // /streaming_add, so those stay in the catalog and admins can switch them off.
-    if (!command?.name || !isMemberCommand(command)) continue;
+    // Commands requiring Discord permissions (Administrator, Manage Messages, ...) are for staff.
+    if (!command?.name || command.default_member_permissions != null) continue;
     const row = entry(command.name);
     row.command = `/${command.name}`;
     if (command.description) row.descriptions.push(command.description);

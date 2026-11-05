@@ -52,15 +52,13 @@ flowchart TB
 
 </details>
 
-The member installs Lua in OBS Studio. OBS dispatches frontend events and timer ticks to the script; Lua sends HTTPS callbacks to the always-on Render bot. The bot independently verifies public live status with YouTube/Twitch before posting to Discord. Next.js and Flask do not receive these callbacks. Deployment variables, Discord command visibility and the pilot checklist live in [OBS setup](../../README.md#obs-streaming).
+The member installs Lua in OBS Studio. OBS dispatches frontend events and timer ticks to the script; Lua sends HTTPS callbacks to the always-on Render bot. The bot independently verifies public live status with YouTube/Twitch before posting to Discord. Next.js and Flask do not receive these callbacks. Deployment variables and the pilot checklist live in [OBS setup](../../README.md#obs-streaming).
 
 ## Member and administrator flows
 
-`/streaming_add` opens private onboarding for members holding the configured Club Member role (`system_settings/global.membership.clubMemberRoleId`). Both add and remove check the role at command and effectful component submission; administrators have no role bypass. Members enter YouTube/Twitch channels and receive a generic Lua download, callback URL and personal key. Saving again replaces channels and rotates the key. Only its SHA-256 hash is stored, so a lost key requires another enrollment.
+`/streaming_add` opens private onboarding for members holding the configured Club Member role (`system_settings/global.membership.clubMemberRoleId`). Add and remove are visible by default and check the role at command and effectful component submission, including for administrators. Members enter YouTube/Twitch channels and receive a generic Lua download, callback URL and personal key. Saving again replaces channels and rotates the key. Only its SHA-256 hash is stored, so a lost key requires another enrollment.
 
 `/streaming_remove` revokes the invoking Club Member's key and sessions. Losing the role blocks both commands and their effectful components; it does not itself delete an existing registration. Leaving the guild revokes enrollment. `/streaming_overview [page]` requires Administrator or the configured DZR Admin role and shows Discord users, channel links, last verified live starts, broadcast links and errors. Responses are private and components are bound to their owner.
-
-Command visibility and execution authorization are separate. Add/remove declare `default_member_permissions: "0"`; an administrator must grant the Club Member role access in Discord's Integrations settings. `setDefaultMemberPermissions` accepts permission bits, not role IDs. Discord administrators bypass command visibility restrictions, but the handler still requires Club Member for add/remove.
 
 Channel ownership is trusted, without provider OAuth. Exclusive channel claims prevent two members registering the same channel; they do not prove ownership. Live verification checks the registered channel, not whether the Discord user owns it.
 
