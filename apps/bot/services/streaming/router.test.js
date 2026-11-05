@@ -11,28 +11,39 @@ async function server(t, service) {
   return `http://127.0.0.1:${listener.address().port}/streaming`;
 }
 
-test("HTTP endpoint enforces authentication, JSON, payload limits and per-key throttling", async (t) => {
-  let calls = 0;
-  const url = await server(t, { async callback(token, body) { calls++; assert.equal(token, "test-key"); return { accepted: true }; } });
-  const post = (headers, body = "{}") => fetch(`${url}/obs`, { method: "POST", headers, body });
-  assert.equal((await post({ "Content-Type": "application/json" })).status, 401);
-  assert.equal((await post({ Authorization: "Bearer test-key" })).status, 415);
-  const headers = { Authorization: "Bearer test-key", "Content-Type": "application/json" };
-  assert.equal((await post(headers, "{broken")).status, 400);
-  assert.equal((await post(headers, JSON.stringify({ extra: "x".repeat(3000) }))).status, 413);
-  const valid = await post(headers);
-  assert.equal(valid.status, 202);
-  assert.equal(valid.headers.get("cache-control"), "no-store");
-  assert.equal(calls, 1);
-  for (let i = 0; i < 12; i++) await post(headers);
-  assert.equal((await post(headers)).status, 429);
+test("both HTTP endpoints share authentication, JSON limits and per-key throttling", async (t) => {
+  for (const route of ["obs", "test"]) {
+    const calls = [];
+    const url = await server(t, { async callback(token, body, testOnly) {
+      calls.push(testOnly); assert.equal(token, "test-key"); return { accepted: true };
+    } });
+    const post = (headers, body = "{}", endpoint = route) => fetch(`${url}/${endpoint}`, { method: "POST", headers, body });
+    assert.equal((await post({ "Content-Type": "application/json" })).status, 401);
+    assert.equal((await post({ Authorization: "Bearer test-key" })).status, 415);
+    const headers = { Authorization: "Bearer test-key", "Content-Type": "application/json" };
+    assert.equal((await post(headers, "{broken")).status, 400);
+    assert.equal((await post(headers, JSON.stringify({ extra: "x".repeat(3000) }))).status, 413);
+    const valid = await post(headers);
+    assert.equal(valid.status, 202);
+    assert.equal(valid.headers.get("cache-control"), "no-store");
+    assert.deepEqual(calls, [route === "test"]);
+    for (let i = 0; i < 12; i++) await post(headers, "{}", i % 2 ? "obs" : "test");
+    for (const endpoint of ["obs", "test"]) assert.equal((await post(headers, "{}", endpoint)).status, 429);
+  }
 });
 
 test("revoked key responses are generic, and Lua download contains no personal credentials", async (t) => {
-  const url = await server(t, { async callback() { throw new StreamingError("invalid_key", "private detail", 401); } });
-  const response = await fetch(`${url}/obs`, { method: "POST", headers: { Authorization: "Bearer revoked", "Content-Type": "application/json" }, body: "{}" });
-  assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { error: "invalid_key" });
+  const url = await server(t, { async callback(token) {
+    if (token === "revoked") throw new StreamingError("invalid_key", "private detail", 401);
+    throw new Error("private storage detail");
+  } });
+  for (const route of ["obs", "test"]) {
+    for (const [token, status, error] of [["revoked", 401, "invalid_key"], ["valid", 503, "temporarily_unavailable"]]) {
+      const response = await fetch(`${url}/${route}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: "{}" });
+      assert.equal(response.status, status);
+      assert.deepEqual(await response.json(), { error });
+    }
+  }
   const download = await fetch(`${url}/dzr-stream.lua`);
   assert.equal(download.status, 200);
   assert.match(download.headers.get("content-disposition"), /attachment.*dzr-stream.lua/);

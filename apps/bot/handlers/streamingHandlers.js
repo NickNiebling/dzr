@@ -5,9 +5,10 @@ const { StreamingError } = require("../services/streaming/model");
 const COMMANDS = ["streaming_add", "streaming_remove", "streaming_overview"];
 const isStreamingInteraction = (interaction) => COMMANDS.includes(interaction.commandName) || String(interaction.customId || "").startsWith("streaming:");
 const stamp = (time) => time ? `<t:${Math.floor(time / 1000)}:f>` : "Endnu ikke set live";
-const button = (action, userId, label, style = ButtonStyle.Primary) => new ButtonBuilder()
-  .setCustomId(`streaming:${action}:${userId}`).setLabel(label).setStyle(style);
+const button = (action, userId, label, style = ButtonStyle.Primary, value) => new ButtonBuilder()
+  .setCustomId(`streaming:${action}:${userId}${value !== undefined ? `:${value}` : ""}`).setLabel(label).setStyle(style);
 const row = (...buttons) => new ActionRowBuilder().addComponents(...buttons);
+const checkButton = (interaction) => button("result", interaction.user.id, "Kontrollér resultat", ButtonStyle.Primary, interaction.createdTimestamp);
 
 function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, channelId, getClubRoleId = async () => null }) {
   const baseUrl = publicUrl.replace(/\/$/, "");
@@ -40,10 +41,10 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         throw new StreamingError("guild_required", "Brug kommandoen på DZR-serveren.", 403);
       }
       const userId = interaction.user.id;
-      const [, action, owner] = String(interaction.customId || "").split(":");
+      const [, action, owner, value] = String(interaction.customId || "").split(":");
       if (interaction.customId && owner !== userId) throw new StreamingError("not_owner", "Start dit eget flow med /streaming_add.", 403);
 
-      if (["streaming_add", "streaming_remove"].includes(interaction.commandName) || ["channels", "save", "remove"].includes(action)) {
+      if (["streaming_add", "streaming_remove"].includes(interaction.commandName) || ["channels", "save", "remove", "status", "result"].includes(action)) {
         const clubRoleId = await getClubRoleId();
         const eligible = clubRoleId && (interaction.member?.roles?.cache?.has(clubRoleId) || interaction.member?.roles?.includes?.(clubRoleId));
         if (!eligible) throw new StreamingError("club_member_required", "Streaming er kun tilgængelig for Club Members.", 403);
@@ -62,7 +63,8 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         return true;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (interaction.isButton() && action === "result") await interaction.deferUpdate();
+      else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       if (interaction.isModalSubmit() && action === "save") {
         const { registration, token } = await service.enroll(userId, interaction.user.username, {
           youtube: interaction.fields.getTextInputValue("youtube"), twitch: interaction.fields.getTextInputValue("twitch"),
@@ -73,7 +75,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
           + "2. Åbn OBS → Værktøjer / Tools → Scripts → **+**, og vælg filen.\n"
           + `3. Indsæt callback-adressen i **DZR endpoint**:\n\`${baseUrl}/streaming/obs\`\n`
           + `4. Indsæt denne personlige nøgle i **DZR key**:\n\`${token}\`\n`
-          + "5. Vælg din platform (eller Automatisk), og tryk **Test forbindelse** i OBS.\n\n"
+          + "5. Vælg din platform (eller Automatisk). Du kan valgfrit trykke **Test forbindelse** i OBS.\n\n"
           + "Nøglen vises kun her. Del den ikke. En tidligere nøgle er nu ugyldig. "
           + "Du kan få en ny med /streaming_add og afmelde dig med /streaming_remove.\n"
           + `Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.`,
@@ -92,11 +94,23 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         await interaction.editReply({ content: removed ? "Du er afmeldt. Din nøgle virker ikke længere. Du kan nu fjerne dzr-stream.lua fra OBS." : "Du er ikke tilmeldt streaming." });
       } else if (interaction.isButton() && action === "cancel") {
         await interaction.editReply({ content: "Din tilmelding er uændret." });
-      } else if (interaction.isButton() && action === "status") {
+      } else if (interaction.isButton() && ["status", "result"].includes(action)) {
         const registration = await service.getRegistration(userId);
-        await interaction.editReply({ content: registration?.lastCallbackAt
-          ? `✅ DZR har modtaget et signal fra OBS ${stamp(registration.lastCallbackAt)}. En test sender ingen offentlig Discord-besked.`
-          : "Der er endnu ikke modtaget et signal. Kontrollér adresse og nøgle, og tryk Test forbindelse i OBS." });
+        if (!registration) throw new StreamingError("not_registered", "Du er ikke tilmeldt streaming. Brug /streaming_add først.", 404);
+        if (action === "status") {
+          await interaction.editReply({ content: "**Test OBS-forbindelsen (valgfrit)**\nTryk **Test forbindelse** i OBS nu, og derefter **Kontrollér resultat** her. "
+            + "Du er allerede tilmeldt og kan springe testen over. Testen sender ingen offentlig Discord-besked.",
+            components: [row(checkButton(interaction))] });
+        } else {
+          const test = registration.lastTest;
+          // A retry can refresh receipt time; the OBS test itself must have started after this check opened.
+          const fresh = test?.at >= Number(value) && test.startedAt > Number(value);
+          await interaction.editReply({ content: !fresh
+            ? "Der er endnu ikke modtaget en ny test. Kontrollér adresse, nøgle og computerens ur, tryk Test forbindelse i OBS, og kontrollér resultatet igen."
+            : test.result === "success"
+              ? "✅ Forbundet! DZR modtager signaler fra OBS. Dette bekræfter forbindelsen, men ikke at en offentlig livestream kan findes hos YouTube/Twitch."
+              : "⚠️ Testen blev afvist. Se fejlen i OBS-scriptets log, ret indstillingerne, og prøv igen." });
+        }
       } else if (interaction.commandName === "streaming_overview") {
         await overview(interaction);
       } else {

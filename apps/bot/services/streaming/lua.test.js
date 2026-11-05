@@ -16,13 +16,16 @@ test("OBS Lua uses real libcurl multi over TLS; start/heartbeat/stop ordering, r
   const certificate = spawnSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", keyFile, "-out", cert]);
   assert.equal(certificate.status, 0, certificate.stderr?.toString());
   const requests = [];
+  const testStatuses = [503, 202, 202, 400, 400, 401, 403, 404, 429];
+  let testRequests = 0;
   const server = https.createServer({ key: fs.readFileSync(keyFile), cert: fs.readFileSync(cert) }, (req, res) => {
     let body = "";
     req.on("data", (chunk) => { body += chunk; });
     req.on("end", () => {
       const parsed = JSON.parse(body);
       requests.push({ body: parsed, authorization: req.headers.authorization, url: req.url });
-      res.writeHead(requests.length === 1 ? 503 : parsed.platform === null ? 400 : 202, { "Content-Type": "application/json" });
+      const status = parsed.event === "test" ? testStatuses[testRequests++] : parsed.platform === null ? 400 : 202;
+      res.writeHead(status || 202, { "Content-Type": "application/json" });
       res.end('{"accepted":true}');
     });
   });
@@ -99,6 +102,10 @@ script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)
 test_button(); pump(50) -- a missing OBS service also serializes as null
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="facebook"})
 test_button(); pump(50) -- invalid persisted/manual settings cannot become a provider
+script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="youtube"})
+for i=1,4 do test_button(); pump(50) end -- actionable 401/403/404/429 responses
+script_update({endpoint="https://127.0.0.1:9/streaming/obs", key=${JSON.stringify(token)}, platform="youtube"})
+test_button(); pump(50) -- refused local connection, without weakening TLS validation
 script_unload()
 `);
   const child = spawn(lua, [harness], { stdio: ["ignore", "pipe", "pipe"] });
@@ -109,13 +116,18 @@ script_unload()
   const exit = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
   assert.equal(exit, 0, output);
   assert.deepEqual(requests.map((r) => r.body.event), ["test", "test", "started", "heartbeat", "stopped",
-    "test", "started", "stopped", "started", "started", "stopped", "test", "test"], output);
+    "test", "started", "stopped", "started", "started", "stopped", "test", "test", ...Array(4).fill("test")], output);
   assert.deepEqual(requests.map((r) => r.body.platform), ["youtube", "youtube", "youtube", "youtube", "youtube",
-    "twitch", "twitch", "twitch", null, "twitch", "twitch", null, null]);
+    "twitch", "twitch", "twitch", null, "twitch", "twitch", null, null, ...Array(4).fill("youtube")]);
   assert.deepEqual(requests.slice(2, 5).map((r) => r.body.sequence), [1, 2, 3]);
   assert.equal(requests[2].body.sessionId, requests[4].body.sessionId);
   assert.equal(requests[8].body.sessionId, requests[9].body.sessionId);
   assert.equal(requests[8].body.startedAt, requests[9].body.startedAt);
-  assert.ok(requests.every((r) => r.authorization === `Bearer ${token}` && r.url === "/streaming/obs"));
+  assert.ok(requests.every((r) => r.authorization === `Bearer ${token}`
+    && r.url === (r.body.event === "test" ? "/streaming/test" : "/streaming/obs")));
+  assert.match(output, /Forbundet! DZR modtager signaler fra OBS/);
+  assert.match(output, /midlertidigt utilgængelig/);
+  for (const message of ["DZR-nøglen blev afvist", "Platformen er ikke tilmeldt", "DZR-adressen blev ikke fundet",
+    "Vent et minut", "Kan ikke forbinde til DZR"]) assert.ok(output.includes(message), output);
   assert.ok(!output.includes(token));
 });

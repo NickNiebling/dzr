@@ -26,16 +26,58 @@ function setup() {
     event: (overrides = {}) => ({ event: "started", platform: "youtube", sessionId: "session_1234567890", sequence: 1, startedAt: time, sentAt: time, ...overrides }) };
 }
 
-test("onboarding stores only a hash; testing never announces or sets last-live", async () => {
+test("onboarding stores only a hash; legacy testing records separate status without starting work", async () => {
   const s = setup(); const { token } = await s.enroll();
   const registration = await s.service.getRegistration(userId);
   assert.ok(tokenMatches(token, registration.tokenHash));
   assert.ok(!JSON.stringify([...s.db.documents]).includes(token));
   await s.service.callback(token, s.event({ event: "test" }));
+  s.providers.verify = () => assert.fail("a test must never verify a public stream");
   await s.service.tick();
   assert.equal(s.published.length, 0);
-  assert.equal((await s.service.getRegistration(userId)).lastLiveAt, null);
-  assert.equal((await s.service.getRegistration(userId)).lastCallbackAt, s.now());
+  const tested = await s.service.getRegistration(userId);
+  assert.equal(tested.lastLiveAt, null);
+  assert.equal(tested.lastCallbackAt, null);
+  assert.deepEqual(tested.lastTest, { at: s.now(), startedAt: s.now(), platform: "youtube", result: "success" });
+  assert.equal((await s.store.listSessions()).length, 0);
+  assert.equal((await s.store.listNotices()).length, 0);
+  assert.equal(s.alerts.length, 0);
+});
+
+test("both test routes record validation failures without sessions or Discord messages", async () => {
+  for (const testOnly of [false, true]) {
+    for (const [overrides, code] of [[{ platform: null }, "unknown_platform"],
+      [{ platform: "twitch" }, "channel_not_registered"], [{ sequence: 0 }, "invalid_event"],
+      ...(testOnly ? ["started", "heartbeat", "stopped"].map((event) => [{ event }, "invalid_event"]) : [])]) {
+      const s = setup(); const { token } = await s.enroll();
+      await assert.rejects(s.service.callback(token, s.event({ event: "test", ...overrides }), testOnly), { code });
+      assert.equal((await s.service.getRegistration(userId)).lastTest.result, code);
+      s.providers.verify = () => assert.fail("tests cannot trigger discovery");
+      await s.service.tick();
+      assert.equal((await s.store.listSessions()).length, 0);
+      assert.equal(s.published.length + s.alerts.length, 0);
+    }
+  }
+});
+
+test("tests preserve live sessions, reject revoked keys and stay silent during storage outages", async () => {
+  const s = setup(); const { token, registration } = await s.enroll();
+  await s.service.callback(token, s.event());
+  const sessions = await s.store.listSessions();
+  const callbackAt = s.now();
+  s.advance(1000);
+  await s.service.callback(token, s.event({ event: "test" }), true);
+  assert.deepEqual(await s.store.listSessions(), sessions);
+  assert.equal((await s.service.getRegistration(userId)).lastCallbackAt, callbackAt);
+  await s.service.remove(userId);
+  await assert.rejects(s.service.callback(token, s.event({ event: "test" }), true), { code: "invalid_key" });
+  await assert.rejects(s.store.acceptEvent(registration, s.event({ event: "test" })), { code: "invalid_key" });
+  s.store.getRegistration = async () => { throw new Error("storage unavailable"); };
+  s.store.queueAlert = () => assert.fail("tests cannot enqueue alerts");
+  for (const testOnly of [false, true]) {
+    await assert.rejects(s.service.callback(token, s.event({ event: "test" }), testOnly), { code: "temporarily_unavailable" });
+  }
+  assert.equal(s.alerts.length, 0);
 });
 
 test("a verified stream is announced once across repeated callbacks, new OBS sessions and bot restarts", async () => {

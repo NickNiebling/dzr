@@ -29,22 +29,26 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
     return { registration, token };
   }
 
-  async function callback(token, body) {
+  async function callback(token, body, testOnly = false) {
+    const isTest = testOnly || body?.event === "test";
     const discordId = tokenOwner(token);
     if (!discordId) throw new StreamingError("invalid_key", "DZR-nøglen er ikke gyldig.", 401);
     let registration;
     try { registration = await store.getRegistration(guildId, discordId); }
     catch {
-      await reportError(system, "callback_store_unavailable");
+      if (!isTest) await reportError(system, "callback_store_unavailable");
       throw new StreamingError("temporarily_unavailable", "DZR Streaming er midlertidigt utilgængelig.", 503);
     }
     if (!registration || !tokenMatches(token, registration.tokenHash)) throw new StreamingError("invalid_key", "DZR-nøglen er ikke gyldig.", 401);
     try {
+      if (testOnly && body?.event !== "test") throw new StreamingError("invalid_event", "Test-endpointet accepterer kun forbindelsestests.");
       const event = parseEvent(body, now());
       if (!registration.channels[event.platform]) throw new StreamingError("channel_not_registered", "Denne platform er ikke tilmeldt.", 403);
       return await store.acceptEvent(registration, event);
     } catch (error) {
-      await reportError(registration, error instanceof StreamingError ? error.code : "callback_failed");
+      if (isTest) {
+        if (error instanceof StreamingError && error.code !== "invalid_key") await store.acceptEvent(registration, { ...body, event: "test" }, error.code);
+      } else await reportError(registration, error instanceof StreamingError ? error.code : "callback_failed");
       throw error;
     }
   }
