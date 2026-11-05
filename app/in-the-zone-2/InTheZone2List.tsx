@@ -57,8 +57,8 @@ import {
                     {/*<Link  color={'orange'} href = {`https://whatsonzwift.com/workouts/${event.workout}`} target='_Blank' isExternal>{event.workout}<ExternalLinkIcon mx='2px' /></Link>*/}
                     <Td textAlign="center">{event.duration}</Td>
                     <Td textAlign="center">{event.stressPoints}</Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = {`https://www.zwift.com/eu/events/view/${event.eventID1}`} target='_Blank' isExternal>Event Link<ExternalLinkIcon mx='2px' /></Link></Td>
-                    <Td textAlign="center"><Link  color={'orange'} href = {`https://www.zwift.com/eu/events/view/${event.eventID2}`} target='_Blank' isExternal>Event Link<ExternalLinkIcon mx='2px' /></Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = {`https://www.zwift.com/events/view/${event.eventID1}`} target='_Blank' isExternal>Event Link<ExternalLinkIcon mx='2px' /></Link></Td>
+                    <Td textAlign="center"><Link  color={'orange'} href = {`https://www.zwift.com/events/view/${event.eventID2}`} target='_Blank' isExternal>Event Link<ExternalLinkIcon mx='2px' /></Link></Td>
                     </Tr>    
                 </Tbody>
                 </Table>

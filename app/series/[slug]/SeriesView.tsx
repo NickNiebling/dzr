@@ -25,6 +25,7 @@ import type { ReactNode } from 'react'
 import { RouteProfilePreview } from '@/components/route-profile/RouteProfilePreview'
 import { SeriesRulesList } from '@/components/series/SeriesRules'
 import { zwiftInsiderUrl } from '@/packages/shared/routeProfile'
+import { normalizeZwiftEventUrl } from '@/packages/shared/zwiftEvents'
 import SlideCarousel from '@/components/series/SlideCarousel'
 import type { CatalogRoute } from '@/app/lib/catalogRoute'
 
@@ -72,13 +73,13 @@ function linkNodes(value: string) {
     const htmlLabel = match[4]
     const bare = match[5]
     if (markdownLabel && markdownUrl) {
-      nodes.push(<ChakraLink key={index} color="orange" href={markdownUrl} isExternal>{markdownLabel}</ChakraLink>)
+      nodes.push(<ChakraLink key={index} color="orange" href={normalizeZwiftEventUrl(markdownUrl)} isExternal>{markdownLabel}</ChakraLink>)
     } else if (htmlUrl) {
-      nodes.push(<ChakraLink key={index} color="orange" href={htmlUrl} isExternal>{htmlLabel || htmlUrl}</ChakraLink>)
+      nodes.push(<ChakraLink key={index} color="orange" href={normalizeZwiftEventUrl(htmlUrl)} isExternal>{htmlLabel || htmlUrl}</ChakraLink>)
     } else if (bare) {
       const trimmed = bare.replace(/[.,;:!?]+$/, '')
       const trailing = bare.slice(trimmed.length)
-      nodes.push(<ChakraLink key={index} color="orange" href={trimmed} isExternal>{trimmed}</ChakraLink>)
+      nodes.push(<ChakraLink key={index} color="orange" href={normalizeZwiftEventUrl(trimmed)} isExternal>{trimmed}</ChakraLink>)
       if (trailing) nodes.push(trailing)
     }
     cursor = index + match[0].length
@@ -216,7 +217,7 @@ function EventLinks({ starts }: { starts: RaceStart[] }) {
           </Text>
           <Text color="white">
             Race Pass:{' '}
-            <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${start.eventId}`} isExternal>
+            <ChakraLink color="orange" href={`https://www.zwift.com/events/view/${start.eventId}`} isExternal>
               Zwift<ExternalLinkIcon mx="2px" />
             </ChakraLink>
           </Text>
@@ -344,7 +345,7 @@ function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: Seri
               <Tr>
                 <Td textAlign="center">
                   {start ? (
-                    <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${start.eventId}`} isExternal>
+                    <ChakraLink color="orange" href={`https://www.zwift.com/events/view/${start.eventId}`} isExternal>
                       Zwift<ExternalLinkIcon mx="2px" />
                     </ChakraLink>
                   ) : '—'}
@@ -468,7 +469,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
                     <Tr key={`${race.date}-${race.label}-${race.routeName}`}>
                       <Td textAlign="center">
                         {event ? (
-                          <ChakraLink color="orange" href={`https://www.zwift.com/eu/events/view/${event.eventId}`} isExternal>
+                          <ChakraLink color="orange" href={`https://www.zwift.com/events/view/${event.eventId}`} isExternal>
                             {race.label || race.routeName}
                           </ChakraLink>
                         ) : (

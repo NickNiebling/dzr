@@ -135,4 +135,9 @@ function eventIdFromInput(value) {
   return /^\d+$/.test(id) ? id : null;
 }
 
-module.exports = { compactZwiftEvents, suggestedSubgroup, localParts, eventIdFromInput, TZ, DZR_UPCOMING_EVENTS_URL };
+/** Remove only /eu from pasted Zwift event links, preserving the rest verbatim. */
+function normalizeZwiftEventUrl(value) {
+  return value.replace(/^((?:https?:)?\/\/(?:www\.)?zwift\.com)\/eu(?=\/events\/(?:[^/?#\s]+\/)*view\/\d+(?:[/?#]|$))/, "$1");
+}
+
+module.exports = { compactZwiftEvents, suggestedSubgroup, localParts, eventIdFromInput, normalizeZwiftEventUrl, TZ, DZR_UPCOMING_EVENTS_URL };
