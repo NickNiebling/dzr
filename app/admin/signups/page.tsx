@@ -1,10 +1,9 @@
 'use client'
 
 import AdminShell from '@/components/admin/AdminShell'
-import CollectionManager from '@/components/admin/CollectionManager'
+import BoardTemplates from '@/components/admin/signups/BoardTemplates'
 import LiveSignups from '@/components/admin/signups/LiveSignups'
 import { Tabs, TabList, TabPanels, Tab, TabPanel } from '@chakra-ui/react'
-import { COLLECTIONS } from '@/app/lib/sharedConstants'
 
 export default function SignupsAdminPage() {
   return (
@@ -19,15 +18,7 @@ export default function SignupsAdminPage() {
             <LiveSignups />
           </TabPanel>
           <TabPanel px={0}>
-            <CollectionManager
-              collection={COLLECTIONS.signupBoardConfigs}
-              fields={[
-                { key: 'id', label: 'ID (optional, leave blank to auto-create)' },
-                { key: 'title', label: 'Title' },
-                { key: 'channelId', label: 'Channel ID' },
-                { key: 'description', label: 'Description', multiline: true },
-              ]}
-            />
+            <BoardTemplates />
           </TabPanel>
         </TabPanels>
       </Tabs>

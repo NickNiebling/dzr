@@ -105,6 +105,10 @@ function renderSignupEmbed(board, guild, config) {
   return embed;
 }
 
+function categoryOptions(config) {
+  return Array.isArray(config?.options) ? config.options : [];
+}
+
 function renderSignupComponents(board, config) {
   if (!config) return []; // Legacy boards use reactions
 
@@ -112,7 +116,7 @@ function renderSignupComponents(board, config) {
   let currentRow = new ActionRowBuilder();
 
   // Discord allows max 5 buttons per row, max 5 rows
-  config.options.forEach((opt, index) => {
+  categoryOptions(config).forEach((opt, index) => {
     if (index > 0 && index % 5 === 0) {
       rows.push(currentRow);
       currentRow = new ActionRowBuilder();
@@ -144,11 +148,14 @@ async function postSignupBoard(channel, configId = null) {
   if (configId) {
     config = await getSignupConfig(configId);
     if (!config) throw new Error(`Configuration '${configId}' not found.`);
+    if (!categoryOptions(config).length) {
+      throw new Error(`Template '${config.title || configId}' has no categories. Add them under Admin → Signup boards → Board templates.`);
+    }
   }
 
   const signups = {};
   if (config) {
-    config.options.forEach(o => signups[o.value] = []);
+    categoryOptions(config).forEach(o => signups[o.value] = []);
   } else {
     ["A", "B", "C", "D"].forEach(d => signups[d] = []);
   }
@@ -407,7 +414,7 @@ async function handleSignupButton(interaction) {
     }
 
     // 2. Option Requirement
-    const option = config.options.find(o => o.value === value);
+    const option = categoryOptions(config).find(o => o.value === value);
     if (option && option.roleId && !member.roles.cache.has(option.roleId)) {
       const role = interaction.guild.roles.cache.get(option.roleId);
       const roleName = role ? role.name : "required role";
