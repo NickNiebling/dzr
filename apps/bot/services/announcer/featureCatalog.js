@@ -27,11 +27,6 @@ const INTERNAL = new Set([
   "remove_team_member",
 ]);
 
-function isMemberCommand(command) {
-  const permissions = command.default_member_permissions;
-  return permissions == null || String(permissions) === "0";
-}
-
 /** A tool that is the same feature as a slash command. */
 const ALIASES = { start_quiz: "quiz" };
 
@@ -49,9 +44,8 @@ function buildFeatureCatalog({ tools = [], commands = [], usage = {} }) {
     return byKey.get(key);
   };
   for (const command of commands) {
-    // A command that needs a permission (Administrator, Manage Messages, ...) is for admins.
-    // Keep disabled-by-default ("0") commands too: Discord can grant them to member roles.
-    if (!command?.name || !isMemberCommand(command)) continue;
+    // Commands requiring Discord permissions (Administrator, Manage Messages, ...) are for staff.
+    if (!command?.name || command.default_member_permissions != null) continue;
     const row = entry(command.name);
     row.command = `/${command.name}`;
     if (command.description) row.descriptions.push(command.description);

@@ -121,7 +121,7 @@ test("Club Member self-removal is confirmed and passes only the invoking user's 
   assert.equal(removed, userId);
 });
 
-test("Club Member role is required on command, button and modal, even for administrators", async () => {
+test("Club Member role is required on command, button and modal for ordinary users and administrators", async () => {
   const h = handler({ getRegistration() { assert.fail("must reject before accessing registration"); }, enroll() { assert.fail(); }, remove() { assert.fail(); } });
   for (const permissions of [0n, PermissionsBitField.Flags.Administrator]) {
     for (const entry of [{ commandName: "streaming_add" }, { commandName: "streaming_remove" },
@@ -147,7 +147,7 @@ test("member commands are available by default in guilds; overview still require
   const commands = require("../../commands/slashCommands");
   for (const name of ["streaming_add", "streaming_remove"]) {
     const command = commands.find((entry) => entry.name === name);
-    assert.equal(command.default_member_permissions, null);
+    assert.equal(command.default_member_permissions, undefined);
     assert.equal(command.dm_permission, false);
   }
   assert.equal(commands.find((entry) => entry.name === "streaming_overview").default_member_permissions,

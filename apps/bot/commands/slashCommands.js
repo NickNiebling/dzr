@@ -4,13 +4,10 @@ const commands = [
   new SlashCommandBuilder()
     .setName("streaming_add")
     .setDescription("Tilmeld dine streamingkanaler, og få DZR-script og nøgle til OBS")
-    // Everyone can invoke; streamingHandlers checks Club Member at execution.
-    .setDefaultMemberPermissions(null)
     .setDMPermission(false),
   new SlashCommandBuilder()
     .setName("streaming_remove")
     .setDescription("Afmeld din streaming, og spær din OBS-nøgle")
-    .setDefaultMemberPermissions(null)
     .setDMPermission(false),
   new SlashCommandBuilder()
     .setName("streaming_overview")

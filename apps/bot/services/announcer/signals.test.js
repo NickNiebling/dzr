@@ -83,13 +83,12 @@ const tool = (name, description = `${name} does a thing`) => ({ type: "function"
 const command = (name, description = `${name} command`, adminOnly = false) => ({ name, description, ...(adminOnly ? { default_member_permissions: "8" } : {}) });
 const CATALOG = buildFeatureCatalog({
   tools: [tool("rider_stats"), tool("route_profile_image"), tool("zrl_category"), tool("start_quiz"), tool("report_knowledge_gap")],
-  commands: [command("rider_stats"), command("quiz"), command("coach"), command("announcer_run", "admin", true), { name: "streaming_add", description: "Tilmeld din stream", default_member_permissions: "0" }, { name: "set_zwiftid", description: "mods", default_member_permissions: "8192" }],
+  commands: [command("rider_stats"), command("quiz"), command("coach"), command("announcer_run", "admin", true), command("streaming_add", "Tilmeld din stream"), { name: "set_zwiftid", description: "mods", default_member_permissions: "8192" }],
   usage: { rider_stats: 40, route_profile_image: 2, zrl_category: 9, start_quiz: 1 },
 });
 
 test("the catalog comes from member commands and tools; admin commands and plumbing are left out", () => {
   const keys = CATALOG.map((feature) => feature.key);
-  // "0" (granted to a role, like the streamers' commands) is a member command; a real permission is not.
   assert.deepEqual(keys, ["coach", "quiz", "report_knowledge_gap", "rider_stats", "route_profile_image", "streaming_add", "zrl_category"]);
   const stats = CATALOG.find((feature) => feature.key === "rider_stats");
   assert.equal(stats.name, "/rider_stats");
