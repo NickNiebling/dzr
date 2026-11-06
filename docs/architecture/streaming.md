@@ -52,11 +52,13 @@ flowchart TB
 
 </details>
 
-The member installs Lua in OBS Studio. OBS dispatches frontend events and timer ticks to the script; Lua sends HTTPS callbacks to the always-on Render bot. The bot independently verifies public live status with YouTube/Twitch before posting to Discord. Next.js and Flask do not receive these callbacks. Deployment variables and the pilot checklist live in [OBS setup](../../README.md#obs-streaming).
+The member installs Lua in OBS Studio. OBS dispatches frontend events and timer ticks to the script; Lua sends HTTPS callbacks to the always-on Render bot. The bot independently verifies public live status with YouTube/Twitch before posting to Discord. Next.js and Flask do not receive these callbacks. Deployment variables live in [OBS setup](../../README.md#obs-streaming).
 
 ## Member and administrator flows
 
 `/streaming_add` opens private onboarding for members holding the configured Club Member role (`system_settings/global.membership.clubMemberRoleId`). Add and remove are visible by default and check the role at command and effectful component submission, including for administrators. Members enter YouTube/Twitch channels and receive a generic Lua download, callback URL and personal key. Saving again replaces channels and rotates the key. Only its SHA-256 hash is stored, so a lost key requires another enrollment.
+
+The private OBS guide separates downloading `dzr-stream.lua`, opening **Tools / Værktøjer → Scripts**, clicking **+**, and selecting the file from **Downloads / Overførsler**. It maps the address/key to the existing OBS fields, explains platform selection and the optional YouTube video link, then directs members to test in OBS and confirm the signal time in Discord.
 
 `/streaming_remove` revokes the invoking Club Member's key and sessions. Losing the role blocks both commands and their effectful components; it does not itself delete an existing registration. Leaving the guild revokes enrollment. `/streaming_overview [page]` requires Administrator or the configured DZR Admin role and shows Discord users, channel links, last verified live starts, broadcast links and errors. Responses are private and components are bound to their owner.
 
@@ -97,4 +99,4 @@ Authenticated callback errors, provider/quota errors, discovery timeout and anno
 | Discord sends and message recovery | [publisher](../../apps/bot/services/streaming/publisher.js) |
 | Callback validation and announcement text | [model](../../apps/bot/services/streaming/model.js) |
 
-Streaming tests run with the bot suite. They cover role gates, callbacks, virtual-clock backoff/deadline boundaries and restarts, planned versus live states, quota, delivery recovery, IT reporting and proxy IP isolation. The shipped Lua is tested with mocked OBS events but real libcurl/local HTTPS under LuaJIT. Tests never use production Discord or Firestore. The initial one/two-streamer pilot must still exercise real OBS and public streams on the operating systems members use. Future race/ZwiftPower enrichment belongs in the server-side message builder after verification.
+Streaming tests run with the bot suite. They cover role gates, callbacks, virtual-clock backoff/deadline boundaries and restarts, planned versus live states, quota, delivery recovery, IT reporting and proxy IP isolation. The shipped Lua is tested with mocked OBS events but real libcurl/local HTTPS under LuaJIT. Tests never use production Discord or Firestore. Future race/ZwiftPower enrichment belongs in the server-side message builder after verification.
