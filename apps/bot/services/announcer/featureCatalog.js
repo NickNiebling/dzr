@@ -49,9 +49,8 @@ function buildFeatureCatalog({ tools = [], commands = [], usage = {} }) {
     return byKey.get(key);
   };
   for (const command of commands) {
-    // A command that needs a permission (Administrator, Manage Messages, ...) is for admins. "0"
-    // is not: it hides the command until an admin grants it to a role, as for the streamers'
-    // /streaming_add, so those stay in the catalog and admins can switch them off.
+    // A command that needs a permission (Administrator, Manage Messages, ...) is for admins.
+    // Keep disabled-by-default ("0") commands too: Discord can grant them to member roles.
     if (!command?.name || !isMemberCommand(command)) continue;
     const row = entry(command.name);
     row.command = `/${command.name}`;

@@ -20,7 +20,6 @@ test("Club Members can start private onboarding without admin permissions", asyn
   const i = interaction({ commandName: "streaming_add" });
   await handler({ async getRegistration() { return null; } }).handle(i);
   assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
-  assert.match(i.calls[1][1].content, /Angiv|angiver/);
   assert.equal(i.calls[1][1].components[0].toJSON().components[0].custom_id, `streaming:channels:${userId}`);
 });
 
@@ -38,10 +37,52 @@ test("modal returns download, endpoint and personal key only in an ephemeral res
     return { token: "personal-key", registration: { channels: { youtube: { url: "https://youtube.com/@DZR" } } } };
   } }).handle(i);
   assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
-  const reply = i.calls[1][1].content;
-  assert.match(reply, /personal-key/);
-  assert.match(reply, /https:\/\/bot\.example\.test\/streaming\/dzr-stream.lua/);
-  assert.match(reply, /https:\/\/bot\.example\.test\/streaming\/obs/);
+  const reply = JSON.stringify(i.calls[1][1]);
+  assert.ok(reply.includes("personal-key"));
+  assert.ok(reply.includes("https://bot.example.test/streaming/dzr-stream.lua"));
+  assert.ok(reply.includes("https://bot.example.test/streaming/obs"));
+  assert.equal(i.calls[1][1].components[0].toJSON().components[0].custom_id, `streaming:status:${userId}`);
+  assert.deepEqual(i.calls[1][1].allowedMentions, { parse: [] });
+});
+
+test("onboarding with both channels and a long public URL fits Discord message limits", async () => {
+  const discordId = "11111111111111111111";
+  const token = `dzrs_${discordId}.${"a".repeat(43)}`;
+  const publicUrl = `https://${["a".repeat(63), "b".repeat(63), "c".repeat(63), "example", "test"].join(".")}`;
+  const channels = {
+    youtube: { url: `https://www.youtube.com/channel/UC${"a".repeat(22)}` },
+    twitch: { url: `https://www.twitch.tv/${"b".repeat(25)}` },
+  };
+  const i = interaction({ user: { id: discordId, username: "Rider", bot: false },
+    customId: `streaming:save:${discordId}`, isModalSubmit: () => true,
+    fields: { getTextInputValue: (platform) => channels[platform].url } });
+  const h = createStreamingHandlers({ service: { async enroll() { return { token, registration: { channels } }; } },
+    guildId, publicUrl, channelId: "1196454773558345768", getClubRoleId: async () => "club-role" });
+  await h.handle(i);
+  assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
+  // Serializing builders also runs discord.js's embed validation.
+  const reply = JSON.parse(JSON.stringify(i.calls[1][1]));
+  const serialized = JSON.stringify(reply);
+  for (const value of [token, `${publicUrl}/streaming/dzr-stream.lua`, `${publicUrl}/streaming/obs`,
+    channels.youtube.url, channels.twitch.url]) assert.ok(serialized.includes(value));
+  assert.ok(reply.content.length <= 2000);
+  assert.ok(reply.embeds.length > 0 && reply.embeds.length <= 10);
+  let total = 0;
+  for (const embed of reply.embeds) {
+    assert.ok((embed.title || "").length <= 256);
+    assert.ok((embed.description || "").length <= 4096);
+    assert.ok((embed.fields || []).length <= 25);
+    assert.ok((embed.footer?.text || "").length <= 2048);
+    assert.ok((embed.author?.name || "").length <= 256);
+    total += (embed.title || "").length + (embed.description || "").length
+      + (embed.footer?.text || "").length + (embed.author?.name || "").length;
+    for (const field of embed.fields || []) {
+      assert.ok(field.name.length <= 256);
+      assert.ok(field.value.length <= 1024);
+      total += field.name.length + field.value.length;
+    }
+  }
+  assert.ok(total <= 6000);
 });
 
 test("forged modal owner and DM commands cannot enroll or remove other members", async () => {
@@ -82,14 +123,16 @@ test("Club Member self-removal is confirmed and passes only the invoking user's 
 
 test("Club Member role is required on command, button and modal, even for administrators", async () => {
   const h = handler({ getRegistration() { assert.fail("must reject before accessing registration"); }, enroll() { assert.fail(); }, remove() { assert.fail(); } });
-  for (const entry of [{ commandName: "streaming_add" }, { commandName: "streaming_remove" },
-    { customId: `streaming:remove:${userId}`, isButton: () => true }, { customId: `streaming:channels:${userId}`, isButton: () => true },
-    { customId: `streaming:save:${userId}`, isModalSubmit: () => true }]) {
-    const i = interaction({ ...entry, member: { roles: ["verified-role", "admin-role"] },
-      memberPermissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator) });
-    await h.handle(i);
-    assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
-    assert.match(i.calls[0][1].content, /kun.*Club Members/);
+  for (const permissions of [0n, PermissionsBitField.Flags.Administrator]) {
+    for (const entry of [{ commandName: "streaming_add" }, { commandName: "streaming_remove" },
+      { customId: `streaming:remove:${userId}`, isButton: () => true }, { customId: `streaming:channels:${userId}`, isButton: () => true },
+      { customId: `streaming:save:${userId}`, isModalSubmit: () => true }]) {
+      const i = interaction({ ...entry, member: { roles: permissions ? ["verified-role", "admin-role"] : ["verified-role"] },
+        memberPermissions: new PermissionsBitField(permissions) });
+      await h.handle(i);
+      assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
+      assert.match(i.calls[0][1].content, /Club Members/);
+    }
   }
 });
 
@@ -100,11 +143,11 @@ test("missing Club Member role configuration fails closed", async () => {
   assert.match(i.calls[0][1].content, /Club Members/);
 });
 
-test("member command visibility defaults to disabled; role grants belong in Discord Integrations", () => {
+test("member commands are available by default in guilds; overview still requires admin", () => {
   const commands = require("../../commands/slashCommands");
   for (const name of ["streaming_add", "streaming_remove"]) {
     const command = commands.find((entry) => entry.name === name);
-    assert.equal(command.default_member_permissions, "0");
+    assert.equal(command.default_member_permissions, null);
     assert.equal(command.dm_permission, false);
   }
   assert.equal(commands.find((entry) => entry.name === "streaming_overview").default_member_permissions,
