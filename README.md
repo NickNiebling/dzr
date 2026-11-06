@@ -137,25 +137,9 @@ The existing Render service serves `GET /streaming/dzr-stream.lua` and authentic
 
 The provider secret names are also documented in `render.yaml` with `sync: false`; set their values on the existing Render service. Grant the bot **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History** in the destination, plus **View Channel** and **Send Messages** in `#it`. History recovers uncertain sends without duplicate announcements. The overview accepts Administrator or the DZR Admin role; give the latter command visibility under Server Settings → Integrations if needed. Deploy the Firestore rules together with the bot; the server-only `streaming_bot` collection needs no composite index.
 
-After deployment, verify the **✅ Slash commands registered.** startup log. If ordinary users still cannot start the commands in a thread, check old app/command restrictions under **Server Settings → Integrations → DZR bot**, then compare the parent channel’s **View Channel**, **Use Application Commands**, **Send Messages in Threads**, private-thread membership and bot access with a working channel. Test with an ordinary account, since administrators bypass Discord command restrictions.
-
 The private onboarding guide assumes OBS Studio is already installed and configured for streaming. It explains the purpose before asking for at least one channel link, then gives separate steps for downloading `dzr-stream.lua`, finding it in **Downloads / Overførsler**, opening **Tools / Værktøjer → Scripts**, clicking **+**, and selecting the downloaded file. It maps the DZR address and personal key to the existing **DZR endpoint** and **DZR key** fields, then covers platform selection, optional YouTube video links, **Test forbindelse** in OBS and **Kontrollér OBS-forbindelse** back in Discord. A connection test posts no public announcement; members should check the reported signal time. Saving the channel form again rotates the key, so the new key must also be entered in OBS.
 
 After OBS starts, the bot verifies public live status immediately, then waits 15, 30, 60, 120, 240 and at most 300 seconds between attempts. Discovery stops on confirmation or after one hour from OBS start. Heartbeats do not extend that deadline; a new OBS session opens a new window. Scheduled streams and OBS preview do not qualify. Optional per-broadcast YouTube links bypass search; search otherwise uses the daily cap above. API/indexing delays can extend notification latency. Authenticated callback, verification and delivery errors, including discovery timeout, are reported to `#it` with repeated errors coalesced.
-
-Roll out first to one or two test streamers. Use this acceptance checklist after command registration and the Discord permission audit:
-
-| Account and context | Expected result |
-| --- | --- |
-| Ordinary Club Member in a text channel and the affected thread | Both commands appear and start a private flow; onboarding can be completed in either context. |
-| User without Club Member in the same channel and thread | Both commands can be started, but the bot privately refuses before changing registration. |
-| Member who loses Club Member after opening the form or removal confirmation | Submission is privately refused and registration is unchanged. |
-| Administrator without Club Member | Add/remove are privately refused; administrator status does not bypass membership checks. |
-| Less technical member using native OBS on Windows/macOS as applicable | Completes the guide without extra instructions and confirms a newly received OBS signal in Discord. |
-
-Also exercise a public start, a scheduled YouTube preview and reconnect. CI tests Lua HTTPS/libcurl on Linux; native OBS and live Discord permissions still need this acceptance run. See [streaming architecture](docs/architecture/streaming.md) for the callback contract and failure handling.
-
-Also test auto-detection for YouTube/Twitch and an unknown/custom OBS service: unknown platforms must produce an `unknown_platform` report in `#it` without an announcement. Select YouTube or Twitch manually in Lua settings to repair detection.
 
 Streaming tests are part of the bot suite. Install `luajit`, `libcurl` and `openssl` to run the real Lua transport test locally (or set `LUAJIT_BIN`); CI provides these. Without LuaJIT, that test is explicitly skipped. Tests do not post to Discord or read production Firestore.
 
