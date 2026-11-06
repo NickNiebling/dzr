@@ -67,22 +67,42 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         const { registration, token } = await service.enroll(userId, interaction.user.username, {
           youtube: interaction.fields.getTextInputValue("youtube"), twitch: interaction.fields.getTextInputValue("twitch"),
         });
+        const installation = new EmbedBuilder().setTitle("1. Hent og tilføj hjælpefilen i OBS").setColor(0x3498db)
+          .setDescription(`1. [Download dzr-stream.lua](${baseUrl}/streaming/dzr-stream.lua) på den computer, hvor du bruger OBS.\n`
+            + "2. Åbn **OBS Studio**, programmet du streamer fra.\n"
+            + "3. Vælg **Værktøjer / Tools → Scripts** i menuen øverst i OBS.\n"
+            + "4. Klik på **+** (plusset) under listen med scripts.\n"
+            + "5. Find og vælg **dzr-stream.lua**, som du lige har downloadet. Den ligger ofte i **Downloads / Overførsler**. Klik **Åbn / Open**.\n"
+            + "6. Klik på **dzr-stream.lua** i listen. Nu vises de felter, du skal udfylde i næste afsnit.");
+        const settings = new EmbedBuilder().setTitle("2. Forbind OBS med DZR").setColor(0x3498db)
+          .setDescription("Udfyld felterne for **dzr-stream.lua** i Scripts-vinduet. Feltnavnene nedenfor er de samme som i OBS.")
+          .addFields(
+            { name: "DZR endpoint — DZR-adresse", value: `Kopiér denne adresse, og indsæt den i **DZR endpoint**:\n\`${baseUrl}/streaming/obs\`` },
+            { name: "DZR key — din personlige DZR-nøgle", value: `Kopiér denne nøgle, og indsæt den i **DZR key**:\n\`${token}\`\n`
+              + "Den forbinder OBS med din DZR-tilmelding. Det er ikke din streamnøgle til YouTube eller Twitch.\n"
+              + "Nøglen vises kun i denne private besked. Del den ikke. En tidligere DZR-nøgle er nu ugyldig; opdatér derfor også OBS, hvis du var tilmeldt før." },
+            { name: "Platform", value: "Vælg **YouTube** eller **Twitch**, alt efter hvor du streamer fra dette OBS. Vælg en platform, du har tilmeldt ovenfor.\n"
+              + "**YouTube-videolink** er valgfrit og kan stå tomt." },
+          );
+        const connection = new EmbedBuilder().setTitle("3. Test forbindelsen").setColor(0x3498db)
+          .setDescription("1. Klik på **Test forbindelse** i OBS.\n"
+            + "2. Gå tilbage til denne besked i Discord, og klik på **Kontrollér OBS-forbindelse** nedenfor.\n"
+            + "3. Du skal se en bekræftelse med tidspunktet for signalet fra OBS. Kontrollér, at tidspunktet passer med din test.\n\n"
+            + "Hvis der ikke er modtaget et signal: Kontrollér **DZR endpoint** og **DZR key** i OBS, tryk **Test forbindelse** igen, og kontrollér derefter i Discord.\n\n"
+            + `Testen sender ingen offentlig besked. Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.\n\n`
+            + "Du kan afmelde dig med /streaming_remove. Har du mistet DZR-nøglen, kan du få en ny med /streaming_add. Det gør den gamle nøgle ugyldig, så husk at opdatere OBS.");
         await interaction.editReply({ content:
-          `✅ **Dine kanaler er tilmeldt**\n${Object.entries(registration.channels).map(([platform, channel]) => `${platform}: ${channel.url}`).join("\n")}\n\n`
-          + `**Gør OBS klar — én gang:**\n1. [Download dzr-stream.lua](${baseUrl}/streaming/dzr-stream.lua).\n`
-          + "2. Åbn OBS → Værktøjer / Tools → Scripts → **+**, og vælg filen.\n"
-          + `3. Indsæt callback-adressen i **DZR endpoint**:\n\`${baseUrl}/streaming/obs\`\n`
-          + `4. Indsæt denne personlige nøgle i **DZR key**:\n\`${token}\`\n`
-          + "5. Vælg din platform (eller Automatisk), og tryk **Test forbindelse** i OBS.\n\n"
-          + "Nøglen vises kun her. Del den ikke. En tidligere nøgle er nu ugyldig. "
-          + "Du kan få en ny med /streaming_add og afmelde dig med /streaming_remove.\n"
-          + `Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.`,
+          `✅ **Dine kanaler er tilmeldt — gør nu OBS klar**\n${Object.entries(registration.channels).map(([platform, channel]) => `${platform === "youtube" ? "YouTube" : "Twitch"}: ${channel.url}`).join("\n")}\n\n`
+          + "Følg de tre afsnit nedenfor på din OBS-computer. Opsætningen er kun synlig for dig.",
+          embeds: [installation, settings, connection],
           components: [row(button("status", userId, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))], allowedMentions: { parse: [] } });
       } else if (interaction.commandName === "streaming_add") {
         const existing = await service.getRegistration(userId);
         await interaction.editReply({ content: "**Tilmeld din streaming til DZR**\n"
-          + "Først angiver du dine egne YouTube- og/eller Twitch-kanaler. Derefter får du OBS-scriptet, en installationsvejledning og din personlige nøgle.\n\n"
-          + (existing ? "Du er allerede tilmeldt. Når du gemmer formularen, erstattes kanalerne og din gamle nøgle. Opdatér derefter nøglen i OBS." : "Du behøver ikke forbinde din Google- eller Twitch-konto. Opsætningen er kun synlig for dig."),
+          + "Få automatisk en besked i DZR, når din stream går live. Først angiver du din YouTube- eller Twitch-kanal. Derefter hjælper vi dig med at tilføje en lille hjælpefil i **OBS Studio**, programmet du streamer fra.\n\n"
+          + "Klik på knappen nedenfor, og indsæt linket til din egen kanal, fx `https://www.youtube.com/@din-kanal` eller `https://www.twitch.tv/din-kanal`. Udfyld mindst én kanal; den anden må gerne være tom.\n\n"
+          + "Opsætningen er kun synlig for dig. Du behøver ikke forbinde din Google- eller Twitch-konto.\n\n"
+          + (existing ? "**Du er allerede tilmeldt.** Når du gemmer formularen, erstattes kanalerne og din gamle DZR-nøgle. Opdatér derefter nøglen i OBS." : "Når du har gemt formularen, får du en vejledning trin for trin."),
           components: [row(button("channels", userId, existing ? "Redigér kanaler og få ny nøgle" : "Angiv streamingkanaler"))] });
       } else if (interaction.commandName === "streaming_remove") {
         await interaction.editReply({ content: "Vil du afmelde din streaming? Din DZR-nøgle spærres, og ventende annonceringer stoppes. Fjern også scriptet fra OBS bagefter.",
