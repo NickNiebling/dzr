@@ -310,6 +310,17 @@ function BonusSegmentTable({ route, profile }: { route: CatalogRoute; profile: R
   )
 }
 
+/** A limited-series stage: its profile, then the bonus segments with km once the profile has loaded. */
+function StageCourse({ route }: { route: CatalogRoute }) {
+  const [profile, setProfile] = useState<RaceProfile | null>(null)
+  return (
+    <Stack spacing={4}>
+      <CourseProfile route={route} onProfile={setProfile} />
+      {profile ? <BonusSegmentTable route={route} profile={profile} /> : null}
+    </Stack>
+  )
+}
+
 function PointsSection({ route, profile }: { route: CatalogRoute; profile?: RaceProfile | null }) {
   const sprints = sprintColumns(route)
   const kmTable = profile && bonusSegmentRows(profile, sprints).length ? profile : null
@@ -557,7 +568,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
               race.route ? [(
                 <Stack key={`${race.date}-${race.label}`} spacing={2}>
                   <Heading color="white" fontSize="lg">{[race.label, race.routeName].filter(Boolean).join(' · ')}</Heading>
-                  <CourseProfile route={race.route} />
+                  <StageCourse route={race.route} />
                 </Stack>
               )] : []
             ))}
@@ -567,7 +578,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
         race.route ? (
           <Stack key={`${race.date}-${race.label}`} spacing={2}>
             <Heading color="white" fontSize="lg">{[race.label, race.routeName].filter(Boolean).join(' · ')}</Heading>
-            <CourseProfile route={race.route} />
+            <StageCourse route={race.route} />
           </Stack>
         ) : null
       ))}
