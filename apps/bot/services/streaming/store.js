@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { createBroadcastStore } = require("./broadcastStore");
 const { HEARTBEAT_TTL_MS, DISCOVERY_WINDOW_MS, checkDelay, discoveryExpired, hash, StreamingError, registrationKey, sessionKey, announcementKey } = require("./model");
 
 const COLLECTION = "streaming_bot";
@@ -207,7 +208,7 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
     });
   }
 
-  return { getRegistration, register, remove, acceptEvent, claimSession, finishCheck, claimNotice, beginSend, finishNotice, reserveSearch,
+  return { ...createBroadcastStore(db, { now }), getRegistration, register, remove, acceptEvent, claimSession, finishCheck, claimNotice, beginSend, finishNotice, reserveSearch,
     queueAlert, claimAlert, finishAlert,
     listAlerts: async () => (await col.where("alertPending", "==", true).get()).docs.map(read),
     listRegistrations: async (guildId) => (await values("member")).filter((item) => item.guildId === guildId),

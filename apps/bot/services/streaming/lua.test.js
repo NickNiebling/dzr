@@ -22,7 +22,7 @@ test("OBS Lua uses real libcurl multi over TLS; start/heartbeat/stop ordering, r
     req.on("end", () => {
       const parsed = JSON.parse(body);
       requests.push({ body: parsed, authorization: req.headers.authorization, url: req.url });
-      res.writeHead(requests.length === 1 ? 503 : parsed.platform === null ? 400 : 202, { "Content-Type": "application/json" });
+      res.writeHead(requests.length === 1 ? 503 : 202, { "Content-Type": "application/json" });
       res.end('{"accepted":true}');
     });
   });
@@ -72,7 +72,7 @@ obslua = {
   obs_frontend_streaming_active=function() return false end,
   timer_add=function(fn) tick=fn end, timer_remove=function() end,
   obs_properties_create=function() return {} end, obs_properties_add_text=function() end,
-  obs_properties_add_list=function() return {} end, obs_property_list_add_string=function() end,
+  obs_properties_add_list=function() error("platform selection must not be required") end,
   obs_properties_add_button=function(_,_,_,fn) test_button=fn end,
 }
 dofile(${JSON.stringify(script)})
@@ -86,13 +86,14 @@ event(1); pump(20) -- duplicate OBS event is ignored
 clock=clock+31; pump(50)
 event(2); pump(50)
 service_name="Twitch"
+script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, video_link="https://www.youtube.com/watch?v=abcdefghijk"})
 test_button(); pump(50)
 event(1); pump(50)
 event(2); pump(50)
 service_name="Custom RTMP"
-event(1); pump(50) -- an undetected platform is sent as null so DZR can report to IT
+event(1); pump(50) -- a custom service is sent as null; DZR discovers registered channels
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="twitch"})
-pump(50) -- selecting a known platform repairs the active session
+pump(50) -- legacy platform settings are optional hints, not new starts
 event(2); pump(50)
 service_available=false
 script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="auto"})
@@ -109,13 +110,17 @@ script_unload()
   const exit = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
   assert.equal(exit, 0, output);
   assert.deepEqual(requests.map((r) => r.body.event), ["test", "test", "started", "heartbeat", "stopped",
-    "test", "started", "stopped", "started", "started", "stopped", "test", "test"], output);
+    "test", "started", "stopped", "started", "stopped", "test", "test"], output);
   assert.deepEqual(requests.map((r) => r.body.platform), ["youtube", "youtube", "youtube", "youtube", "youtube",
-    "twitch", "twitch", "twitch", null, "twitch", "twitch", null, null]);
+    "twitch", "twitch", "twitch", null, null, null, null]);
   assert.deepEqual(requests.slice(2, 5).map((r) => r.body.sequence), [1, 2, 3]);
   assert.equal(requests[2].body.sessionId, requests[4].body.sessionId);
   assert.equal(requests[8].body.sessionId, requests[9].body.sessionId);
   assert.equal(requests[8].body.startedAt, requests[9].body.startedAt);
+  assert.equal(requests[5].body.videoId, "abcdefghijk");
+  assert.equal(requests[6].body.videoId, "abcdefghijk");
+  assert.equal(requests[8].body.videoId, "abcdefghijk");
+  assert.ok(!output.includes("Ukendt streamingplatform"), output);
   assert.ok(requests.every((r) => r.authorization === `Bearer ${token}` && r.url === "/streaming/obs"));
   assert.ok(!output.includes(token));
 });

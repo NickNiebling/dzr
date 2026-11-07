@@ -43,3 +43,50 @@ test("ambiguous #it lookup fails closed rather than reporting to an arbitrary ch
   } });
   await assert.rejects(publisher.reportError({}), /streaming_it_channel_not_found/);
 });
+
+test("edits replace embeds and buttons on the existing message with mentions disabled", async () => {
+  let edited;
+  const publisher = createPublisher({}, "guild", { rest: {
+    async get() { return { guild_id: "guild", type: 0 }; },
+    async patch(route, payload) { edited = { route, body: payload.body }; return { id: "original" }; },
+    async post() { assert.fail("an update must never create another message"); },
+  } });
+  const result = await publisher.edit({ channelId: "channel", messageId: "original" }, {
+    content: "Afsluttet", embeds: [{ title: "Afsluttet" }], components: [], allowedMentions: { parse: ["everyone"] },
+  });
+  assert.deepEqual(result, { deleted: false });
+  assert.equal(edited.route, "/channels/channel/messages/original");
+  assert.equal(edited.body.content, "Afsluttet");
+  assert.deepEqual(edited.body.components, []);
+  assert.deepEqual(edited.body.allowed_mentions, { parse: [] });
+  assert.equal("allowedMentions" in edited.body, false);
+  assert.equal("nonce" in edited.body, false);
+});
+
+test("deleted messages are reported as deleted; transient edit failures still throw", async () => {
+  let error = { status: 404, code: 10008 };
+  const publisher = createPublisher({}, "guild", { rest: {
+    async get() { return { guild_id: "guild", type: 0 }; },
+    async patch() { throw error; },
+  } });
+  assert.deepEqual(await publisher.edit({ channelId: "channel", messageId: "original" }, {}), { deleted: true });
+  error = new Error("network unavailable");
+  await assert.rejects(publisher.edit({ channelId: "channel", messageId: "original" }, {}), error);
+});
+
+test("uncertain first sends recover against all immutable initial embed fingerprints", async () => {
+  const initialMessage = { embeds: [
+    { url: "https://www.youtube.com/watch?v=abcdefghijk", timestamp: "2026-10-27T18:00:00.000Z" },
+    { url: "https://www.twitch.tv/dzr", timestamp: "2026-10-27T18:04:00.000Z" },
+  ] };
+  const messages = [
+    { id: "only-one-platform", author: { id: "bot" }, embeds: [initialMessage.embeds[0]] },
+    { id: "other-bot", author: { id: "other" }, embeds: initialMessage.embeds },
+    { id: "right", author: { id: "bot" }, embeds: initialMessage.embeds },
+  ].map((message) => ({ ...message, timestamp: "2026-10-27T18:04:01.000Z" }));
+  const publisher = createPublisher({ user: { id: "bot" } }, "guild", { rest: {
+    async get(route) { return route.endsWith("/messages") ? messages : { guild_id: "guild", type: 0 }; },
+  } });
+  const result = await publisher.findExisting({ channelId: "channel", firstAttemptAt: Date.parse("2026-10-27T18:04:00Z"), initialMessage });
+  assert.deepEqual(result, { complete: true, messageId: "right" });
+});

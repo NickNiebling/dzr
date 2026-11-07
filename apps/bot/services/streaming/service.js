@@ -1,10 +1,12 @@
 const { StreamingError, HEARTBEAT_TTL_MS, tokenOwner, tokenMatches, parseEvent, createToken, hash, announcementMessage } = require("./model");
+const { createBroadcastWorker } = require("./broadcasts");
 
 function createStreamingService({ store, providers, publisher, guildId, channelId, now = Date.now, logger = console }) {
   let running = false;
   let timer;
   let lastFallbackAt = -Infinity;
   const system = { registrationId: `worker_${guildId}`, guildId, discordId: null };
+  const broadcasts = createBroadcastWorker({ store, providers, publisher, guildId, channelId, now, reportError });
 
   async function reportError(registration, code, sessionId) {
     try { await store.queueAlert(registration, code, sessionId); }
@@ -41,8 +43,7 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
     if (!registration || !tokenMatches(token, registration.tokenHash)) throw new StreamingError("invalid_key", "DZR-nøglen er ikke gyldig.", 401);
     try {
       const event = parseEvent(body, now());
-      if (!registration.channels[event.platform]) throw new StreamingError("channel_not_registered", "Denne platform er ikke tilmeldt.", 403);
-      return await store.acceptEvent(registration, event);
+      return await store.acceptBroadcastEvent(registration, event, channelId);
     } catch (error) {
       await reportError(registration, error instanceof StreamingError ? error.code : "callback_failed");
       throw error;
@@ -110,6 +111,9 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
     if (running) return;
     running = true;
     try {
+      const current = (await store.listBroadcasts()).filter((item) => item.guildId === guildId && item.channelId === channelId);
+      // Two broadcasts can discover two providers each: at most four concurrent checks.
+      for (let i = 0; i < current.length; i += 2) await Promise.all(current.slice(i, i + 2).map((item) => broadcasts.process(item.id)));
       const sessions = (await store.listSessions()).filter((session) => session.guildId === guildId
         && !(session.nextCheckAt > now()) && !(session.leaseUntil > now())
         && (!session.discoveredAt || session.lastSeenAt <= now() - HEARTBEAT_TTL_MS));
@@ -135,7 +139,7 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
     getRegistration: (discordId) => store.getRegistration(guildId, discordId),
     remove: (discordId) => store.remove(guildId, discordId),
     overview: () => store.listRegistrations(guildId),
-    async issues() { return [...await store.listIssues(guildId), ...(await store.listNotices()).filter((item) => item.channelId === channelId && item.lastError)]; },
+    async issues() { return [...await store.listIssues(guildId), ...await store.listBroadcastIssues(guildId), ...(await store.listNotices()).filter((item) => item.channelId === channelId && item.lastError)]; },
     start() { if (!timer) { timer = setInterval(tick, 5000); timer.unref(); void tick(); } },
     stop() { clearInterval(timer); timer = null; } };
 }
