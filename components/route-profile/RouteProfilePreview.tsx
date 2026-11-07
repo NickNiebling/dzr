@@ -89,8 +89,22 @@ function isReverse(segment: ProfileSegment) {
   return segment.direction === 'reverse' || wantsReverse(segment.name)
 }
 
-function bonusNames(segments: ProfileSegment[], bonusSprints: BonusSprint[], lapKm: number) {
-  const labels = new Map<string, string>()
+export type BonusSegmentRow = {
+  name: string
+  type: ProfileSegment['type']
+  lap: number
+  fromKm: number
+  toKm: number
+}
+
+function lapOf(segment: ProfileSegment, lapKm: number, leadInKm: number) {
+  if (!(lapKm > 0)) return 1
+  const onLap = Math.max(0, segment.fromKm - (leadInKm > 0 ? leadInKm : 0))
+  return Math.floor(onLap / lapKm + 1e-6) + 1
+}
+
+function matchBonusSegments(segments: ProfileSegment[], bonusSprints: BonusSprint[], lapKm: number, leadInKm = 0) {
+  const matches: { segment: ProfileSegment; name: string; lap: number }[] = []
   for (const row of bonusSprints) {
     const query = row.name.trim()
     if (!query) continue
@@ -111,12 +125,39 @@ function bonusNames(segments: ProfileSegment[], bonusSprints: BonusSprint[], lap
       .map((part) => Number(part.trim()))
       .filter((value) => value > 0)
     for (const segment of candidates) {
-      const lap = lapKm > 0 ? Math.floor(segment.fromKm / lapKm) + 1 : 1
+      const lap = lapOf(segment, lapKm, leadInKm)
       if (laps.length && !laps.includes(lap)) continue
-      labels.set(segmentId(segment), query)
+      matches.push({ segment, name: query, lap })
     }
   }
+  return matches
+}
+
+function bonusNames(segments: ProfileSegment[], bonusSprints: BonusSprint[], lapKm: number, leadInKm = 0) {
+  const labels = new Map<string, string>()
+  for (const match of matchBonusSegments(segments, bonusSprints, lapKm, leadInKm)) {
+    labels.set(segmentId(match.segment), match.name)
+  }
   return labels
+}
+
+/** Bonus segments placed on the race profile, in race order, with km from the pens (lead-in included). */
+export function bonusSegmentRows(profile: RaceProfile, bonusSprints: BonusSprint[]): BonusSegmentRow[] {
+  const seen = new Set<string>()
+  const rows: BonusSegmentRow[] = []
+  for (const match of matchBonusSegments(profile.segments, bonusSprints, profile.lapKm, profile.leadInKm)) {
+    const id = segmentId(match.segment)
+    if (seen.has(id)) continue
+    seen.add(id)
+    rows.push({
+      name: match.name,
+      type: match.segment.type,
+      lap: match.lap,
+      fromKm: Math.min(match.segment.fromKm, match.segment.toKm),
+      toKm: Math.max(match.segment.fromKm, match.segment.toKm),
+    })
+  }
+  return rows.sort((left, right) => left.fromKm - right.fromKm || left.lap - right.lap)
 }
 
 function segmentLabel(segment: ProfileSegment, bonusName: string | undefined) {
@@ -465,7 +506,7 @@ function ProfileChart({
   named?: boolean
 }) {
   const data = pointsIn(profile, fromKm, toKm)
-  const bonusLabels = bonusNames(profile.segments, bonusSprints, profile.lapKm)
+  const bonusLabels = bonusNames(profile.segments, bonusSprints, profile.lapKm, profile.leadInKm)
   const bands = segmentsIn(profile.segments, fromKm, toKm, bonusLabels)
   if (data.length < 2) return <Text color="gray.500">No elevation in this section.</Text>
   if (colorByGrade) return <RibbonChart points={data} fromKm={fromKm} toKm={toKm} height={height} />
@@ -552,7 +593,7 @@ function markerFill(color: string, alpha: number) {
 function legendMarks(profile: RaceProfile, bonusSprints: BonusSprint[]) {
   const fromKm = profile.leadInKm || 0
   const toKm = profile.raceKm || profile.distanceKm[profile.distanceKm.length - 1]
-  const bonusLabels = bonusNames(profile.segments, bonusSprints, profile.lapKm)
+  const bonusLabels = bonusNames(profile.segments, bonusSprints, profile.lapKm, profile.leadInKm)
   const bands = segmentsIn(profile.segments, fromKm, toKm, bonusLabels)
   const bonus = (segment: ProfileSegment) => bonusLabels.has(segmentId(segment))
   const marks = []

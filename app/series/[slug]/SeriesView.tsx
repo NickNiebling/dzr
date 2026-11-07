@@ -21,8 +21,9 @@ import {
   Tr,
   type TextProps,
 } from '@chakra-ui/react'
-import type { ReactNode } from 'react'
-import { RouteProfilePreview } from '@/components/route-profile/RouteProfilePreview'
+import { useState, type ReactNode } from 'react'
+import { bonusSegmentRows, RouteProfilePreview } from '@/components/route-profile/RouteProfilePreview'
+import type { RaceProfile } from '@/packages/shared/routeProfile'
 import { SeriesRulesList } from '@/components/series/SeriesRules'
 import { zwiftInsiderUrl } from '@/packages/shared/routeProfile'
 import { normalizeZwiftEventUrl } from '@/packages/shared/zwiftEvents'
@@ -178,7 +179,15 @@ function hasWeeklyPoints(route: CatalogRoute | null) {
   return Boolean(route && (sprintColumns(route).length || bonusValues(route).length))
 }
 
-function CourseProfile({ route, carousel = false }: { route: CatalogRoute; carousel?: boolean }) {
+function CourseProfile({
+  route,
+  carousel = false,
+  onProfile,
+}: {
+  route: CatalogRoute
+  carousel?: boolean
+  onProfile?: (profile: RaceProfile | null) => void
+}) {
   const bonus = sprintColumns(route)
   return (
     <Stack spacing={4}>
@@ -195,6 +204,7 @@ function CourseProfile({ route, carousel = false }: { route: CatalogRoute; carou
         showClimbs={route.climbs.length + route.customClimbs.length > 0}
         showFinish={carousel && Boolean(route.finish)}
         bonusSprints={bonus}
+        onProfile={onProfile}
         carousel={carousel}
       />
     </Stack>
@@ -263,8 +273,57 @@ function AwardTable({ label, values, suffix = '' }: { label: string; values: str
   )
 }
 
-function PointsSection({ route }: { route: CatalogRoute }) {
+function BonusSegmentTable({ route, profile }: { route: CatalogRoute; profile: RaceProfile }) {
+  const rows = bonusSegmentRows(profile, sprintColumns(route))
+  if (!rows.length) return null
+  const cell = { borderRight: '1px solid white' }
+  return (
+    <Stack spacing={2}>
+      <TableContainer>
+        <Table size="sm" color="white" borderColor="white" border="1px">
+          <Thead>
+            <Tr>
+              <Th textAlign="left" color="white" {...cell}>Segment</Th>
+              <Th textAlign="center" color="white" {...cell}>Lap</Th>
+              <Th isNumeric color="white" {...cell}>From km</Th>
+              <Th isNumeric color="white">To km</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {rows.map((row) => (
+              <Tr key={`${row.name}-${row.fromKm}`}>
+                <Td textAlign="left" fontWeight="700" {...cell}>{row.name}</Td>
+                <Td textAlign="center" {...cell}>{row.lap}</Td>
+                <Td isNumeric fontFamily="mono" {...cell}>{row.fromKm.toFixed(1)}</Td>
+                <Td isNumeric fontFamily="mono">{row.toKm.toFixed(1)}</Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
+      <Text color="gray.400" fontSize="xs">
+        {profile.leadInKm > 0
+          ? `Distances include the lead-in (${profile.leadInKm.toFixed(1)} km)`
+          : 'Distances include the lead-in'}
+      </Text>
+    </Stack>
+  )
+}
+
+/** A limited-series stage: its profile, then the bonus segments with km once the profile has loaded. */
+function StageCourse({ route }: { route: CatalogRoute }) {
+  const [profile, setProfile] = useState<RaceProfile | null>(null)
+  return (
+    <Stack spacing={4}>
+      <CourseProfile route={route} onProfile={setProfile} />
+      {profile ? <BonusSegmentTable route={route} profile={profile} /> : null}
+    </Stack>
+  )
+}
+
+function PointsSection({ route, profile }: { route: CatalogRoute; profile?: RaceProfile | null }) {
   const sprints = sprintColumns(route)
+  const kmTable = profile && bonusSegmentRows(profile, sprints).length ? profile : null
   const bonuses = bonusValues(route)
   const finish = route.award === 'points' ? route.finishPoints.map((value) => value.trim()).filter(Boolean) : []
   const points = route.award === 'points'
@@ -279,6 +338,7 @@ function PointsSection({ route }: { route: CatalogRoute }) {
               ? 'First across line (FAL) points are awarded on segments below'
               : 'First across line (FAL) bonus seconds on segments below'}
           </Heading>
+          {kmTable ? <BonusSegmentTable route={route} profile={kmTable} /> : (
           <TableContainer>
             <Table size="sm" color="white" borderColor="white" border="1px">
               <Thead>
@@ -299,6 +359,7 @@ function PointsSection({ route }: { route: CatalogRoute }) {
               </Tbody>
             </Table>
           </TableContainer>
+          )}
         </>
       ) : null}
       {bonuses.length ? (
@@ -322,6 +383,7 @@ function PointsSection({ route }: { route: CatalogRoute }) {
 function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: SeriesRaceView }) {
   const route = race.route
   const start = race.starts.find((item) => item.eventId)
+  const [profile, setProfile] = useState<RaceProfile | null>(null)
   return (
     <Stack spacing={6}>
       <Heading color="white">{series.name}</Heading>
@@ -376,11 +438,11 @@ function WeeklyPointsRace({ series, race }: { series: SeriesPageData; race: Seri
       <Heading as="h1" size="lg" color="white">Route Profile and Key Climbs</Heading>
       {route ? <Heading as="h2" size="lg" color="white">{route.route}</Heading> : null}
       {route ? (
-        <CourseProfile route={route} carousel={series.carousel} />
+        <CourseProfile route={route} carousel={series.carousel} onProfile={setProfile} />
       ) : (
         <Text color="gray.400">Add a route in the series setup to show the course here.</Text>
       )}
-      {route ? <PointsSection route={route} /> : null}
+      {route ? <PointsSection route={route} profile={profile} /> : null}
     </Stack>
   )
 }
@@ -506,7 +568,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
               race.route ? [(
                 <Stack key={`${race.date}-${race.label}`} spacing={2}>
                   <Heading color="white" fontSize="lg">{[race.label, race.routeName].filter(Boolean).join(' · ')}</Heading>
-                  <CourseProfile route={race.route} />
+                  <StageCourse route={race.route} />
                 </Stack>
               )] : []
             ))}
@@ -516,7 +578,7 @@ function LimitedSeries({ series }: { series: SeriesPageData }) {
         race.route ? (
           <Stack key={`${race.date}-${race.label}`} spacing={2}>
             <Heading color="white" fontSize="lg">{[race.label, race.routeName].filter(Boolean).join(' · ')}</Heading>
-            <CourseProfile route={race.route} />
+            <StageCourse route={race.route} />
           </Stack>
         ) : null
       ))}
