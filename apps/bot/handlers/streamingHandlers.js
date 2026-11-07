@@ -73,10 +73,10 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
           + "2. Åbn OBS → Værktøjer / Tools → Scripts → **+**, og vælg filen.\n"
           + `3. Indsæt callback-adressen i **DZR endpoint**:\n\`${baseUrl}/streaming/obs\`\n`
           + `4. Indsæt denne personlige nøgle i **DZR key**:\n\`${token}\`\n`
-          + "5. Vælg din platform (eller Automatisk), og tryk **Test forbindelse** i OBS.\n\n"
+          + "5. Tryk **Test forbindelse** i OBS. DZR finder selv, hvilke af dine tilmeldte kanaler der er live.\n\n"
           + "Nøglen vises kun her. Del den ikke. En tidligere nøgle er nu ugyldig. "
           + "Du kan få en ny med /streaming_add og afmelde dig med /streaming_remove.\n"
-          + `Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.`,
+          + `Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Ekstra platforme tilføjes til samme opslag, hvis de bliver fundet inden for fem minutter. Planlagte streams annonceres ikke.`,
           components: [row(button("status", userId, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))], allowedMentions: { parse: [] } });
       } else if (interaction.commandName === "streaming_add") {
         const existing = await service.getRegistration(userId);

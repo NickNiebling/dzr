@@ -4,6 +4,41 @@ const { StreamingError, requirePlatform, parseChannel, youtubeLive } = require("
 function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, { fetchImpl = fetch, now = Date.now } = {}) {
   let twitchToken = null;
   let tokenRequest = null;
+  const unavailable = () => new StreamingError("provider_unavailable", "Streamingtjenesten returnerede et ugyldigt svar. Prøv igen senere.", 503);
+  const isoTime = (value) => Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
+
+  function thumbnail(value) {
+    if (!value) return null;
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+    } catch { return null; }
+  }
+
+  function youtubeStream(video) {
+    const image = ["medium", "high", "default"].map((size) => thumbnail(video.snippet?.thumbnails?.[size]?.url)).find(Boolean);
+    return { platform: "youtube", id: video.id, title: String(video.snippet?.title || "Se livestream"),
+      startedAt: isoTime(video.liveStreamingDetails?.actualStartTime), url: `https://www.youtube.com/watch?v=${video.id}`,
+      ...(image ? { thumbnail: image } : {}) };
+  }
+
+  function twitchStream(channel, stream) {
+    const startedAt = isoTime(stream.started_at);
+    if (!stream.id || !startedAt) throw unavailable();
+    const image = thumbnail(String(stream.thumbnail_url || "").replaceAll("{width}", "320").replaceAll("{height}", "180"));
+    return { platform: "twitch", id: stream.id, title: String(stream.title || "Se livestream"), startedAt, url: channel.url,
+      ...(image ? { thumbnail: image } : {}) };
+  }
+
+  async function readJson(response) {
+    try { return await response.json(); }
+    catch { throw unavailable(); }
+  }
+
+  function items(response, key) {
+    if (!Array.isArray(response?.[key])) throw unavailable();
+    return response[key];
+  }
 
   async function request(url, options = {}) {
     let response;
@@ -13,7 +48,7 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
       throw new StreamingError(response.status === 429 || response.status === 403 ? "provider_quota" : "provider_unavailable",
         "Streamingtjenesten kunne ikke kontaktes. En admin kan kontrollere API-opsætningen.", 503);
     }
-    return response.json();
+    return readJson(response);
   }
 
   function requireConfigured(platform) {
@@ -56,7 +91,7 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
       catch { throw new StreamingError("provider_unavailable", "Twitch svarer ikke.", 503); }
       if (response.status === 401 && attempt === 0) { twitchToken = null; continue; }
       if (!response.ok) throw new StreamingError("provider_unavailable", "Twitch kunne ikke kontaktes.", 503);
-      return response.json();
+      return readJson(response);
     }
   }
 
@@ -78,38 +113,36 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
   async function verify(channel, session, quota) {
     requirePlatform(session.platform);
     if (session.platform === "twitch") {
-      const streams = (await twitch("streams", { user_id: channel.id, type: "live" }))?.data || [];
+      const streams = items(await twitch("streams", { user_id: channel.id, type: "live" }), "data");
       const stream = streams.find((item) => item.user_id === channel.id && item.type === "live");
-      return { streams: stream ? [{ platform: "twitch", id: stream.id, title: stream.title,
-        startedAt: new Date(stream.started_at).toISOString(), url: channel.url }] : [], state: {} };
+      return { streams: stream ? [twitchStream(channel, stream)] : [], state: {} };
     }
     const state = { candidateIds: session.candidateIds || [],
       upcomingSearched: session.upcomingSearched || false };
     const found = [];
     async function checkVideos(ids) {
       if (!ids.length) return;
-      const videos = (await youtube("videos", { part: "snippet,status,liveStreamingDetails", id: ids.join(",") }))?.items || [];
+      const videos = items(await youtube("videos", { part: "snippet,status,liveStreamingDetails", id: ids.join(",") }), "items");
       state.candidateIds = videos.filter((video) => video.snippet?.channelId === channel.id
         && !video.liveStreamingDetails?.actualEndTime && ["upcoming", "live"].includes(video.snippet?.liveBroadcastContent))
         .map((video) => video.id).slice(0, 20);
       for (const video of videos) if (youtubeLive(video, channel.id)) {
-        found.push({ platform: "youtube", id: video.id, title: video.snippet.title,
-          startedAt: new Date(video.liveStreamingDetails.actualStartTime).toISOString(), url: `https://www.youtube.com/watch?v=${video.id}` });
+        found.push(youtubeStream(video));
       }
     }
     await checkVideos(session.videoId ? [session.videoId] : state.candidateIds);
-    if (!session.videoId && !found.length) {
+    if (!session.videoId && !found.length && !state.candidateIds.length) {
       // The durable worker owns backoff and the one-hour discovery window.
       if (await quota.reserveSearch()) {
         const result = await youtube("search", { part: "snippet", channelId: channel.id, type: "video", eventType: "live", maxResults: "10" });
-        const ids = [...new Set([...state.candidateIds, ...(result.items || []).map((item) => item.id?.videoId).filter(Boolean)])];
+        const ids = [...new Set([...state.candidateIds, ...items(result, "items").map((item) => item.id?.videoId).filter(Boolean)])];
         await checkVideos(ids);
         // OBS may send to YouTube's preview before Go Live. Discover upcoming IDs once,
         // then cheaply watch their actual status; a schedule never causes an announcement.
         if (!found.length && !state.candidateIds.length && !state.upcomingSearched && await quota.reserveSearch()) {
           state.upcomingSearched = true;
           const upcoming = await youtube("search", { part: "snippet", channelId: channel.id, type: "video", eventType: "upcoming", maxResults: "10" });
-          await checkVideos((upcoming.items || []).map((item) => item.id?.videoId).filter(Boolean));
+          await checkVideos(items(upcoming, "items").map((item) => item.id?.videoId).filter(Boolean));
         }
       } else {
         return { streams: found, state, error: "youtube_search_budget" };
@@ -118,7 +151,65 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
     return { streams: found, state };
   }
 
-  return { resolveChannel, verify, requireConfigured };
+  // Monitoring never uses YouTube search. Only discovery may spend the shared search budget.
+  // API failures throw, so an unavailable provider cannot be mistaken for an ended broadcast.
+  async function monitor(channel, stream) {
+    requirePlatform(stream.platform);
+    if (stream.platform === "twitch") {
+      const streams = items(await twitch("streams", { user_id: channel.id, type: "live" }), "data");
+      const current = streams.find((item) => item.user_id === channel.id);
+      if (!current) return { status: "offline" };
+      if (current.type !== "live") throw unavailable();
+      return { status: "live", stream: twitchStream(channel, current) };
+    }
+    const videos = items(await youtube("videos", { part: "snippet,status,liveStreamingDetails", id: stream.id }), "items");
+    const video = videos.find((item) => item.id === stream.id && item.snippet?.channelId === channel.id);
+    if (youtubeLive(video, channel.id)) return { status: "live", stream: youtubeStream(video) };
+    const endedAt = isoTime(video?.liveStreamingDetails?.actualEndTime);
+    return { status: "offline", ...(endedAt ? { endedAt } : {}) };
+  }
+
+  async function recordings(channel, streams) {
+    if (!streams.length) return [];
+    const platform = streams[0].platform;
+    requirePlatform(platform);
+    if (streams.some((stream) => stream.platform !== platform)) throw unavailable();
+    const expected = new Map(streams.map((stream) => [stream.id, stream]));
+    const found = new Map();
+    if (platform === "youtube") {
+      const ids = [...expected.keys()];
+      // The videos endpoint accepts at most 50 IDs per request.
+      for (let offset = 0; offset < ids.length; offset += 50) {
+        const videos = items(await youtube("videos", { part: "snippet,status,contentDetails,liveStreamingDetails",
+          id: ids.slice(offset, offset + 50).join(",") }), "items");
+        for (const video of videos) {
+          const startedAt = isoTime(video.liveStreamingDetails?.actualStartTime);
+          if (!expected.has(video.id) || video.snippet?.channelId !== channel.id || video.status?.privacyStatus !== "public"
+              || video.status?.uploadStatus !== "processed" || !startedAt || !isoTime(video.liveStreamingDetails?.actualEndTime)) continue;
+          found.set(video.id, { id: video.id, streamId: video.id, title: String(video.snippet?.title || "Se optagelsen"),
+            url: `https://www.youtube.com/watch?v=${video.id}`, startedAt });
+        }
+      }
+    } else {
+      let cursor;
+      // Bound the work when some stream IDs have no saved VOD. Never fall back to a different archive.
+      for (let page = 0; page < 5; page++) {
+        const result = await twitch("videos", { user_id: channel.id, type: "archive", sort: "time", first: "100", ...(cursor ? { after: cursor } : {}) });
+        for (const video of items(result, "data")) {
+          if (!expected.has(video.stream_id) || video.user_id !== channel.id || video.type !== "archive"
+              || video.viewable !== "public" || !/^\d+$/.test(video.id || "")) continue;
+          const startedAt = isoTime(expected.get(video.stream_id).startedAt) || isoTime(video.created_at);
+          found.set(video.stream_id, { id: video.id, streamId: video.stream_id, title: String(video.title || "Se optagelsen"),
+            url: `https://www.twitch.tv/videos/${video.id}`, ...(startedAt ? { startedAt } : {}) });
+        }
+        cursor = result.pagination?.cursor;
+        if (!cursor || found.size === expected.size) break;
+      }
+    }
+    return [...found.values()].sort((a, b) => (Date.parse(a.startedAt) || 0) - (Date.parse(b.startedAt) || 0) || a.id.localeCompare(b.id));
+  }
+
+  return { resolveChannel, verify, monitor, recordings, requireConfigured };
 }
 
 module.exports = { createProviders };

@@ -1,4 +1,4 @@
--- DZR Streaming v1. Install through OBS > Tools > Scripts, then paste your personal DZR key.
+-- DZR Streaming v2. Install through OBS > Tools > Scripts, then paste your personal DZR key.
 -- Uses OBS's LuaJIT FFI and libcurl multi: no shell, Python, stream keys or Google login.
 local obs = obslua
 local ffi = require("ffi")
@@ -88,9 +88,6 @@ local function video_id()
 end
 
 local function new_session()
-    if platform() == nil then
-        log(obs.LOG_ERROR, "Ukendt streamingplatform. DZR får besked; vælg YouTube eller Twitch i Platform.")
-    end
     last_session_start = math.max(millis(), last_session_start + 1)
     return { id = string.format("%d_%08x%08x", os.time(), math.random(0, 0x7fffffff), math.random(0, 0x7fffffff)),
         started_at = last_session_start, sequence = 0, platform = platform() }
@@ -127,7 +124,8 @@ local function body_for(job)
     obs.obs_data_set_int(data, "sequence", job.sequence)
     obs.obs_data_set_int(data, "startedAt", job.started_at)
     obs.obs_data_set_int(data, "sentAt", math.max(millis(), job.started_at))
-    if job.video_id and job.platform == "youtube" then obs.obs_data_set_string(data, "videoId", job.video_id) end
+    -- The server checks every registered channel, including YouTube when OBS uses another service.
+    if job.video_id then obs.obs_data_set_string(data, "videoId", job.video_id) end
     local body = obs.obs_data_get_json(data)
     -- OBS string setters cannot represent nil; serialize the absent platform as JSON null.
     if job.platform == nil then body = body:gsub("}%s*$", ',"platform":null}') end
@@ -187,14 +185,10 @@ local function pump()
             log(obs.LOG_INFO, "Signal modtaget af DZR. Kun en bekræftet offentlig livestream annonceres.")
         end
     elseif code == 401 or code == 403 then
-        log(obs.LOG_ERROR, "Nøgle eller platform afvist. Kør /streaming_add, og kontrollér opsætningen.")
+        log(obs.LOG_ERROR, "DZR-nøglen blev afvist. Kør /streaming_add, og kontrollér opsætningen.")
         queue = {}
     elseif code == 400 then
-        if pending.platform == nil then
-            log(obs.LOG_ERROR, "Ukendt platform afvist af DZR. Vælg YouTube eller Twitch i Platform.")
-        else
-            log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur og det valgfrie YouTube-link.")
-        end
+        log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur og det valgfrie YouTube-link.")
     elseif pending.attempts < 5 then
         pending.retry_at = os.time() + math.min(30, 2 ^ pending.attempts)
         table.insert(queue, 1, pending)
@@ -210,22 +204,18 @@ jit.off(pump, true)
 function script_description()
     return "<b>DZR Streaming</b><br>Brug /streaming_add i Discord for adresse og personlig nøgle. "
         .. "Stream keys læses aldrig. Test sender ingen offentlig besked. "
+        .. "DZR finder selv, hvilke af dine tilmeldte kanaler der er live. "
         .. "Ved YouTube kan et konkret videolink gøre live-verifikationen hurtigere."
 end
 
 function script_defaults(settings)
     obs.obs_data_set_default_string(settings, "endpoint", endpoint)
-    obs.obs_data_set_default_string(settings, "platform", "auto")
 end
 
 function script_properties()
     local props = obs.obs_properties_create()
     obs.obs_properties_add_text(props, "endpoint", "DZR endpoint", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(props, "key", "DZR key", obs.OBS_TEXT_PASSWORD)
-    local choices = obs.obs_properties_add_list(props, "platform", "Platform", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
-    for _, choice in ipairs({ { "Automatisk", "auto" }, { "YouTube", "youtube" }, { "Twitch", "twitch" } }) do
-        obs.obs_property_list_add_string(choices, choice[1], choice[2])
-    end
     obs.obs_properties_add_text(props, "video_link", "YouTube-videolink (valgfrit, opdatér for hver stream)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_button(props, "test", "Test forbindelse", function()
         if valid_settings() then enqueue("test", new_session()) end
@@ -242,11 +232,6 @@ function script_update(settings)
     platform_setting = obs.obs_data_get_string(settings, "platform")
     if platform_setting == "" then platform_setting = "auto" end
     video_link = trim(obs.obs_data_get_string(settings, "video_link"))
-    -- A manual selection can repair auto-detection while OBS is already streaming.
-    if session and session.platform == nil and platform() ~= nil then
-        session.platform = platform()
-        enqueue("started", session)
-    end
 end
 
 function script_load(settings)
@@ -267,5 +252,6 @@ function script_unload()
     if multi then curl.curl_multi_cleanup(multi); multi = nil end
     if write_callback then write_callback:free(); write_callback = nil end
     -- No global cleanup: OBS and other scripts may still be using the same libcurl.
-    -- If OBS exits abruptly, the server expires the session after missing heartbeats.
+    -- If OBS exits abruptly, the server expires undiscovered work after missing heartbeats.
+    -- Verified public streams are monitored independently until the provider confirms the end.
 end

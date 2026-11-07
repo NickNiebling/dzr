@@ -59,6 +59,9 @@ test("a scheduled preview is discovered once, then cheap video polling detects i
   const first = await providers.verify(channel, session, quota);
   assert.equal(first.streams.length, 0);
   assert.deepEqual(first.state.candidateIds, [video.id]);
+  time += 20000;
+  assert.equal((await providers.verify(channel, { ...session, ...first.state }, quota)).streams.length, 0);
+  assert.equal(searches, 2, "a known upcoming ID is polled directly without another search");
   live = true; time += 20000;
   assert.equal((await providers.verify(channel, { ...session, ...first.state }, quota)).streams.length, 1);
   assert.equal(searches, 2);
@@ -103,4 +106,135 @@ test("unknown platforms never call YouTube, Twitch or quota reservation", async 
   assert.throws(() => providers.requireConfigured("unknown"), { code: "unknown_platform" });
   await assert.rejects(providers.resolveChannel("unknown", "@DZR"), { code: "unknown_platform" });
   await assert.rejects(providers.verify(channel, { platform: "unknown" }, { reserveSearch() { assert.fail(); } }), { code: "unknown_platform" });
+  await assert.rejects(providers.monitor(channel, { platform: "unknown" }), { code: "unknown_platform" });
+  await assert.rejects(providers.recordings(channel, [{ platform: "unknown" }]), { code: "unknown_platform" });
+});
+
+test("verification includes a small provider thumbnail and tolerates missing or unsafe images", async () => {
+  let image = "https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg";
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async () => json({ items: [{ ...video,
+    snippet: { ...video.snippet, thumbnails: { medium: { url: image } } } }] }) });
+  const session = { platform: "youtube", videoId: video.id };
+  const first = (await providers.verify(channel, session, {})).streams[0];
+  assert.equal(first.thumbnail, image);
+  image = "javascript:alert(1)";
+  assert.ok(!Object.hasOwn((await providers.verify(channel, session, {})).streams[0], "thumbnail"));
+  image = null;
+  assert.ok(!Object.hasOwn((await providers.verify(channel, session, {})).streams[0], "thumbnail"));
+});
+
+test("YouTube monitoring checks the known ID directly and returns the actual end time", async () => {
+  let current = video;
+  const calls = [];
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+    calls.push(url);
+    return json({ items: current ? [current] : [] });
+  } });
+  const stream = { platform: "youtube", id: video.id };
+  assert.equal((await providers.monitor(channel, stream)).status, "live");
+  current = { ...video, snippet: { ...video.snippet, liveBroadcastContent: "none" },
+    liveStreamingDetails: { ...video.liveStreamingDetails, actualEndTime: "2026-10-27T19:42:00Z" } };
+  assert.deepEqual(await providers.monitor(channel, stream), { status: "offline", endedAt: "2026-10-27T19:42:00.000Z" });
+  current = { ...video, snippet: { ...video.snippet, channelId: "other-channel" } };
+  assert.deepEqual(await providers.monitor(channel, stream), { status: "offline" });
+  current = { ...video, status: { privacyStatus: "private" } };
+  assert.deepEqual(await providers.monitor(channel, stream), { status: "offline" });
+  current = null;
+  assert.deepEqual(await providers.monitor(channel, stream), { status: "offline" });
+  assert.ok(calls.every((url) => url.pathname.endsWith("/videos") && url.searchParams.get("id") === video.id));
+});
+
+test("Twitch monitoring follows the registered channel after a reconnect and resolves thumbnail dimensions", async () => {
+  const twitchChannel = { id: "1234", url: "https://www.twitch.tv/dzr" };
+  let current = { id: "stream2", user_id: "1234", type: "live", title: "Reconnected", started_at: "2026-10-27T18:02:00Z",
+    thumbnail_url: "https://static-cdn.jtvnw.net/previews-ttv/live_user_dzr-{width}x{height}.jpg" };
+  const providers = createProviders({ twitchClientId: "client", twitchClientSecret: "secret" }, { fetchImpl: async (url) => {
+    if (String(url).includes("oauth2/token")) return json({ access_token: "token", expires_in: 3600 });
+    assert.equal(url.searchParams.get("user_id"), "1234");
+    return json({ data: current ? [current] : [] });
+  } });
+  const stream = { platform: "twitch", id: "stream1" };
+  const result = await providers.monitor(twitchChannel, stream);
+  assert.equal(result.status, "live");
+  assert.equal(result.stream.id, "stream2");
+  assert.equal(result.stream.thumbnail, "https://static-cdn.jtvnw.net/previews-ttv/live_user_dzr-320x180.jpg");
+  current = null;
+  assert.deepEqual(await providers.monitor(twitchChannel, stream), { status: "offline" });
+});
+
+test("monitoring errors and malformed responses never become confirmed offline status", async () => {
+  for (const response of [json({}, 503), json({ unexpected: [] }), { ok: true, async json() { throw new Error("raw body"); } }]) {
+    const providers = createProviders({ youtubeApiKey: "secret-key" }, { fetchImpl: async () => response });
+    await assert.rejects(providers.monitor(channel, { platform: "youtube", id: video.id }), (error) => {
+      assert.equal(error.code, "provider_unavailable");
+      assert.ok(!error.stack.includes("raw body"));
+      assert.ok(!JSON.stringify(error).includes("secret-key"));
+      return true;
+    });
+  }
+});
+
+test("YouTube recordings require the matching channel, an ended broadcast and public processed video", async () => {
+  const archive = { ...video, snippet: { ...video.snippet, liveBroadcastContent: "none" },
+    status: { privacyStatus: "public", uploadStatus: "processed" }, contentDetails: { duration: "PT1H42M" },
+    liveStreamingDetails: { ...video.liveStreamingDetails, actualEndTime: "2026-10-27T19:42:00Z" } };
+  let current = archive;
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+    assert.ok(url.pathname.endsWith("/videos"));
+    assert.equal(url.searchParams.get("id"), video.id);
+    assert.ok(url.searchParams.get("part").includes("contentDetails"));
+    return json({ items: [current] });
+  } });
+  const stream = { platform: "youtube", id: video.id };
+  assert.deepEqual(await providers.recordings(channel, [stream]), [{ id: video.id, streamId: video.id, title: "Racing",
+    url: `https://www.youtube.com/watch?v=${video.id}`, startedAt: "2026-10-27T18:00:00.000Z" }]);
+  for (const changed of [
+    { ...archive, id: "other-video" },
+    { ...archive, snippet: { ...archive.snippet, channelId: "other-channel" } },
+    { ...archive, status: { ...archive.status, privacyStatus: "private" } },
+    { ...archive, status: { ...archive.status, uploadStatus: "uploaded" } },
+    { ...archive, liveStreamingDetails: { actualStartTime: video.liveStreamingDetails.actualStartTime } },
+  ]) {
+    current = changed;
+    assert.deepEqual(await providers.recordings(channel, [stream]), []);
+  }
+});
+
+test("Twitch recordings follow pagination, match exact stream IDs and sort reconnect parts chronologically", async () => {
+  const twitchChannel = { id: "1234", url: "https://www.twitch.tv/dzr" };
+  const archive = { id: "900", stream_id: "stream2", user_id: "1234", type: "archive", viewable: "public", title: "Part two" };
+  const cursors = [];
+  const providers = createProviders({ twitchClientId: "client", twitchClientSecret: "secret" }, { fetchImpl: async (url) => {
+    if (String(url).includes("oauth2/token")) return json({ access_token: "token", expires_in: 3600 });
+    assert.ok(url.pathname.endsWith("/videos"));
+    assert.equal(url.searchParams.get("user_id"), "1234");
+    assert.equal(url.searchParams.get("type"), "archive");
+    const cursor = url.searchParams.get("after"); cursors.push(cursor);
+    return cursor ? json({ data: [{ ...archive, id: "899", stream_id: "stream1", title: "Part one" }] })
+      : json({ data: [archive,
+        { ...archive, id: "901", stream_id: "unrelated-latest" },
+        { ...archive, id: "902", stream_id: "stream1", user_id: "other-user" },
+        { ...archive, id: "903", stream_id: "stream1", viewable: "private" },
+        { ...archive, id: "904", stream_id: "stream1", type: "highlight" }], pagination: { cursor: "next" } });
+  } });
+  const result = await providers.recordings(twitchChannel, [
+    { platform: "twitch", id: "stream2", startedAt: "2026-10-27T18:10:00Z" },
+    { platform: "twitch", id: "stream1", startedAt: "2026-10-27T18:00:00Z" },
+  ]);
+  assert.deepEqual(cursors, [null, "next"]);
+  assert.deepEqual(result.map(({ id, streamId, url }) => ({ id, streamId, url })), [
+    { id: "899", streamId: "stream1", url: "https://www.twitch.tv/videos/899" },
+    { id: "900", streamId: "stream2", url: "https://www.twitch.tv/videos/900" },
+  ]);
+});
+
+test("Twitch archive lookup is bounded when a matching recording is unavailable", async () => {
+  let pages = 0;
+  const providers = createProviders({ twitchClientId: "client", twitchClientSecret: "secret" }, { fetchImpl: async (url) => {
+    if (String(url).includes("oauth2/token")) return json({ access_token: "token", expires_in: 3600 });
+    pages++;
+    return json({ data: [], pagination: { cursor: `page-${pages}` } });
+  } });
+  assert.deepEqual(await providers.recordings({ id: "1234" }, [{ platform: "twitch", id: "not-saved" }]), []);
+  assert.equal(pages, 5);
 });

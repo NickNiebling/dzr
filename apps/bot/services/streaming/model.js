@@ -20,7 +20,7 @@ class StreamingError extends Error {
 
 function requirePlatform(platform) {
   if (!PLATFORMS.includes(platform)) {
-    throw new StreamingError("unknown_platform", "Ukendt streamingplatform. Vælg YouTube eller Twitch i OBS-scriptets Platform-indstilling.");
+    throw new StreamingError("unknown_platform", "Ukendt streamingplatform. DZR understøtter YouTube og Twitch.");
   }
 }
 
@@ -69,7 +69,9 @@ function parseChannel(platform, input) {
 }
 
 function parseEvent(body, now = Date.now()) {
-  if (body) requirePlatform(body.platform);
+  // Legacy scripts supply their OBS output service. It is only a hint now:
+  // discovery checks the member's registered channels, including multistream outputs.
+  if (body?.platform != null) requirePlatform(body.platform);
   if (!body || !["started", "heartbeat", "stopped", "test"].includes(body.event)
       || !/^[A-Za-z0-9_-]{16,80}$/.test(body.sessionId || "") || !Number.isSafeInteger(body.sequence) || body.sequence < 1
       || !Number.isSafeInteger(body.startedAt) || !Number.isSafeInteger(body.sentAt)
@@ -77,7 +79,7 @@ function parseEvent(body, now = Date.now()) {
       || (body.videoId && !VIDEO_ID.test(body.videoId))) {
     throw new StreamingError("invalid_event", "Ugyldig eller udløbet OBS-hændelse. Tjek computerens ur.");
   }
-  return { platform: body.platform, event: body.event, sessionId: body.sessionId, sequence: body.sequence,
+  return { platform: body.platform ?? null, event: body.event, sessionId: body.sessionId, sequence: body.sequence,
     startedAt: body.startedAt, sentAt: body.sentAt, videoId: body.videoId || null };
 }
 
@@ -97,6 +99,71 @@ function announcementMessage(registration, stream) {
   };
 }
 
+const PLATFORM_PRESENTATION = {
+  youtube: { name: "YouTube", color: 0xff0000, emoji: "🔴" },
+  twitch: { name: "Twitch", color: 0x9146ff, emoji: "🟣" },
+};
+
+const asTime = (value) => typeof value === "number" ? value : Date.parse(value);
+
+function durationText(state) {
+  const duration = Number.isFinite(state.durationMs) ? state.durationMs
+    : (state.segments || []).reduce((total, segment) => {
+      const start = asTime(segment.stream?.startedAt);
+      const end = asTime(segment.endedAt);
+      return total + (Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0);
+    }, 0);
+  const minutes = Math.floor(Math.max(0, duration) / 60_000);
+  const formatted = minutes >= 60 ? `${Math.floor(minutes / 60)} t. ${minutes % 60} min.` : `${minutes} min.`;
+  return `${state.approximate || state.segments?.some((segment) => segment.approximate) ? "ca. " : ""}${formatted}`;
+}
+
+function broadcastMessage(registration, broadcast) {
+  const embeds = [];
+  const buttons = [];
+  for (const platform of PLATFORMS) {
+    const state = broadcast.platforms?.[platform];
+    if (!state?.stream) continue;
+    const { name, color, emoji } = PLATFORM_PRESENTATION[platform];
+    const ended = state.status === "ended";
+    const stream = state.stream;
+    const originalStart = state.segments?.[0]?.stream?.startedAt || stream.startedAt;
+    const startedAt = asTime(originalStart);
+    const recordings = state.recordings || [];
+    const url = ended ? recordings[0]?.url : stream.url;
+    const embed = {
+      author: { name: `${name} · ${ended ? "⚪ Afsluttet" : "🔴 LIVE"}` },
+      title: String(stream.title || "Se livestream").slice(0, 256),
+      color,
+      description: ended ? `⚪ Afsluttet · Var live i ${durationText(state)}`
+        : `🕒 Startede kl. <t:${Math.floor(startedAt / 1000)}:t> · <t:${Math.floor(startedAt / 1000)}:R>`,
+    };
+    // Keep a stable original start in the machine-readable timestamp for send recovery.
+    if (Number.isFinite(startedAt)) embed.timestamp = new Date(startedAt).toISOString();
+    if (url) embed.url = url;
+    if (stream.thumbnail) embed.thumbnail = { url: stream.thumbnail };
+    if (ended && recordings.length > 1) {
+      let parts = "";
+      for (const [index, recording] of recordings.entries()) {
+        const line = `\n[Del ${index + 1}](${recording.url})`;
+        // Two embeds, their titles and author names must fit Discord's 6000-character total.
+        if (embed.description.length + parts.length + line.length > 2400) break;
+        parts += line;
+      }
+      embed.description += parts;
+    }
+    embeds.push(embed);
+    if (url) buttons.push({ type: 2, style: 5, emoji: { name: emoji },
+      label: `${ended ? "Se optagelsen på" : "Se på"} ${name}`, url });
+  }
+  return {
+    content: broadcast.endedAt ? `⚪ <@${registration.discordId}> har afsluttet sin stream.` : `🔴 <@${registration.discordId}> er live nu!`,
+    embeds,
+    components: buttons.length ? [{ type: 1, components: buttons }] : [],
+    allowedMentions: { parse: [] },
+  };
+}
+
 module.exports = { PLATFORMS, HEARTBEAT_TTL_MS, CHECK_INTERVAL_MS, DISCOVERY_WINDOW_MS, checkDelay, discoveryExpired, SNOWFLAKE, VIDEO_ID, StreamingError,
   hash, registrationKey, sessionKey, announcementKey, createToken, tokenOwner, tokenMatches, requirePlatform, parseChannel, parseEvent,
-  youtubeLive, announcementMessage };
+  youtubeLive, announcementMessage, broadcastMessage };
