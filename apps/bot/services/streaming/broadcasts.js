@@ -19,20 +19,34 @@ async function* completedChecks(checks) {
 function finishSegment(state, end, approximate) {
   const segment = state.segments[state.segments.length - 1];
   segment.endedAt = Math.max(milliseconds(segment.stream.startedAt), end);
+  if (state.resumeGap) {
+    const overlap = Math.max(0, Math.min(segment.endedAt, state.resumeGap.to)
+      - Math.max(milliseconds(segment.stream.startedAt), state.resumeGap.from));
+    segment.excludedMs = (segment.excludedMs || 0) + overlap;
+    segment.approximate = !!segment.approximate || overlap > 0;
+    state.resumeGap = null;
+  }
   segment.approximate = !!segment.approximate || approximate;
 }
 
 function becameLive(state, stream, time) {
   if (state.stream?.id !== stream.id) {
-    if (state.stream) finishSegment(state, state.pendingEndAt || state.lastLiveAt, !state.exactEnd);
+    if (state.stream && !state.segments[state.segments.length - 1].endedAt) {
+      finishSegment(state, state.pendingEndAt || state.resumeEndAt || state.lastLiveAt, !state.exactEnd);
+    }
     state.segments = [...(state.segments || []), { stream, excludedMs: 0 }];
+  } else if (state.resumeGap) {
+    const segment = state.segments[state.segments.length - 1];
+    segment.excludedMs = (segment.excludedMs || 0) + state.resumeGap.to - state.resumeGap.from;
+    segment.approximate = true;
   } else if (state.offlineSince) {
     const segment = state.segments[state.segments.length - 1];
     segment.excludedMs = (segment.excludedMs || 0) + time - state.offlineSince;
     segment.approximate = true;
   }
   Object.assign(state, { stream, status: "live", lastLiveAt: time, offlineSince: null,
-    pendingEndAt: null, exactEnd: false, nextMonitorAt: time + POLL_MS, recordings: state.recordings || [] });
+    pendingEndAt: null, exactEnd: false, nextMonitorAt: time + POLL_MS, recordings: state.recordings || [],
+    nextRefreshAt: null, refreshDeadline: null, resumeEndAt: null, resumeGap: null });
 }
 
 function createBroadcastWorker({ store, providers, publisher, now, reportError }) {
@@ -48,13 +62,18 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
       const checks = Object.keys(registration.channels).map((platform) => {
         const state = broadcast.platforms[platform] ||= { nextDiscoveryAt: broadcast.createdAt, attempts: 0, providerState: {} };
         const deadline = broadcast.firstVerifiedAt ? broadcast.additionalDeadline : broadcast.startedAt + DISCOVERY_WINDOW_MS;
-        if (state.stream || state.suppressed || (broadcast.firstVerifiedAt ? now() > deadline : now() >= deadline)
-            || state.nextDiscoveryAt > now() || (!broadcast.firstVerifiedAt && !obsAlive(broadcast, now()))) return Promise.resolve({ platform });
+        const refresh = state.stream && !broadcast.endCheckRequestedAt && state.nextRefreshAt != null
+          && state.nextRefreshAt <= now() && now() <= state.refreshDeadline;
+        const discoveryDue = !state.stream && state.nextDiscoveryAt <= now()
+          && (broadcast.firstVerifiedAt ? now() <= deadline : now() < deadline)
+          && (broadcast.firstVerifiedAt || obsAlive(broadcast, now()));
+        if (state.suppressed || (!refresh && !discoveryDue)) return Promise.resolve({ platform });
         const attemptedAt = now();
+        const suppliedVideo = platform === "youtube" && broadcast.videoId
+          && (!refresh || broadcast.videoId !== state.stream.id) ? { videoId: broadcast.videoId } : {};
         return providers.verify(registration.channels[platform], {
-          ...state.providerState, platform, startedAt: broadcast.startedAt,
-          ...(platform === "youtube" && broadcast.videoId ? { videoId: broadcast.videoId } : {}),
-        }, store).then((result) => ({ platform, result, attemptedAt }), (error) => ({ platform, error, attemptedAt }));
+          ...(refresh ? {} : state.providerState), platform, startedAt: broadcast.startedAt, ...suppliedVideo,
+        }, store).then((result) => ({ platform, result, attemptedAt, refresh }), (error) => ({ platform, error, attemptedAt, refresh }));
       });
       for await (const check of completedChecks(checks)) {
         const { platform } = check;
@@ -62,7 +81,14 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
         let announceFirst = false;
         if (state.suppressed) continue;
         try {
-          if (!state.stream) {
+          if (check.refresh) {
+            if (check.error) throw check.error;
+            const stream = check.result.streams?.[0];
+            if (check.result.error) errors.push(check.result.error);
+            if (stream) becameLive(state, stream, now());
+            else state.nextRefreshAt = now() + POLL_MS;
+            // OBS start may refresh a link, but no result here can mark a stream ended.
+          } else if (!state.stream) {
             const deadline = broadcast.firstVerifiedAt ? broadcast.additionalDeadline : broadcast.startedAt + DISCOVERY_WINDOW_MS;
             if (check.error) throw check.error;
             if (!check.result) continue;
@@ -85,7 +111,8 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
             state.nextDiscoveryAt = broadcast.firstVerifiedAt
               ? broadcast.firstVerifiedAt + Math.max(1, Math.floor((attemptedAt - broadcast.firstVerifiedAt) / POLL_MS) + 1) * POLL_MS
               : Math.min(now() + checkDelay(state.attempts - 1), deadline);
-          } else if (state.status !== "ended" && (broadcast.forceMonitor || state.nextMonitorAt <= now())) {
+          } else if (broadcast.endCheckRequestedAt && state.status !== "ended"
+              && (broadcast.forceMonitor || state.nextMonitorAt <= now())) {
             const result = providers.monitor
               ? await providers.monitor(registration.channels[platform], state.stream)
               : { status: "live", stream: (await providers.verify(registration.channels[platform], { platform, videoId: state.stream.id }, store)).streams[0] };
@@ -94,7 +121,8 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
             else {
               state.offlineSince ||= now();
               state.status = "offline_pending";
-              state.pendingEndAt ||= result.endedAt ? milliseconds(result.endedAt) : state.lastLiveAt;
+              state.pendingEndAt ||= result.endedAt ? milliseconds(result.endedAt)
+                : Math.max(broadcast.endCheckRequestedAt, state.lastLiveAt);
               if (result.endedAt) { state.pendingEndAt = milliseconds(result.endedAt); state.exactEnd = true; }
               // A new YouTube broadcast ID cannot be found by monitoring the old ID.
               let restarted = null;
@@ -130,7 +158,8 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
         } catch (error) {
           errors.push(error.code || "verification_failed");
           // Failed requests never manufacture offline state or extend the discovery window.
-          if (state.stream && state.status !== "ended") state.nextMonitorAt = now() + POLL_MS;
+          if (check.refresh) state.nextRefreshAt = now() + POLL_MS;
+          else if (state.stream && state.status !== "ended") state.nextMonitorAt = now() + POLL_MS;
           else if (state.status === "ended") {
             state.recordingAttempt++;
             state.nextRecordingAt = state.recordingAttempt >= RECORDING_DELAYS.length ? null : state.endedAt + RECORDING_DELAYS[state.recordingAttempt];
@@ -174,8 +203,9 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
         if (!state.stream && !broadcast.endedAt && broadcast.work) {
           const deadline = broadcast.firstVerifiedAt ? broadcast.additionalDeadline : broadcast.startedAt + DISCOVERY_WINDOW_MS;
           if (state.nextDiscoveryAt <= deadline && now() <= deadline) due.push(state.nextDiscoveryAt);
-        } else if (state.stream && state.status !== "ended") due.push(state.nextMonitorAt);
+        } else if (state.stream && state.status !== "ended" && broadcast.endCheckRequestedAt) due.push(state.nextMonitorAt);
         else if (state.nextRecordingAt) due.push(state.nextRecordingAt);
+        if (state.nextRefreshAt != null && state.nextRefreshAt <= state.refreshDeadline && !broadcast.endCheckRequestedAt) due.push(state.nextRefreshAt);
       }
       broadcast.nextCheckAt = due.length ? Math.max(now() + 1, Math.min(...due)) : now() + POLL_MS;
       broadcast = await store.saveBroadcast(broadcast);
@@ -216,8 +246,8 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
         else broadcast.initialMessage = message;
       }
       if (!broadcast.messageId) {
-        // Reverify just before a delayed first send. An expired stream must not be newly announced.
-        if (now() - broadcast.firstVerifiedAt > 30_000) {
+        // Before OBS stops, even delayed sends trust the verified snapshot: never poll for ending.
+        if (broadcast.endCheckRequestedAt && now() - broadcast.firstVerifiedAt > 30_000) {
           let anyLive = false;
           for (const state of liveStates(broadcast)) {
             if (state.status === "ended") continue;

@@ -87,16 +87,8 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
           return;
         }
       }
-      // Reconfirm before delayed delivery/recovery. A queued notice must not announce an ended stream.
-      if (now() - notice.verifiedAt > 30_000) {
-        const result = await providers.verify(registration.channels[session.platform], {
-          ...session, ...(session.platform === "youtube" ? { videoId: notice.stream.id } : {}),
-        }, store);
-        if (!result.streams.some((stream) => stream.id === notice.stream.id)) {
-          await store.finishNotice(notice, { status: "cancelled", lastError: "stream_no_longer_live" });
-          return;
-        }
-      }
+      // Legacy jobs trust their verified snapshot too. End checks require an OBS stop;
+      // the legacy store cancels pending notices when their OBS session stops.
       if (!(await store.beginSend(notice))) return;
       const messageId = await publisher.send(notice, announcementMessage(registration, notice.stream));
       await store.finishNotice(notice, { status: "sent", messageId, sentAt: now(), lastError: null });
