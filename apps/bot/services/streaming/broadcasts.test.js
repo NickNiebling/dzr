@@ -107,6 +107,8 @@ test("an unused registered platform is polled once per minute for only five minu
   assert.ok(!s.alerts.some((alert) => alert.code === "live_detection_timeout"));
   assert.equal(s.sent.length, 1);
   assert.equal(s.message().embeds.length, 1);
+  assert.equal(s.monitoring.length, 0, "additional-platform discovery never starts end checks");
+  assert.equal(s.discovery.filter((call) => call.platform === "youtube").length, 1);
 });
 
 test("a Twitch OBS hint still discovers both registered channels", async () => {
@@ -116,22 +118,71 @@ test("a Twitch OBS hint still discovers both registered channels", async () => {
   assert.deepEqual(s.message().embeds.map((embed) => embed.title), [streams.youtube.title, streams.twitch.title]);
 });
 
-test("OBS stop and missing heartbeats do not stop monitoring already verified streams", async () => {
+test("a verified stream remains live indefinitely without OBS stopped, despite offline APIs, missing heartbeats and restarts", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  const before = s.monitoring.length;
-  s.advance(10_000); await s.signal("stopped"); await s.tick();
-  assert.ok(s.monitoring.length > before, "OBS stop requests an immediate platform status check");
-  const afterStop = s.monitoring.length;
-  s.advance(31 * 60_000); await s.tick(true);
-  assert.ok(s.monitoring.length > afterStop, "monitoring survives stale OBS heartbeats and process restart");
+  s.live.youtube = null;
+  for (const elapsed of [60_000, 180_000, 6 * 3600_000, 24 * 3600_000]) {
+    s.advance(origin + elapsed - s.now()); await s.tick(true);
+  }
+  await s.signal("heartbeat"); await s.tick(true);
+  assert.deepEqual(s.monitoring, [], "only an authenticated stopped callback can arm end checks");
+  assert.deepEqual(s.recordingChecks, []);
+  assert.deepEqual(s.discovery, [{ platform: "youtube", time: origin }]);
   assert.equal(s.sent.length, 1);
   assert.match(s.message().content, /er live nu/);
   assert.ok(!s.broadcast().endedAt);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+});
+
+test("OBS stopped starts an immediate status check, then minute polling and a five-minute offline grace", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  s.advance(10_000); await s.signal("stopped"); await s.tick();
+  assert.equal(s.broadcast().endCheckRequestedAt, s.now());
+  assert.deepEqual(s.monitoring.map((call) => call.time - origin), [10_000]);
+  s.advance(59_999); await s.tick(true);
+  assert.equal(s.monitoring.length, 1);
+  s.live.youtube = null;
+  s.advance(1); await s.tick(true);
+  for (let minute = 1; minute <= 4; minute++) {
+    s.advance(60_000); await s.tick(true);
+    assert.match(s.message().content, /er live nu/);
+  }
+  s.advance(60_000); await s.tick(true);
+  assert.deepEqual(s.monitoring.map((call) => call.time - origin), [10_000, 70_000, 130_000, 190_000, 250_000, 310_000, 370_000]);
+  assert.match(s.message().content, /har afsluttet/);
+  assert.equal(s.sent.length, 1);
+});
+
+test("every known OBS session must stop, and a new start disarms checks and clears pending closure", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  const secondSession = "second_session_12345678", thirdSession = "third_session_12345678";
+  s.advance(1000); await s.signal("started", { sessionId: secondSession, startedAt: s.now() }); await s.tick();
+  s.live.youtube = null;
+  s.advance(1000); await s.signal("stopped"); await s.tick(true);
+  assert.equal(s.monitoring.length, 0, "one stopped session cannot override another running session");
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+  s.advance(1000); await s.signal("stopped", { sessionId: secondSession }); await s.tick(true);
+  assert.equal(s.monitoring.length, 1);
+  assert.ok(s.broadcast().platforms.youtube.offlineSince);
+  s.advance(120_000); s.live.youtube = streams.youtube;
+  await s.signal("started", { sessionId: thirdSession, startedAt: s.now() }); await s.tick(true);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+  assert.ok(!s.broadcast().platforms.youtube.offlineSince);
+  s.live.youtube = null;
+  s.advance(6 * 3600_000); await s.tick(true);
+  assert.equal(s.monitoring.length, 1, "a new started callback restores the explicit stop requirement");
+  assert.match(s.message().content, /er live nu/);
+  await s.signal("stopped", { sessionId: thirdSession }); await s.tick(true);
+  assert.equal(s.monitoring.length, 2);
+  assert.match(s.message().content, /er live nu/, "the old grace timer cannot finish a restarted stream");
+  s.advance(300_000); await s.tick(true);
+  assert.match(s.message().content, /har afsluttet/);
+  assert.equal(s.sent.length, 1);
 });
 
 test("a short offline period keeps the live button and resumes without another announcement", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  s.live.youtube = null; s.advance(60_000); await s.tick();
+  s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick();
   assert.match(s.message().components[0].components[0].label, /^Se på YouTube$/);
   s.advance(120_000); s.live.youtube = streams.youtube; await s.tick(true);
   s.advance(360_000); await s.tick();
@@ -143,7 +194,7 @@ test("a short offline period keeps the live button and resumes without another a
 test("confirmed offline status ends after five minutes and excludes the grace time from duration", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
   s.live.youtube = null; s.endedAt.youtube = new Date(origin + 45_000).toISOString();
-  s.advance(60_000); await s.tick();
+  s.advance(60_000); await s.signal("stopped"); await s.tick();
   s.advance(299_000); await s.tick(true);
   assert.match(s.message().content, /er live nu/);
   s.advance(1000); await s.tick(true);
@@ -157,7 +208,7 @@ test("confirmed offline status ends after five minutes and excludes the grace ti
 
 test("API failure at the end of the grace period cannot falsely finalize a stream", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  s.live.youtube = null; s.advance(60_000); await s.tick();
+  s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick();
   const monitor = s.providers.monitor;
   s.providers.monitor = async () => { throw new StreamingError("provider_unavailable", "unavailable", 503); };
   s.advance(300_000); await s.tick(true);
@@ -172,7 +223,7 @@ test("API failure at the end of the grace period cannot falsely finalize a strea
 test("recording discovery retries at the persisted schedule and adds a replay button later", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
   s.live.youtube = null; s.endedAt.youtube = new Date(origin + 30_000).toISOString();
-  s.advance(60_000); await s.tick(); s.advance(300_000); await s.tick();
+  s.advance(60_000); await s.signal("stopped"); await s.tick(); s.advance(300_000); await s.tick();
   const ended = s.now();
   assert.deepEqual(s.message().components, []);
   s.advance(60_000); await s.tick(true);
@@ -187,7 +238,7 @@ test("recording discovery retries at the persisted schedule and adds a replay bu
 
 test("missing recordings stop retrying after the final one-hour check while retaining the ended card", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  s.live.youtube = null; s.advance(60_000); await s.tick(); s.advance(300_000); await s.tick();
+  s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick(); s.advance(300_000); await s.tick();
   const ended = s.now();
   for (const elapsed of [60_000, 300_000, 900_000, 1800_000, 3600_000, 7200_000]) {
     s.advance(ended + elapsed - s.now()); await s.tick(true);
@@ -212,22 +263,23 @@ test("concurrent workers share one first send and one platform-addition edit", a
 });
 
 test("a Discord message deleted by a moderator is never recreated or edited again", async () => {
-  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  const s = setup(); await s.start(); await s.tick();
   let edits = 0;
   s.publisher.edit = async () => { edits++; return { deleted: true }; };
-  s.live.youtube = { ...streams.youtube, title: "Updated title" };
+  s.live.twitch = streams.twitch;
   s.advance(60_000); await s.tick();
   assert.equal(edits, 1);
   s.live.youtube = { ...streams.youtube, title: "Another title" };
   s.advance(60_000); await s.tick(true);
-  s.live.youtube = null; s.advance(60_000); await s.tick(); s.advance(300_000); await s.tick();
+  s.live.youtube = null; s.live.twitch = null;
+  s.advance(60_000); await s.signal("stopped"); await s.tick(); s.advance(300_000); await s.tick();
   assert.equal(s.sent.length, 1);
   assert.equal(edits, 1);
 });
 
 test("a genuinely new broadcast after full ending posts a new announcement", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  s.live.youtube = null; s.advance(60_000); await s.tick(); s.advance(300_000); await s.tick();
+  s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick(); s.advance(300_000); await s.tick();
   assert.match(s.message().content, /har afsluttet/);
   s.advance(1000);
   s.live.youtube = { ...streams.youtube, id: "lmnopqrstuv", url: "https://www.youtube.com/watch?v=lmnopqrstuv", startedAt: new Date(s.now()).toISOString() };
@@ -263,7 +315,7 @@ test("rotation after receipt reservation but before any send allows the same uns
 
 test("an estimated same-ID dropout remains approximate even when the final end time is exact", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
-  s.live.youtube = null; s.advance(60_000); await s.tick();
+  s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick();
   s.live.youtube = streams.youtube; s.advance(60_000); await s.tick();
   s.live.youtube = null; s.endedAt.youtube = new Date(origin + 170_000).toISOString();
   s.advance(60_000); await s.tick(); s.advance(300_000); await s.tick(true);
@@ -275,7 +327,7 @@ test("a new Twitch broadcast ID during grace preserves the post and links all re
   const s = setup(); s.live.youtube = null; s.live.twitch = streams.twitch;
   await s.start({ twitch: "dzr" }); await s.tick();
   s.live.twitch = null; s.endedAt.twitch = new Date(origin + 45_000).toISOString();
-  s.advance(60_000); await s.tick();
+  s.advance(60_000); await s.signal("stopped"); await s.tick();
   const second = { ...streams.twitch, id: "stream456", title: "Reconnected race", startedAt: new Date(origin + 90_000).toISOString() };
   s.live.twitch = second; s.advance(60_000); await s.tick(true);
   assert.equal(s.sent.length, 1);
@@ -446,4 +498,54 @@ test("a new OBS session after an unverified stopped session receives its own ful
   assert.equal(s.sent.length, 1);
   assert.equal(s.sent[0].message.embeds[0].url, streams.youtube.url);
   assert.ok(!s.alerts.some((alert) => alert.code === "live_detection_timeout"));
+});
+
+test("a new OBS start refreshes a YouTube link without ending checks or reopening unused-platform discovery", async () => {
+  const s = setup(); await s.start(); await s.tick();
+  for (let minute = 1; minute <= 6; minute++) { s.advance(60_000); await s.tick(); }
+  const twitchChecks = s.discovery.filter((call) => call.platform === "twitch").length;
+  s.live.youtube = null;
+  await s.signal("stopped"); await s.tick();
+  const stoppedChecks = s.monitoring.length;
+  s.advance(60_000);
+  await s.signal("started", { sessionId: "resumed_youtube_123456", startedAt: s.now() }); await s.tick(true);
+  assert.equal(s.monitoring.length, stoppedChecks);
+  assert.ok(!s.broadcast().endedAt);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+  s.advance(60_000);
+  s.live.youtube = { ...streams.youtube, id: "lmnopqrstuv", url: "https://www.youtube.com/watch?v=lmnopqrstuv", startedAt: new Date(s.now()).toISOString() };
+  await s.tick(true);
+  assert.equal(s.sent.length, 1);
+  assert.equal(s.message().embeds[0].url, s.live.youtube.url);
+  assert.equal(s.discovery.filter((call) => call.platform === "twitch").length, twitchChecks);
+  const firstPart = s.broadcast().platforms.youtube.segments[0];
+  assert.equal(firstPart.endedAt - Date.parse(firstPart.stream.startedAt) - firstPart.excludedMs, 360_000,
+    "a gap after the old broadcast ended must not be subtracted from its live duration");
+  const afterRefresh = s.discovery.length;
+  s.advance(3600_000); await s.tick(true);
+  assert.equal(s.discovery.length, afterRefresh);
+  assert.equal(s.monitoring.length, stoppedChecks);
+});
+
+test("a first heartbeat from a new active OBS source suspends ending checks", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  s.advance(60_000); s.live.youtube = null;
+  await s.signal("stopped"); await s.tick();
+  const monitored = s.monitoring.length;
+  s.advance(60_000);
+  await s.signal("heartbeat", { sessionId: "heartbeat_source_123456", startedAt: s.now() }); await s.tick(true);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+  s.advance(3600_000); await s.tick(true);
+  assert.equal(s.monitoring.length, monitored);
+  assert.ok(!s.broadcast().endedAt);
+});
+
+test("Twitch duration uses OBS stop receipt instead of stale initial live verification", async () => {
+  const s = setup(); s.live.twitch = streams.twitch;
+  await s.start({ twitch: "dzr" }); await s.tick();
+  s.advance(102 * 60_000); s.live.twitch = null;
+  await s.signal("stopped"); await s.tick();
+  s.advance(300_000); await s.tick(true);
+  assert.match(s.message().embeds[0].description, /ca\. 1 t\. 42 min\./);
+  assert.ok(s.broadcast().endedAt);
 });
