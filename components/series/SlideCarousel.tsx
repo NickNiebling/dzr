@@ -58,6 +58,9 @@ export default function SlideCarousel({ slides }: { slides: ReactNode[] }) {
               left={0}
               w="100%"
               pointerEvents={active ? 'auto' : 'none'}
+              // Chart tooltips set visibility: visible inline, which beats the inherited hidden,
+              // so a tooltip left open on touch would show through on top of the next slide.
+              sx={active ? undefined : { '& *': { visibility: 'hidden !important' } }}
               aria-hidden={!active}
             >
               {slide}

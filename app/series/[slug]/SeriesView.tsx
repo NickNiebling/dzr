@@ -273,12 +273,21 @@ function AwardTable({ label, values, suffix = '' }: { label: string; values: str
   )
 }
 
-function BonusSegmentTable({ route, profile }: { route: CatalogRoute; profile: RaceProfile }) {
+function BonusSegmentTable({
+  route,
+  profile,
+  heading = false,
+}: {
+  route: CatalogRoute
+  profile: RaceProfile
+  heading?: boolean
+}) {
   const rows = bonusSegmentRows(profile, sprintColumns(route))
   if (!rows.length) return null
   const cell = { borderRight: '1px solid white' }
   return (
     <Stack spacing={2}>
+      {heading ? <Text color="white" fontWeight="semibold">Bonus segments</Text> : null}
       <TableContainer>
         <Table size="sm" color="white" borderColor="white" border="1px">
           <Thead>
@@ -316,7 +325,7 @@ function StageCourse({ route }: { route: CatalogRoute }) {
   return (
     <Stack spacing={4}>
       <CourseProfile route={route} onProfile={setProfile} />
-      {profile ? <BonusSegmentTable route={route} profile={profile} /> : null}
+      {profile ? <BonusSegmentTable route={route} profile={profile} heading /> : null}
     </Stack>
   )
 }
