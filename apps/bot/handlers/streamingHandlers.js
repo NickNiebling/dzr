@@ -81,15 +81,15 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
             { name: "DZR key — din personlige DZR-nøgle", value: `Kopiér denne nøgle, og indsæt den i **DZR key**:\n\`${token}\`\n`
               + "Den forbinder OBS med din DZR-tilmelding. Det er ikke din streamnøgle til YouTube eller Twitch.\n"
               + "Nøglen vises kun i denne private besked. Del den ikke. En tidligere DZR-nøgle er nu ugyldig; opdatér derfor også OBS, hvis du var tilmeldt før." },
-            { name: "Platform", value: "Vælg **YouTube** eller **Twitch**, alt efter hvor du streamer fra dette OBS. Vælg en platform, du har tilmeldt ovenfor.\n"
-              + "**YouTube-videolink** er valgfrit og kan stå tomt." },
+            { name: "Dine streamingplatforme", value: "DZR finder automatisk ud af, hvilke af dine tilmeldte YouTube- og Twitch-kanaler der er live. Du skal ikke vælge platform i OBS.\n"
+              + "**YouTube-videolink** er valgfrit og kan stå tomt. Brug linket til den aktuelle stream; hvis videoen ikke er live, søger DZR automatisk på din kanal." },
           );
         const connection = new EmbedBuilder().setTitle("3. Test forbindelsen").setColor(0x3498db)
           .setDescription("1. Klik på **Test forbindelse** i OBS.\n"
             + "2. Gå tilbage til denne besked i Discord, og klik på **Kontrollér OBS-forbindelse** nedenfor.\n"
             + "3. Du skal se en bekræftelse med tidspunktet for signalet fra OBS. Kontrollér, at tidspunktet passer med din test.\n\n"
             + "Hvis der ikke er modtaget et signal: Kontrollér **DZR endpoint** og **DZR key** i OBS, tryk **Test forbindelse** igen, og kontrollér derefter i Discord.\n\n"
-            + `Testen sender ingen offentlig besked. Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Planlagte streams annonceres ikke.\n\n`
+            + `Testen sender ingen offentlig besked. Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Ekstra platforme tilføjes til samme opslag, hvis de bliver fundet inden for fem minutter. Planlagte streams annonceres ikke.\n\n`
             + "Du kan afmelde dig med /streaming_remove. Har du mistet DZR-nøglen, kan du få en ny med /streaming_add. Det gør den gamle nøgle ugyldig, så husk at opdatere OBS.");
         await interaction.editReply({ content:
           `✅ **Dine kanaler er tilmeldt — gør nu OBS klar**\n${Object.entries(registration.channels).map(([platform, channel]) => `${platform === "youtube" ? "YouTube" : "Twitch"}: ${channel.url}`).join("\n")}\n\n`

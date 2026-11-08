@@ -15,12 +15,18 @@ function setup() {
   const store = createStore(db, { now: () => time, searchBudget: 3 });
   const published = [];
   const alerts = [];
-  const providers = { async resolveChannel() { return channel; }, async verify() { return { streams: [stream], state: {} }; } };
+  const discovery = [], monitoring = [];
+  const providers = {
+    async resolveChannel() { return channel; },
+    async verify() { discovery.push(time); return { streams: [stream], state: {} }; },
+    async monitor() { monitoring.push(time); return { status: "live", stream }; },
+  };
   const publisher = { async reportError(alert) { alerts.push(alert); }, async send(notice, message) { published.push({ notice, message }); return "message-id"; },
+    async edit(notice) { assert.equal(notice.messageId, "message-id"); },
     async findExisting() { return published.length ? { complete: true, messageId: "message-id" } : { complete: true }; } };
   const options = { store, providers, publisher, guildId, channelId, now: () => time, logger: { warn() {} } };
   const service = createStreamingService(options);
-  return { db, store, providers, publisher, published, alerts, options, service,
+  return { db, store, providers, publisher, published, alerts, discovery, monitoring, options, service,
     advance(ms) { time += ms; }, now: () => time,
     enroll: () => service.enroll(userId, "Rider", { youtube: "@DZR" }),
     event: (overrides = {}) => ({ event: "started", platform: "youtube", sessionId: "session_1234567890", sequence: 1, startedAt: time, sentAt: time, ...overrides }) };
@@ -88,7 +94,7 @@ test("remove during provider verification cannot enqueue or publish a notice", a
   await assert.rejects(s.service.callback(token, s.event()), { code: "invalid_key" });
 });
 
-test("out-of-order old-session events and post-stop heartbeats do not reactivate monitoring", async () => {
+test("old-session stop events do not stop newer OBS sessions and post-stop heartbeats cannot reactivate them", async () => {
   const s = setup(); const { token } = await s.enroll();
   const first = s.event();
   await s.service.callback(token, first);
@@ -96,10 +102,18 @@ test("out-of-order old-session events and post-stop heartbeats do not reactivate
   const second = s.event({ sessionId: "second_session_12345" });
   await s.service.callback(token, second);
   await s.service.callback(token, { ...first, event: "stopped", sequence: 5, sentAt: s.now() });
-  assert.equal((await s.store.listSessions())[0].sessionId, second.sessionId);
+  const afterOldStop = (await s.store.listBroadcasts())[0];
+  assert.equal(afterOldStop.obs[first.sessionId].stopped, true);
+  assert.equal(afterOldStop.obs[second.sessionId].stopped, false);
+  assert.ok(!afterOldStop.endCheckRequestedAt);
   await s.service.callback(token, { ...second, event: "stopped", sequence: 2 });
   await s.service.callback(token, { ...second, event: "heartbeat", sequence: 3 });
-  assert.equal((await s.store.listSessions()).length, 0);
+  const afterHeartbeat = (await s.store.listBroadcasts())[0];
+  assert.equal(afterHeartbeat.obs[second.sessionId].stopped, true);
+  assert.equal(afterHeartbeat.endCheckRequestedAt, s.now());
+  await s.service.tick();
+  assert.equal((await s.store.listBroadcasts()).length, 0);
+  assert.equal(s.published.length, 0);
 });
 
 test("missing heartbeats expire durable sessions without posting", async () => {
@@ -108,7 +122,7 @@ test("missing heartbeats expire durable sessions without posting", async () => {
   s.advance(151_000);
   await s.service.tick();
   assert.equal(s.published.length, 0);
-  assert.equal((await s.store.listSessions()).length, 0);
+  assert.equal((await s.store.listBroadcasts()).length, 0);
 });
 
 test("a fresh heartbeat recovers an expired session after a bot/network outage", async () => {
@@ -128,10 +142,11 @@ test("Discord accepted a message but the receipt failed: restart reconciles with
   const send = s.publisher.send;
   s.publisher.send = async (...args) => { await send(...args); throw new Error("connection_dropped_after_accept"); };
   await s.service.tick();
-  s.advance(31_000);
+  s.advance(61_000);
   await createStreamingService(s.options).tick();
   assert.equal(s.published.length, 1);
-  assert.equal((await s.store.listNotices()).length, 0);
+  assert.equal([...s.db.documents.values()].find((record) => record.kind === "broadcast").messageId, "message-id");
+  assert.deepEqual(s.monitoring, []);
 });
 
 test("ambiguous delivery with unavailable history never blindly resends", async () => {
@@ -141,20 +156,37 @@ test("ambiguous delivery with unavailable history never blindly resends", async 
   await s.service.tick();
   s.publisher.findExisting = async () => ({ complete: false });
   s.publisher.send = async () => { throw new Error("should_not_send"); };
-  s.advance(31_000);
+  s.advance(61_000);
   await s.service.tick();
-  assert.equal((await s.store.listNotices())[0].lastError, "discord_history_unavailable");
+  assert.equal((await s.store.listBroadcasts())[0].lastError, "discord_history_unavailable");
 });
 
-test("queued announcement is reverified and cancelled if the broadcast ended", async () => {
+test("queued announcement can be checked and cancelled after authenticated OBS stopped", async () => {
   const s = setup(); const { token } = await s.enroll();
-  await s.service.callback(token, s.event());
+  const started = s.event();
+  await s.service.callback(token, started);
   s.publisher.send = async () => { throw new Error("unavailable"); };
   await s.service.tick();
+  s.providers.monitor = async () => ({ status: "offline" });
   s.providers.verify = async () => ({ streams: [], state: {} });
-  s.advance(31_000);
+  s.advance(61_000);
+  await s.service.callback(token, { ...started, event: "stopped", sequence: 2, sentAt: s.now() });
   await s.service.tick();
-  assert.equal((await s.store.listNotices()).length, 0);
+  assert.equal((await s.store.listBroadcasts())[0].deleted, true);
+  assert.equal(s.published.length, 0);
+});
+
+test("an unauthenticated stopped callback cannot start end checks", async () => {
+  const s = setup(); const { token } = await s.enroll(); const started = s.event();
+  await s.service.callback(token, started); await s.service.tick();
+  await assert.rejects(s.service.callback(`${token}invalid`, { ...started, event: "stopped", sequence: 2 }), { code: "invalid_key" });
+  s.advance(24 * 3600_000); await createStreamingService(s.options).tick();
+  assert.deepEqual(s.monitoring, []);
+  assert.equal(s.discovery.length, 1);
+  assert.equal(s.published.length, 1);
+  const broadcast = [...s.db.documents.values()].find((record) => record.kind === "broadcast");
+  assert.ok(!broadcast.endCheckRequestedAt);
+  assert.ok(!broadcast.endedAt);
 });
 
 test("channel claims prevent two members taking the same channel and release on removal", async () => {
@@ -171,10 +203,28 @@ test("persistent YouTube search budget is shared by concurrent callers and reset
   assert.equal(await s.store.reserveSearch(), true);
 });
 
-test("callbacks cannot select an unregistered platform or impersonate a different member", async () => {
+test("legacy callback platform is only a hint; verification stays on registered channels and keys remain owner-bound", async () => {
   const s = setup(); const { token } = await s.enroll();
-  await assert.rejects(s.service.callback(token, s.event({ platform: "twitch" })), { code: "channel_not_registered" });
+  const checked = [];
+  s.providers.verify = async (registeredChannel, session) => {
+    checked.push({ channelId: registeredChannel.id, platform: session.platform });
+    return { streams: [stream] };
+  };
+  await s.service.callback(token, s.event({ platform: "twitch" }));
+  await s.service.tick();
+  assert.deepEqual(checked, [{ channelId: channel.id, platform: "youtube" }]);
+  assert.equal(s.published.length, 1);
   await assert.rejects(s.service.callback(token.replace(userId, "222222222222222222"), s.event()), { code: "invalid_key" });
+});
+
+test("missing and null callback platform hints still discover the registered public stream", async () => {
+  for (const platform of [null, undefined]) {
+    const s = setup(); const { token } = await s.enroll();
+    await s.service.callback(token, s.event({ platform }));
+    await s.service.tick();
+    assert.equal(s.published.length, 1);
+    assert.equal(s.alerts.length, 0);
+  }
 });
 
 test("discovery backs off durably to five minutes and expires at one hour despite fresh heartbeats", async () => {
@@ -191,7 +241,7 @@ test("discovery backs off durably to five minutes and expires at one hour despit
   }
   assert.deepEqual(checks, [0, 15, 45, 105, 225, 465, 765, 1065, 1365, 1665, 1965, 2265, 2565, 2865, 3165, 3465]);
   assert.equal(s.published.length, 0);
-  assert.equal((await s.store.listSessions()).length, 0);
+  assert.equal((await s.store.listBroadcasts()).length, 0);
   assert.deepEqual(s.alerts.map((item) => item.code), ["live_detection_timeout"]);
   assert.equal((await s.service.getRegistration(userId)).lastLiveAt, null);
   // Only a new start can open a new window.
@@ -215,24 +265,42 @@ test("a provider response crossing the hour deadline cannot announce, even when 
   assert.equal(s.alerts[0].code, "live_detection_timeout");
 });
 
-test("first verification stops discovery; delayed delivery may complete after the hour", async () => {
+test("first verification stops provider requests, including delayed first delivery, until OBS stopped", async () => {
   const s = setup(); const { token } = await s.enroll(); const started = s.event();
-  let checks = 0;
-  s.providers.verify = async () => { checks++; return { streams: [stream] }; };
+  let discoveries = 0, monitors = 0;
+  let providerLive = true;
+  s.providers.verify = async () => { discoveries++; return { streams: providerLive ? [stream] : [] }; };
+  s.providers.monitor = async (registeredChannel, knownStream) => {
+    monitors++;
+    assert.equal(registeredChannel.id, channel.id);
+    assert.equal(knownStream.id, stream.id);
+    return providerLive ? { status: "live", stream } : { status: "offline" };
+  };
   await s.service.callback(token, started);
   // Queue a verified notice, but simulate an outage until the original discovery window has closed.
   const send = s.publisher.send;
   s.publisher.send = async () => { throw new Error("unavailable"); };
   await s.service.tick();
+  providerLive = false;
   s.advance(3600_000);
   await s.service.callback(token, { ...started, event: "heartbeat", sequence: 2, sentAt: s.now() });
   s.publisher.send = send;
   await s.service.tick();
-  assert.equal(checks, 2); // Initial discovery plus the mandatory delayed-delivery recheck only.
+  assert.equal(discoveries, 1);
+  assert.equal(monitors, 0, "delivery retries cannot silently start end checks");
   assert.equal(s.published.length, 1);
   s.advance(30_000);
   await s.service.tick();
-  assert.equal(checks, 2);
+  assert.equal(discoveries, 1);
+  assert.equal(monitors, 0);
+  s.advance(6 * 3600_000);
+  await createStreamingService(s.options).tick();
+  assert.equal(discoveries, 1);
+  assert.equal(monitors, 0, "expired heartbeats and a restart cannot authorize checks");
+  assert.equal(s.published.length, 1);
+  await s.service.callback(token, { ...started, event: "stopped", sequence: 3, sentAt: s.now() });
+  await createStreamingService(s.options).tick();
+  assert.equal(monitors, 1);
 });
 
 test("IT alerts survive restarts, retry delivery, and coalesce repeated errors without secrets", async () => {
@@ -264,18 +332,38 @@ test("invalid keys never create IT alerts; authenticated callback failures do", 
   assert.equal(s.alerts[0].code, "invalid_event");
 });
 
-test("authenticated unknown platforms report to IT once, without sessions, provider checks or announcements", async () => {
+test("unsupported non-null platform hints report to IT once without verification or announcements", async () => {
   const s = setup(); const { token } = await s.enroll();
   s.providers.verify = () => assert.fail("unknown platforms cannot reach verification");
-  for (let i = 0; i < 3; i++) {
-    await assert.rejects(s.service.callback(token, s.event({ platform: null })), { code: "unknown_platform" });
+  for (const platform of ["facebook", "unknown", ""]) {
+    await assert.rejects(s.service.callback(token, s.event({ platform })), { code: "unknown_platform" });
   }
   await s.service.tick();
   assert.equal(s.alerts.length, 1);
   assert.equal(s.alerts[0].code, "unknown_platform");
   assert.equal(s.alerts[0].discordId, userId);
   assert.equal(s.published.length, 0);
-  assert.equal((await s.store.listSessions()).length, 0);
+  assert.equal((await s.store.listBroadcasts()).length, 0);
+});
+
+test("legacy sessions and pending notices still deliver after upgrade without duplicate announcements", async () => {
+  const s = setup(); const { registration } = await s.enroll();
+  await s.store.acceptEvent(registration, s.event());
+  const send = s.publisher.send;
+  s.publisher.send = async () => { throw new Error("Discord temporarily unavailable"); };
+  await s.service.tick();
+  const notices = await s.store.listNotices();
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].kind, "notice");
+  assert.equal(notices[0].status, "pending");
+  assert.equal((await s.store.listBroadcasts()).length, 0);
+  s.publisher.send = send;
+  s.advance(61_000);
+  await createStreamingService(s.options).tick();
+  await createStreamingService(s.options).tick();
+  assert.equal(s.published.length, 1);
+  assert.equal(s.published[0].notice.kind, "notice");
+  assert.equal((await s.store.listNotices()).length, 0);
 });
 
 test("concurrent workers share one durable IT report and Firestore outages use a bounded fallback", async () => {

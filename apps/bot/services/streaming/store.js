@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const { createBroadcastStore } = require("./broadcastStore");
 const { HEARTBEAT_TTL_MS, DISCOVERY_WINDOW_MS, checkDelay, discoveryExpired, hash, StreamingError, registrationKey, sessionKey, announcementKey } = require("./model");
 
 const COLLECTION = "streaming_bot";
@@ -114,7 +115,8 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
       for (const notice of notices) {
         // Never replace an attempted/sent delivery. An entirely unsent cancelled generation
         // can be adopted after the member rotates their key or enrolls again.
-        const canReplace = notice.previous && !notice.previous.firstAttemptAt && !notice.previous.messageId
+        const canReplace = notice.previous && notice.previous.kind !== "broadcast_receipt"
+          && !notice.previous.firstAttemptAt && !notice.previous.messageId
           && (notice.previous.status === "cancelled" || notice.previous.registrationId !== registration.registrationId);
         if (!notice.previous || canReplace) tx.set(ref(notice.id), { id: notice.id, kind: "notice", status: "pending", channelId,
           memberId: registration.id, registrationId: registration.registrationId, sessionId: session.id,
@@ -207,7 +209,7 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
     });
   }
 
-  return { getRegistration, register, remove, acceptEvent, claimSession, finishCheck, claimNotice, beginSend, finishNotice, reserveSearch,
+  return { ...createBroadcastStore(db, { now }), getRegistration, register, remove, acceptEvent, claimSession, finishCheck, claimNotice, beginSend, finishNotice, reserveSearch,
     queueAlert, claimAlert, finishAlert,
     listAlerts: async () => (await col.where("alertPending", "==", true).get()).docs.map(read),
     listRegistrations: async (guildId) => (await values("member")).filter((item) => item.guildId === guildId),

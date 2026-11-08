@@ -41,6 +41,13 @@ test("modal returns download, endpoint and personal key only in an ephemeral res
   assert.ok(reply.includes("personal-key"));
   assert.ok(reply.includes("https://bot.example.test/streaming/dzr-stream.lua"));
   assert.ok(reply.includes("https://bot.example.test/streaming/obs"));
+  assert.equal(i.calls[1][1].embeds.length, 3);
+  assert.ok(reply.includes("Downloads / Overførsler"));
+  assert.ok(reply.includes("Test forbindelse"));
+  assert.ok(reply.includes("DZR finder automatisk"));
+  assert.ok(reply.includes("Du skal ikke vælge platform i OBS"));
+  assert.ok(reply.includes("inden for fem minutter"));
+  assert.ok(!reply.includes("Vælg **YouTube** eller **Twitch**"));
   assert.equal(i.calls[1][1].components[0].toJSON().components[0].custom_id, `streaming:status:${userId}`);
   assert.deepEqual(i.calls[1][1].allowedMentions, { parse: [] });
 });
