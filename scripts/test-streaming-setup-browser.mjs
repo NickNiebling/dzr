@@ -1,0 +1,122 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+
+// Reuse the existing architecture tooling; no extra application dependency.
+const require = createRequire(new URL('./architecture/package.json', import.meta.url))
+const { chromium } = require('playwright-core')
+const baseUrl = new URL(process.env.STREAMING_TEST_SITE_URL || 'http://127.0.0.1:3000')
+assert.ok(['localhost', '127.0.0.1'].includes(baseUrl.hostname), 'Use an isolated local website with demo Firebase configuration')
+const script = await readFile(new URL('../apps/bot/assets/dzr-stream.lua', import.meta.url))
+const browser = await chromium.launch({
+  executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
+  args: ['--no-sandbox'],
+})
+
+try {
+  for (const supportsPicker of [true, false]) {
+    const context = await browser.newContext({ acceptDownloads: true })
+    await context.route('**/*', route => new URL(route.request().url()).origin === baseUrl.origin ? route.continue() : route.abort())
+    await context.route('**/api/auth/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+    await context.route('**/api/streaming/script', route => route.fulfill({ status: 200, contentType: 'text/plain', body: script }))
+    const page = await context.newPage()
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.addInitScript(({ supportsPicker, source }) => {
+      Object.defineProperty(navigator, 'platform', { value: 'Win32' })
+      if (!supportsPicker) {
+        window.showDirectoryPicker = undefined
+        return
+      }
+      const state = { result: 'conflict', writes: 0 }
+      window.streamingTest = state
+      window.showDirectoryPicker = async () => {
+        if (state.result === 'cancel') throw new DOMException('Cancelled', 'AbortError')
+        if (state.result === 'denied') throw new DOMException('Denied', 'NotAllowedError')
+        return {
+          name: 'DZR',
+          getFileHandle: async (_name, { create }) => {
+            if (state.result === 'saved' && !create) throw new DOMException('Missing', 'NotFoundError')
+            return {
+              getFile: async () => ({ arrayBuffer: async () => new TextEncoder().encode(state.result === 'identical' ? source : state.result === 'saved' ? '' : '-- different existing file').buffer }),
+              createWritable: async () => ({ write: async () => { state.writes++ }, close: async () => {} }),
+            }
+          },
+        }
+      }
+    }, { supportsPicker, source: script.toString() })
+    await page.goto(new URL('/streaming/setup', baseUrl).href, { waitUntil: 'networkidle', timeout: 180_000 })
+    // OS detection runs after hydration; do not click the inert server HTML.
+    await page.locator('button[aria-pressed="true"]').waitFor()
+    await page.getByRole('button', { name: 'Windows', exact: true }).click()
+    await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+    const next = page.getByRole('button', { name: 'Filen er klar – fortsæt', exact: true })
+    const checkbox = page.getByRole('checkbox')
+    const confirmation = page.getByText('Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.', { exact: true })
+    const conflict = page.getByText('En download alene løser ikke konflikten.', { exact: false })
+    assert.equal(await next.isDisabled(), true)
+    assert.equal(await checkbox.count(), 0, 'Manual confirmation requires a successful download')
+
+    async function download() {
+      const [file] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button', { name: supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua', exact: true }).click(),
+      ])
+      assert.equal(file.suggestedFilename(), 'dzr-stream.lua')
+      assert.deepEqual(await readFile(await file.path()), script)
+    }
+    await download()
+    await confirmation.click()
+    assert.equal(await checkbox.isChecked(), true)
+    assert.equal(await next.isEnabled(), true, 'Plain download still accepts manual placement')
+
+    if (supportsPicker) {
+      await page.getByRole('button', { name: 'Installér DZR OBS-script', exact: true }).click()
+      await conflict.waitFor()
+      assert.equal(await checkbox.isChecked(), false, 'Conflict clears earlier manual confirmation')
+      assert.equal(await checkbox.isDisabled(), true)
+      assert.equal(await next.isDisabled(), true)
+      assert.equal(await page.evaluate(() => window.streamingTest.writes), 0, 'Existing file must stay untouched')
+      await download()
+      assert.equal(await conflict.isVisible(), true, 'Download must not hide the unresolved conflict')
+      assert.equal(await checkbox.isDisabled(), true)
+      assert.equal(await next.isDisabled(), true)
+
+      for (const result of ['cancel', 'denied']) {
+        await page.evaluate(value => { window.streamingTest.result = value }, result)
+        await page.getByRole('button', { name: 'Vælg en anden mappe', exact: true }).click()
+        await page.getByText(result === 'cancel' ? 'Mappevalget blev ikke gennemført.' : 'Browseren fik ikke lov til at gemme filen.', { exact: false }).waitFor()
+        assert.equal(await conflict.isVisible(), true)
+        assert.equal(await checkbox.isDisabled(), true)
+        assert.equal(await next.isDisabled(), true)
+      }
+      await page.getByRole('button', { name: 'Tilbage', exact: true }).click()
+      await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+      assert.equal(await conflict.isVisible(), true, 'Back/next navigation must not dismiss a conflict')
+      assert.equal(await next.isDisabled(), true)
+
+      for (const result of ['identical', 'saved']) {
+        await page.evaluate(value => { window.streamingTest.result = value }, result)
+        await page.getByRole('button', { name: 'Vælg en anden mappe', exact: true }).click()
+        await page.getByText(result === 'identical' ? 'Den samme fil ligger allerede i' : 'Filen er gemt i', { exact: false }).waitFor()
+        assert.equal(await conflict.count(), 0)
+        assert.equal(await next.isEnabled(), true)
+        assert.equal(await checkbox.isChecked(), false)
+        if (result === 'identical') {
+          await page.evaluate(() => { window.streamingTest.result = 'conflict' })
+          await page.getByRole('button', { name: 'Installér DZR OBS-script', exact: true }).click()
+          await conflict.waitFor()
+          assert.equal(await next.isDisabled(), true, 'Conflict also replaces earlier installation success')
+        }
+      }
+      assert.equal(await page.evaluate(() => window.streamingTest.writes), 1)
+    }
+    await next.click()
+    await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
+    assert.deepEqual(errors, [])
+    console.log(`PASS ${supportsPicker ? 'picker conflict, sticky warning, cancellation/denial, navigation and saved/identical recovery' : 'download-only browser with manual confirmation'}`)
+    await context.close()
+  }
+} finally {
+  await browser.close()
+}

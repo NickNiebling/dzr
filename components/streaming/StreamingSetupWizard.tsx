@@ -39,7 +39,8 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
   const [showTest, setShowTest] = React.useState(false)
   const [finished, setFinished] = React.useState(false)
   const heading = React.useRef<HTMLHeadingElement>(null)
-  const fileReady = manualFileReady || installation?.status === 'saved' || installation?.status === 'identical'
+  const hasConflict = installation?.status === 'conflict'
+  const fileReady = !hasConflict && ((downloaded && manualFileReady) || installation?.status === 'saved' || installation?.status === 'identical')
 
   React.useEffect(() => {
     const platform = navigator.platform || navigator.userAgent
@@ -80,7 +81,6 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
       setInstallation(result)
       if (result.status === 'conflict') {
         setManualFileReady(false)
-        setError('Der ligger allerede en anden eller tom dzr-stream.lua i mappen. Den er ikke ændret. Vælg en anden mappe for at gemme den nye fil, eller kontrollér den eksisterende fil først.')
       }
     } catch (cause) {
       setError(getInstallationErrorMessage(cause))
@@ -207,6 +207,13 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                 >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
                 {!supportsPicker && <Text color="gray.400" fontSize="sm">Din browser bruger almindelig download. Du kan følge hele guiden her.</Text>}
 
+                {hasConflict && (
+                  <Alert status="warning" bg="orange.900" borderRadius="lg" role="alert">
+                    <AlertIcon />
+                    <Text>Der ligger allerede en anden eller tom dzr-stream.lua i <strong>{installation.directoryName}</strong>. Den er ikke ændret. Klik på <strong>Vælg en anden mappe</strong> for at gemme filen et nyt sted. Du kan først fortsætte, når filen er gemt eller matcher DZR-filen. En download alene løser ikke konflikten.</Text>
+                  </Alert>
+                )}
+
                 {installation && installation.status !== 'conflict' && (
                   <Alert status="success" bg="green.900" borderRadius="lg">
                     <AlertIcon />
@@ -222,10 +229,12 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                   </Stack>
                 )}
 
-                <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy} alignItems="start">
-                  Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.
-                </Checkbox>
-                {manualFileReady && <Text color="green.300" fontSize="sm">Du har bekræftet filens placering. Browseren har ikke kontrolleret den.</Text>}
+                {downloaded && (
+                  <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy || hasConflict} alignItems="start">
+                    Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.
+                  </Checkbox>
+                )}
+                {downloaded && manualFileReady && !hasConflict && <Text color="green.300" fontSize="sm">Du har bekræftet filens placering. Browseren har ikke kontrolleret den.</Text>}
               </Stack>
             )}
 
