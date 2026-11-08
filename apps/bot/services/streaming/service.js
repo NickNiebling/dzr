@@ -20,14 +20,14 @@ function createStreamingService({ store, providers, publisher, guildId, channelI
     }
   }
 
-  async function enroll(discordId, discordName, inputs) {
+  async function enroll(discordId, discordName, inputs, { createOnly = false } = {}) {
     const channels = {};
     for (const platform of ["youtube", "twitch"]) {
       if (String(inputs[platform] || "").trim()) channels[platform] = await providers.resolveChannel(platform, inputs[platform]);
     }
     if (!Object.keys(channels).length) throw new StreamingError("missing_channels", "Angiv mindst én YouTube- eller Twitch-kanal.");
     const token = createToken(discordId);
-    const registration = await store.register({ guildId, discordId, discordName, channels, tokenHash: hash(token) });
+    const registration = await store.register({ guildId, discordId, discordName, channels, tokenHash: hash(token), createOnly });
     return { registration, token };
   }
 

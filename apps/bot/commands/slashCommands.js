@@ -6,6 +6,10 @@ const commands = [
     .setDescription("Tilmeld dine streamingkanaler, og få DZR-script og nøgle til OBS")
     .setDMPermission(false),
   new SlashCommandBuilder()
+    .setName("streaming_add_new")
+    .setDescription("Tilmeld streaming, og få en trinvis OBS-guide i browseren")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
     .setName("streaming_remove")
     .setDescription("Afmeld din streaming, og spær din OBS-nøgle")
     .setDMPermission(false),

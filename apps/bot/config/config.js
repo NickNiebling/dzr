@@ -72,6 +72,7 @@ module.exports = {
   },
   streaming: {
     publicUrl: process.env.STREAMING_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "https://bot-tdnm.onrender.com",
+    setupUrl: process.env.STREAMING_SETUP_URL || `${shared.siteOrigin}/streaming/setup`,
     channelId: process.env.STREAMING_CHANNEL_ID || "1196454773558345768",
     youtubeApiKey: process.env.YOUTUBE_API_KEY,
     twitchClientId: process.env.TWITCH_CLIENT_ID,
