@@ -127,7 +127,19 @@ Lua-transporttesten kræver LuaJIT, libcurl og OpenSSL; `LUAJIT_BIN` kan pege p�
 
 Testene skal dække autorisation og komponent-ejerskab, nye/eksisterende registreringer, samtidige indsendelser uden rotation, uændret originalt flow, kanalfejl, downloadfejl, filkonflikter og mappeadgang. Browser-tests med mockede filhandles erstatter ikke de native mappevælgere eller indlæsning af Lua i OBS.
 
-Når det isolerede website ovenfor kører, kan regressionstesten for filkonflikter køres med `node scripts/test-streaming-setup-browser.mjs`. Den genbruger Playwright fra `scripts/architecture` (`npm ci --prefix scripts/architecture`) og en installeret Chromium (`CHROME_BIN`, standard `/usr/bin/chromium`). `STREAMING_TEST_SITE_URL` kan ændre den lokale adresse fra `http://127.0.0.1:3000`. Testen bruger mockede filhandles og repositoryets Lua-fil, blokerer eksterne browserrequests og tester både mappekonflikter og almindelig download. Website-serveren skal stadig bruge demo-Firebase-konfigurationen ovenfor.
+CI kører også den faktiske browserregression mod et isoleret Next.js-website. Den samme kontrol kan køres lokalt fra et rent checkout uden `.env`-filer eller en anden kørende Next.js-proces:
+
+```sh
+npm ci --prefix scripts/architecture
+node scripts/architecture/node_modules/playwright-core/cli.js install --with-deps chromium
+npm run test:streaming-setup:browser
+```
+
+Teststarteren åbner Next.js på loopback-port 3100 med demo-Firebase-konfiguration og en midlertidig, skrivebeskyttet Firestore-testgrænse til det fælles layout. Den genererer selv en lokal testnøgle, arver ingen produktionscredentials og lukker processerne efter testen. Ingen rigtig Discord-app, database eller botserver er nødvendig til denne browserkontrol. Det er ikke en erstatning for emulator- og native accepttestene ovenfor.
+
+Browserregressionen genbruger Playwright fra `scripts/architecture`, bruger mockede filhandles og repositoryets Lua-fil og blokerer eksterne browserrequests. Den tester både mappekonflikter og almindelig download. Ved konflikt skal downloadknap, flyttevejledning og manuel afkrydsning være skjult; annulleret eller afvist mappevalg skal pege på nyt mappevalg uden at foreslå download. Både gemt og identisk fil skal åbne næste trin igen. `CHROME_BIN` kan pege på en allerede installeret Chromium i stedet for Playwrights browser.
+
+Mod et allerede kørende, isoleret website kan selve browserkontrollen også køres med `node scripts/test-streaming-setup-browser.mjs`. `STREAMING_TEST_SITE_URL` ændrer den lokale adresse fra `http://127.0.0.1:3000`; website-serveren skal stadig bruge demo-Firebase-konfigurationen ovenfor.
 
 ## Manuel accept
 
@@ -145,7 +157,7 @@ Registrér OS, browser, OBS-version og resultat i PR’en. Nedenstående afkryds
 | [ ] | Ingen Club Member-rolle, forkert ejer eller DM | Afvisning uden registrering eller adgang til andres oplysninger. |
 | [ ] | Afbrudt mappevalg eller afvist adgang | Ingen falsk installationssucces; neutral besked eller hjælp, prøv igen og downloadalternativ. |
 | [ ] | Gentagen installation | Identisk fil kan genbruges; anderledes eksisterende fil overskrives ikke. Valg af selve DZR-mappen opretter ikke DZR/DZR. |
-| [ ] | Konflikt efter manuel bekræftelse eller installation | Bekræftelsen nulstilles, og næste trin er låst. Download, annulleret/afvist mappevalg og tilbage/næste fjerner ikke konflikten. Nyt mappevalg med gemt eller identisk fil åbner næste trin igen. |
+| [ ] | Konflikt efter manuel bekræftelse eller installation | Bekræftelsen nulstilles, og næste trin er låst. Downloadknap, flyttevejledning og afkrydsning skjules. Annulleret/afvist mappevalg og tilbage/næste fjerner ikke konflikten; retry foreslår kun nyt mappevalg. Gemt eller identisk fil åbner næste trin igen. |
 | [ ] | Fil mangler eller er flyttet/slettet | Gendan den på den oprindelige placering og genindlæs i OBS. Geninstallering ændrer ikke nøgle eller kanaler. |
 | [ ] | Scriptdownload fejler eller filskrivning afbrydes | Tydelig fejl og retry. Ingen tom fil eller HTML-fejlside rapporteres som installeret script. |
 | [ ] | OBS er konfigureret korrekt | DZR endpoint og nøgle fungerer; intet platformvalg er nødvendigt. |

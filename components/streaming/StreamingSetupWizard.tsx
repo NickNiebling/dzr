@@ -83,7 +83,9 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
         setManualFileReady(false)
       }
     } catch (cause) {
-      setError(getInstallationErrorMessage(cause))
+      setError(hasConflict
+        ? 'Filen kunne ikke gemmes i en ny mappe. Den eksisterende fil er ikke ændret. Vælg en anden mappe, og tillad adgang.'
+        : getInstallationErrorMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -200,11 +202,13 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                     <Text color="gray.400" fontSize="sm">Vælg Dokumenter eller en anden fast mappe, og tillad adgang. DZR-mappen oprettes for dig.</Text>
                   </Stack>
                 )}
-                <Button
-                  leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
-                  variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
-                  color="white" size="lg" minH="52px" whiteSpace="normal"
-                >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
+                {!hasConflict && (
+                  <Button
+                    leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
+                    variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
+                    color="white" size="lg" minH="52px" whiteSpace="normal"
+                  >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
+                )}
                 {!supportsPicker && <Text color="gray.400" fontSize="sm">Din browser bruger almindelig download. Du kan følge hele guiden her.</Text>}
 
                 {hasConflict && (
@@ -221,7 +225,7 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                   </Alert>
                 )}
 
-                {(downloaded || !supportsPicker) && (
+                {!hasConflict && (downloaded || !supportsPicker) && (
                   <Stack spacing={3}>
                     <Text>{downloaded ? 'Når filen er hentet:' : 'Efter download:'} Åbn Downloads / Overførsler. Opret en DZR-mappe i Dokumenter, og flyt <strong>dzr-stream.lua</strong> dertil.</Text>
                     {illustration('save-file', 'Flyt dzr-stream.lua fra Downloads til en fast DZR-mappe i Dokumenter.')}
@@ -229,7 +233,7 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                   </Stack>
                 )}
 
-                {downloaded && (
+                {downloaded && !hasConflict && (
                   <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy || hasConflict} alignItems="start">
                     Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.
                   </Checkbox>

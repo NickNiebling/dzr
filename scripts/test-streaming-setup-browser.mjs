@@ -9,7 +9,7 @@ const baseUrl = new URL(process.env.STREAMING_TEST_SITE_URL || 'http://127.0.0.1
 assert.ok(['localhost', '127.0.0.1'].includes(baseUrl.hostname), 'Use an isolated local website with demo Firebase configuration')
 const script = await readFile(new URL('../apps/bot/assets/dzr-stream.lua', import.meta.url))
 const browser = await chromium.launch({
-  executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
+  executablePath: process.env.CHROME_BIN || chromium.executablePath(),
   args: ['--no-sandbox'],
 })
 
@@ -54,6 +54,14 @@ try {
     const checkbox = page.getByRole('checkbox')
     const confirmation = page.getByText('Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.', { exact: true })
     const conflict = page.getByText('En download alene løser ikke konflikten.', { exact: false })
+    async function assertConflict() {
+      assert.equal(await conflict.isVisible(), true)
+      assert.equal(await checkbox.count(), 0, 'An unresolved conflict must not offer manual confirmation')
+      assert.equal(await page.getByText('Åbn Downloads / Overførsler.', { exact: false }).count(), 0, 'Manual move instructions must stay hidden')
+      assert.equal(await page.getByRole('button', { name: /Hent/ }).count(), 0, 'Download must not look like a way past the conflict')
+      assert.equal(await next.isDisabled(), true)
+      assert.doesNotMatch((await page.getByRole('alert').allTextContents()).join(' '), /hent filen i stedet/i)
+    }
     assert.equal(await next.isDisabled(), true)
     assert.equal(await checkbox.count(), 0, 'Manual confirmation requires a successful download')
 
@@ -73,27 +81,18 @@ try {
     if (supportsPicker) {
       await page.getByRole('button', { name: 'Installér DZR OBS-script', exact: true }).click()
       await conflict.waitFor()
-      assert.equal(await checkbox.isChecked(), false, 'Conflict clears earlier manual confirmation')
-      assert.equal(await checkbox.isDisabled(), true)
-      assert.equal(await next.isDisabled(), true)
+      await assertConflict()
       assert.equal(await page.evaluate(() => window.streamingTest.writes), 0, 'Existing file must stay untouched')
-      await download()
-      assert.equal(await conflict.isVisible(), true, 'Download must not hide the unresolved conflict')
-      assert.equal(await checkbox.isDisabled(), true)
-      assert.equal(await next.isDisabled(), true)
 
       for (const result of ['cancel', 'denied']) {
         await page.evaluate(value => { window.streamingTest.result = value }, result)
         await page.getByRole('button', { name: 'Vælg en anden mappe', exact: true }).click()
-        await page.getByText(result === 'cancel' ? 'Mappevalget blev ikke gennemført.' : 'Browseren fik ikke lov til at gemme filen.', { exact: false }).waitFor()
-        assert.equal(await conflict.isVisible(), true)
-        assert.equal(await checkbox.isDisabled(), true)
-        assert.equal(await next.isDisabled(), true)
+        await page.getByText('Filen kunne ikke gemmes i en ny mappe. Den eksisterende fil er ikke ændret. Vælg en anden mappe, og tillad adgang.', { exact: true }).waitFor()
+        await assertConflict()
       }
       await page.getByRole('button', { name: 'Tilbage', exact: true }).click()
       await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
-      assert.equal(await conflict.isVisible(), true, 'Back/next navigation must not dismiss a conflict')
-      assert.equal(await next.isDisabled(), true)
+      await assertConflict()
 
       for (const result of ['identical', 'saved']) {
         await page.evaluate(value => { window.streamingTest.result = value }, result)
