@@ -153,7 +153,7 @@ test("OBS stopped starts an immediate status check, then minute polling and a fi
   assert.equal(s.sent.length, 1);
 });
 
-test("every known OBS session must stop, and a new start disarms checks and clears pending closure", async () => {
+test("every recently active OBS session must stop, and a new start disarms checks and clears pending closure", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
   const secondSession = "second_session_12345678", thirdSession = "third_session_12345678";
   s.advance(1000); await s.signal("started", { sessionId: secondSession, startedAt: s.now() }); await s.tick();
@@ -180,6 +180,97 @@ test("every known OBS session must stop, and a new start disarms checks and clea
   assert.equal(s.sent.length, 1);
 });
 
+test("a script reload cannot leave an old silent session vetoing a real stop forever", async () => {
+  for (const stopAfter of [10_000, 180_000]) {
+    const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+    s.advance(1000);
+    const sessionId = "reloaded_session_123456";
+    await s.signal("started", { sessionId, startedAt: s.now() }); await s.tick();
+    s.advance(stopAfter);
+    s.live.youtube = null;
+    await s.signal("stopped", { sessionId }); await s.tick(true);
+    const stoppedAt = s.now();
+    if (stopAfter < 150_000) {
+      assert.equal(s.monitoring.length, 0, "wait for the old source's heartbeat TTL");
+      assert.equal(s.broadcast().pendingStopAt, stoppedAt);
+      s.advance(origin + 150_000 - s.now() - 1); await s.tick(true);
+      assert.equal(s.monitoring.length, 0);
+      s.advance(1); await s.tick(true);
+    }
+    assert.equal(s.monitoring.length, 1);
+    assert.equal(s.broadcast().endCheckRequestedAt, stoppedAt);
+    assert.equal(s.broadcast().pendingStopAt, null);
+    s.advance(300_000); await s.tick(true);
+    assert.match(s.message().content, /har afsluttet/);
+    assert.equal(s.sent.length, 1);
+    // Once completed, the following real broadcast gets its own post.
+    s.live.youtube = { ...streams.youtube, id: "lmnopqrstuv", url: "https://www.youtube.com/watch?v=lmnopqrstuv", startedAt: new Date(s.now()).toISOString() };
+    await s.signal("started", { sessionId: "next_broadcast_123456", startedAt: s.now() }); await s.tick();
+    assert.equal(s.sent.length, 2);
+  }
+});
+
+test("continued heartbeats cancel another source's pending stop without triggering provider requests", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  s.advance(1000);
+  await s.signal("started", { sessionId: "second_source_1234567", startedAt: s.now() }); await s.tick();
+  s.advance(1000);
+  await s.signal("stopped", { sessionId: "second_source_1234567" }); await s.tick();
+  assert.ok(s.broadcast().pendingStopAt);
+  const discoveryCount = s.discovery.length;
+  s.advance(30_000); await s.signal("heartbeat"); await s.tick(true);
+  assert.equal(s.broadcast().pendingStopAt, null);
+  s.advance(86400_000); await s.tick(true);
+  assert.equal(s.monitoring.length, 0, "expiry after cancellation cannot resurrect the old stop");
+  assert.equal(s.discovery.length, discoveryCount);
+  assert.equal(s.recordingChecks.length, 0);
+  assert.ok(!s.broadcast().endedAt);
+});
+
+test("a pending stop survives the old source expiring during a slow Discord delivery", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" });
+  s.advance(60_000);
+  const sessionId = "reloaded_session_123456";
+  await s.signal("started", { sessionId, startedAt: s.now() });
+  await s.signal("stopped", { sessionId });
+  const send = s.publisher.send;
+  s.publisher.send = async (...args) => { s.advance(100_000); return send(...args); };
+  await s.tick();
+  assert.equal(s.monitoring.length, 0);
+  assert.ok(s.broadcast().work, "the passed heartbeat deadline still needs a gate check");
+  assert.equal(s.broadcast().nextCheckAt, s.now() + 1);
+  s.live.youtube = null;
+  s.advance(1); await s.tick(true);
+  assert.ok(s.broadcast().endCheckRequestedAt);
+  assert.ok(s.monitoring.length > 0);
+});
+
+test("a silent source returning after another source's stop suspends ending checks and clears offline grace", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  s.advance(1000);
+  const sessionId = "replacement_source_123456";
+  await s.signal("started", { sessionId, startedAt: s.now() }); await s.tick();
+  s.advance(180_000); s.live.youtube = null;
+  await s.signal("stopped", { sessionId }); await s.tick();
+  assert.equal(s.monitoring.length, 1);
+  assert.ok(s.broadcast().platforms.youtube.offlineSince);
+  await s.signal("heartbeat"); await s.tick(true);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+  assert.ok(!s.broadcast().platforms.youtube.offlineSince);
+  s.advance(86400_000); await s.tick(true);
+  assert.equal(s.monitoring.length, 1);
+  assert.ok(!s.broadcast().endedAt);
+});
+
+test("a stop for an unknown OBS source cannot authorize end checks after heartbeat expiry", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
+  s.advance(180_000); s.live.youtube = null;
+  await s.signal("stopped", { sessionId: "unknown_source_123456" }); await s.tick(true);
+  assert.equal(s.monitoring.length, 0);
+  assert.ok(!s.broadcast().pendingStopAt);
+  assert.ok(!s.broadcast().endCheckRequestedAt);
+});
+
 test("a short offline period keeps the live button and resumes without another announcement", async () => {
   const s = setup(); await s.start({ youtube: "@DZR" }); await s.tick();
   s.live.youtube = null; s.advance(60_000); await s.signal("stopped"); await s.tick();
@@ -200,7 +291,7 @@ test("confirmed offline status ends after five minutes and excludes the grace ti
   s.advance(1000); await s.tick(true);
   assert.equal(s.sent.length, 1);
   assert.match(s.message().content, /har afsluttet/);
-  assert.match(s.message().embeds[0].description, /Var live i 0 min\./);
+  assert.match(s.message().embeds[0].description, /Var live i under 1 min\./);
   assert.deepEqual(s.message().components, []);
   assert.equal(s.message().embeds[0].url, undefined);
   assert.equal(s.message().embeds[0].title, streams.youtube.title);
@@ -460,6 +551,40 @@ test("an already delivered legacy receipt suppresses the same broadcast without 
   assert.equal(s.broadcast().work, false);
   s.advance(60_000); await s.tick(true);
   assert.equal(s.sent.length, 0);
+});
+
+test("an active legacy session during upgrade cannot replace a v2 receipt or post a duplicate", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" });
+  const registration = await s.store.getRegistration(guildId, userId);
+  await s.store.acceptEvent(registration, s.event({ platform: "youtube", sessionId: "legacy_source_123456" }));
+  await s.tick();
+  const receiptId = `notice_${announcementKey(channelId, streams.youtube)}`;
+  const receipt = s.db.documents.get(receiptId);
+  assert.equal(receipt.kind, "broadcast_receipt");
+  assert.equal(receipt.broadcastId, s.broadcast().id);
+  assert.equal(s.sent.length, 1);
+  assert.match(s.message().content, /er live nu/);
+  assert.deepEqual(await s.store.listNotices(), []);
+  s.advance(60_000); await s.tick(true);
+  assert.equal(s.sent.length, 1);
+  assert.deepEqual(s.db.documents.get(receiptId), receipt);
+});
+
+test("legacy discovery cannot steal a v2 reservation before its first delivery attempt", async () => {
+  const s = setup(); await s.start({ youtube: "@DZR" });
+  const registration = await s.store.getRegistration(guildId, userId);
+  const { broadcast } = await s.store.claimBroadcast(s.broadcast().id);
+  broadcast.platforms.youtube = { stream: streams.youtube, segments: [{ stream: streams.youtube }] };
+  await s.store.saveBroadcast(broadcast, { release: true });
+  const receiptId = `notice_${announcementKey(channelId, streams.youtube)}`;
+  const receipt = structuredClone(s.db.documents.get(receiptId));
+  await s.store.acceptEvent(registration, s.event({ platform: "youtube", sessionId: "legacy_source_123456" }));
+  const [legacy] = await s.store.listSessions();
+  const { session } = await s.store.claimSession(legacy.id);
+  await s.store.finishCheck(session, { streams: [streams.youtube] }, channelId);
+  assert.deepEqual(s.db.documents.get(receiptId), receipt);
+  assert.equal(receipt.kind, "broadcast_receipt");
+  assert.deepEqual(await s.store.listNotices(), []);
 });
 
 test("exhausted multistream discovery with only a legacy-owned stream allows a later genuinely new stream", async () => {

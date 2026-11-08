@@ -196,6 +196,9 @@ function createBroadcastWorker({ store, providers, publisher, now, reportError }
       } else if (states.length) broadcast.phase = "live";
 
       const due = [];
+      if (broadcast.pendingStopAt) due.push(Math.max(now(), ...Object.values(broadcast.obs)
+        .filter((source) => !source.stopped)
+        .map((source) => source.lastSeenAt + HEARTBEAT_TTL_MS)));
       if (!broadcast.firstVerifiedAt && broadcast.work) due.push(broadcast.startedAt + DISCOVERY_WINDOW_MS,
         ...Object.values(broadcast.obs).filter((source) => !source.stopped).map((source) => source.lastSeenAt + HEARTBEAT_TTL_MS));
       for (const state of Object.values(broadcast.platforms)) {

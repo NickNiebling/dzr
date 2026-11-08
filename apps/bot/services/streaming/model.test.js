@@ -129,6 +129,15 @@ test("completed streams without recordings clear all buttons", () => {
   assert.equal(message.embeds[0].thumbnail.url, youtube.thumbnail);
 });
 
+test("a broadcast shorter than one minute never displays zero minutes", () => {
+  const message = broadcastMessage(member, { endedAt: 1, platforms: {
+    youtube: { status: "ended", stream: youtube, durationMs: 45_000 },
+    twitch: { status: "ended", stream: twitch, durationMs: 45_000, approximate: true },
+  } });
+  assert.match(message.embeds[0].description, /Var live i under 1 min\./);
+  assert.match(message.embeds[1].description, /Var live i ca\. under 1 min\./);
+});
+
 test("restarted streams retain their original start fingerprint and large recording lists fit Discord limits", () => {
   const recordings = Array.from({ length: 50 }, (_, i) => ({ id: String(i), url: `https://example.test/${"a".repeat(400)}?part=${i}` }));
   const state = { status: "ended", stream: { ...youtube, title: "t".repeat(300), startedAt: "2026-10-27T19:04:00.000Z" },

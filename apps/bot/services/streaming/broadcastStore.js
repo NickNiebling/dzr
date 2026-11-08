@@ -39,7 +39,9 @@ function createBroadcastStore(db, { now = Date.now } = {}) {
       }
       const wasIdle = broadcast.work === false;
       const videoChanged = event.videoId && event.videoId !== broadcast.videoId;
-      const resumed = event.event === "started" || (!source && event.event === "heartbeat");
+      const cancelPendingStop = event.event === "heartbeat" && !!broadcast.pendingStopAt;
+      const resumed = event.event === "started" || (event.event === "heartbeat"
+        && (!source || broadcast.endCheckRequestedAt));
       if (resumed) {
         for (const state of Object.values(broadcast.platforms)) {
           if (!state.stream) continue;
@@ -55,18 +57,19 @@ function createBroadcastStore(db, { now = Date.now } = {}) {
           state.refreshDeadline = now() + 300_000;
         }
         broadcast.endCheckRequestedAt = null;
+        broadcast.pendingStopAt = null;
         broadcast.forceMonitor = false;
       }
       broadcast.obs[event.sessionId] = { stopped: event.event === "stopped", lastSeenAt: now() };
+      if (cancelPendingStop) broadcast.pendingStopAt = null;
       if (event.videoId) broadcast.videoId = event.videoId;
-      if (resumed || event.event !== "heartbeat" || videoChanged) broadcast.eventRevision++;
+      if (resumed || cancelPendingStop || event.event !== "heartbeat" || videoChanged) broadcast.eventRevision++;
       broadcast.work = broadcast.work || !broadcast.firstVerifiedAt || resumed || event.event === "stopped";
       if (resumed || event.event === "stopped" || (wasIdle && !broadcast.firstVerifiedAt)) broadcast.nextCheckAt = now();
-      if (event.event === "stopped" && Object.values(broadcast.obs).every((item) => item.stopped)) {
-        broadcast.endCheckRequestedAt = now();
-        broadcast.forceMonitor = true;
-        for (const state of Object.values(broadcast.platforms)) state.nextRefreshAt = null;
-      }
+      // A real stop authorizes completion; silence alone never does. Other recently
+      // active sources may veto it until they stop or their heartbeat TTL expires.
+      if (event.event === "stopped") broadcast.pendingStopAt = now();
+      enableEndChecks(broadcast, now());
       tx.set(ref(sourceId), { kind: "obs_source", broadcastId: broadcast.id, sequence: event.sequence, stopped: event.event === "stopped" });
       tx.set(ref(pointerId), { kind: "broadcast_pointer", broadcastId: broadcast.id,
         latestStartedAt: Math.max(event.startedAt, pointer?.latestStartedAt || 0) });
@@ -86,7 +89,8 @@ function createBroadcastStore(db, { now = Date.now } = {}) {
         return null;
       }
       const leaseId = crypto.randomUUID();
-      tx.update(ref(id), { leaseId, leaseUntil: now() + LEASE_MS });
+      enableEndChecks(broadcast, now());
+      tx.set(ref(id), { ...broadcast, leaseId, leaseUntil: now() + LEASE_MS });
       return { broadcast: { ...broadcast, leaseId, leaseUntil: now() + LEASE_MS }, registration };
     });
   }
@@ -149,5 +153,13 @@ function createBroadcastStore(db, { now = Date.now } = {}) {
 }
 
 const obsAlive = (broadcast, now) => Object.values(broadcast.obs).some((source) => !source.stopped && source.lastSeenAt > now - HEARTBEAT_TTL_MS);
+
+function enableEndChecks(broadcast, now) {
+  if (!broadcast.pendingStopAt || obsAlive(broadcast, now)) return;
+  broadcast.endCheckRequestedAt = broadcast.pendingStopAt;
+  broadcast.pendingStopAt = null;
+  broadcast.forceMonitor = true;
+  for (const state of Object.values(broadcast.platforms)) state.nextRefreshAt = null;
+}
 
 module.exports = { createBroadcastStore, obsAlive };

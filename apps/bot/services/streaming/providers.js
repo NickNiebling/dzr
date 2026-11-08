@@ -131,14 +131,16 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
       }
     }
     await checkVideos(session.videoId ? [session.videoId] : state.candidateIds);
-    if (!session.videoId && !found.length && !state.candidateIds.length) {
+    if (!found.length) {
       // The durable worker owns backoff and the one-hour discovery window.
       if (await quota.reserveSearch()) {
         const result = await youtube("search", { part: "snippet", channelId: channel.id, type: "video", eventType: "live", maxResults: "10" });
         const ids = [...new Set([...state.candidateIds, ...items(result, "items").map((item) => item.id?.videoId).filter(Boolean)])];
         await checkVideos(ids);
         // OBS may send to YouTube's preview before Go Live. Discover upcoming IDs once,
-        // then cheaply watch their actual status; a schedule never causes an announcement.
+        // then check their status first on later attempts. Keep searching for live videos
+        // while candidates (including a saved OBS link) are not live; another scheduled
+        // video must never hide the actual broadcast. A schedule cannot announce itself.
         if (!found.length && !state.candidateIds.length && !state.upcomingSearched && await quota.reserveSearch()) {
           state.upcomingSearched = true;
           const upcoming = await youtube("search", { part: "snippet", channelId: channel.id, type: "video", eventType: "upcoming", maxResults: "10" });

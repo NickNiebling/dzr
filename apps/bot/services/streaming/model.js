@@ -114,7 +114,8 @@ function durationText(state) {
       return total + (Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : 0);
     }, 0);
   const minutes = Math.floor(Math.max(0, duration) / 60_000);
-  const formatted = minutes >= 60 ? `${Math.floor(minutes / 60)} t. ${minutes % 60} min.` : `${minutes} min.`;
+  const formatted = minutes < 1 ? "under 1 min."
+    : minutes >= 60 ? `${Math.floor(minutes / 60)} t. ${minutes % 60} min.` : `${minutes} min.`;
   return `${state.approximate || state.segments?.some((segment) => segment.approximate) ? "ca. " : ""}${formatted}`;
 }
 

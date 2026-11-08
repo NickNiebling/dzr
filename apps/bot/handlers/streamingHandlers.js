@@ -82,7 +82,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
               + "Den forbinder OBS med din DZR-tilmelding. Det er ikke din streamnøgle til YouTube eller Twitch.\n"
               + "Nøglen vises kun i denne private besked. Del den ikke. En tidligere DZR-nøgle er nu ugyldig; opdatér derfor også OBS, hvis du var tilmeldt før." },
             { name: "Dine streamingplatforme", value: "DZR finder automatisk ud af, hvilke af dine tilmeldte YouTube- og Twitch-kanaler der er live. Du skal ikke vælge platform i OBS.\n"
-              + "**YouTube-videolink** er valgfrit og kan stå tomt." },
+              + "**YouTube-videolink** er valgfrit og kan stå tomt. Brug linket til den aktuelle stream; hvis videoen ikke er live, søger DZR automatisk på din kanal." },
           );
         const connection = new EmbedBuilder().setTitle("3. Test forbindelsen").setColor(0x3498db)
           .setDescription("1. Klik på **Test forbindelse** i OBS.\n"

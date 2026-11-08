@@ -253,5 +253,7 @@ function script_unload()
     if write_callback then write_callback:free(); write_callback = nil end
     -- No global cleanup: OBS and other scripts may still be using the same libcurl.
     -- If OBS exits abruptly, the server expires undiscovered work after missing heartbeats.
-    -- Verified public streams are monitored independently until the provider confirms the end.
+    -- Unloading is not a stream stop. Verified streams stay LIVE until a real stopped
+    -- callback arrives. A reloaded script starts a new session; the server lets silent
+    -- old sessions expire as vetoes only after receiving an explicit stop.
 end

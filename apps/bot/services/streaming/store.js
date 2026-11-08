@@ -115,7 +115,8 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
       for (const notice of notices) {
         // Never replace an attempted/sent delivery. An entirely unsent cancelled generation
         // can be adopted after the member rotates their key or enrolls again.
-        const canReplace = notice.previous && !notice.previous.firstAttemptAt && !notice.previous.messageId
+        const canReplace = notice.previous && notice.previous.kind !== "broadcast_receipt"
+          && !notice.previous.firstAttemptAt && !notice.previous.messageId
           && (notice.previous.status === "cancelled" || notice.previous.registrationId !== registration.registrationId);
         if (!notice.previous || canReplace) tx.set(ref(notice.id), { id: notice.id, kind: "notice", status: "pending", channelId,
           memberId: registration.id, registrationId: registration.registrationId, sessionId: session.id,

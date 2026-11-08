@@ -7,17 +7,18 @@ const video = { id: "abcdefghijk", snippet: { channelId: channel.id, title: "Rac
   status: { privacyStatus: "public" }, liveStreamingDetails: { actualStartTime: "2026-10-27T18:00:00Z" } };
 const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, async json() { return body; } });
 
-test("a supplied YouTube video ID bypasses search and verifies channel, visibility and actual start", async () => {
+test("a supplied live YouTube video ID bypasses search and verifies channel, visibility and actual start", async () => {
   let item = video;
   const urls = [];
   const providers = createProviders({ youtubeApiKey: "test-key" }, { fetchImpl: async (url) => { urls.push(url); return json({ items: [item] }); } });
   const session = { platform: "youtube", videoId: video.id };
   const quota = { reserveSearch() { assert.fail("No search for known IDs"); } };
   assert.equal((await providers.verify(channel, session, quota)).streams.length, 1);
+  const noBudget = { reserveSearch() { return false; } };
   item = { ...video, snippet: { ...video.snippet, channelId: "someone_else" } };
-  assert.equal((await providers.verify(channel, session, quota)).streams.length, 0);
+  assert.equal((await providers.verify(channel, session, noBudget)).streams.length, 0);
   item = { ...video, snippet: { ...video.snippet, liveBroadcastContent: "upcoming" }, liveStreamingDetails: {} };
-  assert.equal((await providers.verify(channel, session, quota)).streams.length, 0);
+  assert.equal((await providers.verify(channel, session, noBudget)).streams.length, 0);
   assert.ok(urls.every((url) => url.pathname.endsWith("/videos")));
 });
 
@@ -45,7 +46,7 @@ test("exhausted discovery budget prevents search requests", async () => {
   assert.equal(calls, 0);
 });
 
-test("a scheduled preview is discovered once, then cheap video polling detects its actual start", async () => {
+test("a scheduled preview is discovered once, while live searches continue until video polling finds it live", async () => {
   let time = 1000000, live = false, searches = 0;
   const providers = createProviders({ youtubeApiKey: "test-key" }, { now: () => time, fetchImpl: async (url) => {
     if (url.pathname.endsWith("/search")) {
@@ -61,10 +62,59 @@ test("a scheduled preview is discovered once, then cheap video polling detects i
   assert.deepEqual(first.state.candidateIds, [video.id]);
   time += 20000;
   assert.equal((await providers.verify(channel, { ...session, ...first.state }, quota)).streams.length, 0);
-  assert.equal(searches, 2, "a known upcoming ID is polled directly without another search");
+  assert.equal(searches, 3, "an upcoming ID does not suppress the next live search");
   live = true; time += 20000;
   assert.equal((await providers.verify(channel, { ...session, ...first.state }, quota)).streams.length, 1);
-  assert.equal(searches, 2);
+  assert.equal(searches, 3, "a candidate that is now live avoids another search");
+});
+
+test("cached upcoming videos cannot hide a different broadcast that becomes indexed later", async () => {
+  const upcoming = { ...video, id: "lmnopqrstuv", snippet: { ...video.snippet, liveBroadcastContent: "upcoming" }, liveStreamingDetails: {} };
+  let indexed = false, liveSearches = 0, upcomingSearches = 0;
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+    if (url.pathname.endsWith("/search")) {
+      if (url.searchParams.get("eventType") === "upcoming") {
+        upcomingSearches++;
+        return json({ items: [{ id: { videoId: upcoming.id } }] });
+      }
+      liveSearches++;
+      return json({ items: indexed ? [{ id: { videoId: video.id } }] : [] });
+    }
+    return json({ items: [upcoming, video].filter((item) => url.searchParams.get("id").split(",").includes(item.id)) });
+  } });
+  const quota = { reserveSearch: () => true };
+  const first = await providers.verify(channel, { platform: "youtube" }, quota);
+  assert.deepEqual(first.streams, []);
+  assert.deepEqual(first.state.candidateIds, [upcoming.id]);
+  indexed = true;
+  const second = await providers.verify(channel, { platform: "youtube", ...first.state }, quota);
+  assert.equal(second.streams[0].id, video.id);
+  assert.equal(liveSearches, 2);
+  assert.equal(upcomingSearches, 1);
+});
+
+test("stale, unrelated, private and future saved YouTube links fall back to budgeted channel discovery", async () => {
+  for (const saved of [null,
+    { ...video, liveStreamingDetails: { ...video.liveStreamingDetails, actualEndTime: "2026-10-27T19:00:00Z" } },
+    { ...video, snippet: { ...video.snippet, channelId: "other-channel" } },
+    { ...video, status: { privacyStatus: "private" } },
+    { ...video, snippet: { ...video.snippet, liveBroadcastContent: "upcoming" }, liveStreamingDetails: {} },
+  ]) {
+    const current = { ...video, id: "lmnopqrstuv" };
+    let searches = 0, reservations = 0;
+    const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+      if (url.pathname.endsWith("/search")) {
+        searches++;
+        assert.equal(url.searchParams.get("channelId"), channel.id);
+        return json({ items: [{ id: { videoId: current.id } }] });
+      }
+      return json({ items: [saved, current].filter((item) => item && url.searchParams.get("id").split(",").includes(item.id)) });
+    } });
+    const result = await providers.verify(channel, { platform: "youtube", videoId: video.id }, { reserveSearch() { reservations++; return true; } });
+    assert.deepEqual(result.streams.map((stream) => stream.id), [current.id]);
+    assert.equal(searches, 1);
+    assert.equal(reservations, 1);
+  }
 });
 
 test("channel resolution uses the handle endpoint, never a quota-expensive search", async () => {
