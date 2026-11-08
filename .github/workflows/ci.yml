@@ -51,6 +51,8 @@ jobs:
       # bot job's services/**/*.test.js glob would never see them and they would ship untested.
       - name: Shared unit tests
         run: npm test
+      - name: Browser streaming setup tests
+        run: npm run test:streaming-setup
 
   bot:
     name: Bot (tests)
