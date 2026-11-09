@@ -1,16 +1,52 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder,
   TextInputStyle, MessageFlags, PermissionsBitField } = require("discord.js");
 const { StreamingError } = require("../services/streaming/model");
+const shared = require("../constants.json");
 
-const COMMANDS = ["streaming_add", "streaming_remove", "streaming_overview"];
+const COMMANDS = ["streaming_add", "streaming_add_new", "streaming_remove", "streaming_overview"];
 const isStreamingInteraction = (interaction) => COMMANDS.includes(interaction.commandName) || String(interaction.customId || "").startsWith("streaming:");
 const stamp = (time) => time ? `<t:${Math.floor(time / 1000)}:f>` : "Endnu ikke set live";
 const button = (action, userId, label, style = ButtonStyle.Primary) => new ButtonBuilder()
   .setCustomId(`streaming:${action}:${userId}`).setLabel(label).setStyle(style);
 const row = (...buttons) => new ActionRowBuilder().addComponents(...buttons);
 
-function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, channelId, getClubRoleId = async () => null }) {
+function channelModal(userId, registration, saveAction = "save") {
+  const modal = new ModalBuilder().setCustomId(`streaming:${saveAction}:${userId}`).setTitle("Dine streamingkanaler");
+  for (const [platform, label, placeholder] of [["youtube", "YouTube-kanal (valgfri)", "https://www.youtube.com/@din-kanal"], ["twitch", "Twitch-kanal (valgfri)", "https://www.twitch.tv/din-kanal"]]) {
+    const input = new TextInputBuilder().setCustomId(platform).setLabel(label).setStyle(TextInputStyle.Short)
+      .setRequired(false).setMaxLength(200).setPlaceholder(placeholder);
+    if (registration?.channels[platform]) input.setValue(registration.channels[platform].url);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+  }
+  return modal;
+}
+
+function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, channelId,
+  setupEnabled = false, setupUrl = `${shared.siteOrigin}/streaming/setup`, getClubRoleId = async () => null }) {
   const baseUrl = publicUrl.replace(/\/$/, "");
+
+  function guideButton() {
+    let url;
+    try { url = new URL(setupUrl); } catch { /* reported without logging configuration */ }
+    if (!url || url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+      throw new StreamingError("setup_unavailable", "Installationsguiden er midlertidigt utilgængelig. Prøv igen senere.", 503);
+    }
+    return new ButtonBuilder().setLabel("Åbn installationsguiden").setStyle(ButtonStyle.Link).setURL(url.href);
+  }
+
+  async function showGuide(interaction, registration, token) {
+    const channels = Object.entries(registration.channels).map(([platform, channel]) => `${platform === "youtube" ? "YouTube" : "Twitch"}: ${channel.url}`).join("\n");
+    await interaction.editReply({ content: (token
+      ? "✅ **Dine kanaler er tilmeldt**\n"
+      : "✅ **Du er allerede tilmeldt**\n") + channels + "\n\n"
+      + (token ? `**Din personlige OBS-nøgle:**\n\`${token}\`\nNøglen vises kun i denne private besked. Del den ikke.\n\n`
+        : "Din nøgle og dine kanaler er uændrede. Behold nøglen i OBS, hvis den allerede er indsat.\n\n")
+      + "Åbn guiden på den computer, hvor du bruger OBS. Forbindelsestesten er valgfri.\n\n"
+      + "**Mistet nøglen?** Se din tidligere private Discord-besked. Du kan få en ny med /streaming_add, "
+      + "men når du gemmer dér, bliver den gamle nøgle ugyldig, og du skal opdatere OBS.",
+    components: [row(guideButton(), button("status", interaction.user.id, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))],
+    allowedMentions: { parse: [] } });
+  }
 
   async function overview(interaction) {
     const isAdmin = interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)
@@ -43,27 +79,64 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
       const [, action, owner] = String(interaction.customId || "").split(":");
       if (interaction.customId && owner !== userId) throw new StreamingError("not_owner", "Start dit eget flow med /streaming_add.", 403);
 
-      if (["streaming_add", "streaming_remove"].includes(interaction.commandName) || ["channels", "save", "remove"].includes(action)) {
+      // Discord can retain old commands, buttons and open modals after rollback.
+      // Reject all new-flow entry points before role lookups or registration I/O.
+      if (setupEnabled !== true && (interaction.commandName === "streaming_add_new" || ["channels_new", "save_new"].includes(action))) {
+        throw new StreamingError("setup_disabled", "Den nye installationsguide er ikke aktiveret. Brug /streaming_add. Dine kanaler og din OBS-nøgle er uændrede.", 503);
+      }
+
+      // The new slash/modal paths can acknowledge before I/O. Buttons that open a modal cannot.
+      if (interaction.commandName === "streaming_add_new" || (interaction.isModalSubmit() && action === "save_new")) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      }
+
+      if (["streaming_add", "streaming_add_new", "streaming_remove"].includes(interaction.commandName) || ["channels", "channels_new", "save", "save_new", "remove"].includes(action)) {
         const clubRoleId = await getClubRoleId();
         const eligible = clubRoleId && (interaction.member?.roles?.cache?.has(clubRoleId) || interaction.member?.roles?.includes?.(clubRoleId));
         if (!eligible) throw new StreamingError("club_member_required", "Streaming er kun tilgængelig for Club Members.", 403);
       }
 
-      if (interaction.isButton() && action === "channels") {
+      if (interaction.commandName === "streaming_add_new" || action === "save_new") {
+        guideButton(); // Fail before registration if the configured guide link is unusable.
+      }
+
+      if (interaction.isButton() && ["channels", "channels_new"].includes(action)) {
         const registration = await service.getRegistration(userId);
-        const modal = new ModalBuilder().setCustomId(`streaming:save:${userId}`).setTitle("Dine streamingkanaler");
-        for (const [platform, label, placeholder] of [["youtube", "YouTube-kanal (valgfri)", "https://www.youtube.com/@din-kanal"], ["twitch", "Twitch-kanal (valgfri)", "https://www.twitch.tv/din-kanal"]]) {
-          const input = new TextInputBuilder().setCustomId(platform).setLabel(label).setStyle(TextInputStyle.Short)
-            .setRequired(false).setMaxLength(200).setPlaceholder(placeholder);
-          if (registration?.channels[platform]) input.setValue(registration.channels[platform].url);
-          modal.addComponents(new ActionRowBuilder().addComponents(input));
+        if (action === "channels_new" && registration) {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          await showGuide(interaction, registration);
+          return true;
         }
-        await interaction.showModal(modal);
+        await interaction.showModal(channelModal(userId, registration, action === "channels_new" ? "save_new" : "save"));
         return true;
       }
 
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      if (interaction.isModalSubmit() && action === "save") {
+      if (!interaction.deferred) await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (interaction.commandName === "streaming_add_new") {
+        const existing = await service.getRegistration(userId);
+        if (existing) await showGuide(interaction, existing);
+        else await interaction.editReply({ content: "**Tilmeld din streaming til DZR**\n"
+          + "Angiv mindst én af dine egne YouTube- eller Twitch-kanaler. Derefter får du din personlige OBS-nøgle og en enkel installationsguide i browseren.\n\n"
+          + "Opsætningen er kun synlig for dig. Du behøver ikke forbinde din Google- eller Twitch-konto.",
+        components: [row(button("channels_new", userId, "Angiv streamingkanaler"))] });
+      } else if (interaction.isModalSubmit() && action === "save_new") {
+        const existing = await service.getRegistration(userId);
+        if (existing) await showGuide(interaction, existing);
+        else {
+          try {
+            const { registration, token } = await service.enroll(userId, interaction.user.username, {
+              youtube: interaction.fields.getTextInputValue("youtube"), twitch: interaction.fields.getTextInputValue("twitch"),
+            }, { createOnly: true });
+            await showGuide(interaction, registration, token);
+          } catch (error) {
+            if (!(error instanceof StreamingError) || error.code !== "registration_exists") throw error;
+            // Another form won the transaction. Never display this attempt's discarded key.
+            const registration = await service.getRegistration(userId);
+            if (!registration) throw new StreamingError("registration_changed", "Din tilmelding er ændret. Start igen med /streaming_add_new.", 409);
+            await showGuide(interaction, registration);
+          }
+        }
+      } else if (interaction.isModalSubmit() && action === "save") {
         const { registration, token } = await service.enroll(userId, interaction.user.username, {
           youtube: interaction.fields.getTextInputValue("youtube"), twitch: interaction.fields.getTextInputValue("twitch"),
         });
@@ -125,8 +198,11 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
     } catch (error) {
       // In particular, never log Discord payloads: onboarding contains the one-time plaintext key.
       const content = error instanceof StreamingError ? error.userMessage : "DZR Streaming kunne ikke gennemføre handlingen. Prøv igen om lidt.";
+      const retryNewChannels = String(interaction.customId || "").startsWith("streaming:save_new:")
+        && error instanceof StreamingError && ["missing_channels", "invalid_channel", "channel_not_found", "channel_in_use"].includes(error.code);
       try {
-        if (interaction.deferred || interaction.replied) await interaction.editReply({ content, components: [] });
+        if (interaction.deferred || interaction.replied) await interaction.editReply({ content,
+          components: retryNewChannels ? [row(button("channels_new", interaction.user.id, "Ret kanalerne og prøv igen"))] : [] });
         else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
       } catch { /* An expired interaction contains no recoverable reply path. */ }
     }

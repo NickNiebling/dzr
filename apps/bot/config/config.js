@@ -71,7 +71,10 @@ module.exports = {
     keepAliveInterval: 24 * 60 * 60 * 1000, // 24 hours. Not needed anymore. Remove at some point
   },
   streaming: {
+    // Explicit opt-in; deploying this branch must not start the onboarding pilot.
+    setupEnabled: process.env.STREAMING_SETUP_ENABLED === "true",
     publicUrl: process.env.STREAMING_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "https://bot-tdnm.onrender.com",
+    setupUrl: process.env.STREAMING_SETUP_URL || `${shared.siteOrigin}/streaming/setup`,
     channelId: process.env.STREAMING_CHANNEL_ID || "1196454773558345768",
     youtubeApiKey: process.env.YOUTUBE_API_KEY,
     twitchClientId: process.env.TWITCH_CLIENT_ID,

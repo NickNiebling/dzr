@@ -6,6 +6,10 @@ const commands = [
     .setDescription("Tilmeld dine streamingkanaler, og få DZR-script og nøgle til OBS")
     .setDMPermission(false),
   new SlashCommandBuilder()
+    .setName("streaming_add_new")
+    .setDescription("Tilmeld streaming, og få en trinvis OBS-guide i browseren")
+    .setDMPermission(false),
+  new SlashCommandBuilder()
     .setName("streaming_remove")
     .setDescription("Afmeld din streaming, og spær din OBS-nøgle")
     .setDMPermission(false),
@@ -860,6 +864,7 @@ const commands = [
         .setDescription("Ladder match id (default: the team's next match)")
         .setRequired(false)
     ),
-].map(cmd => cmd.toJSON());
+].map(cmd => cmd.toJSON())
+  .filter(cmd => cmd.name !== "streaming_add_new" || process.env.STREAMING_SETUP_ENABLED === "true");
 
 module.exports = commands;

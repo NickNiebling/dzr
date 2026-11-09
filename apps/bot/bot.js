@@ -57,6 +57,7 @@ const streaming = createStreamingService({
 });
 const streamingHandlers = createStreamingHandlers({ service: streaming, guildId: config.discord.guildId,
   adminRoleId: shared.discord.roles.admin, publicUrl: config.streaming.publicUrl, channelId: config.streaming.channelId,
+  setupEnabled: config.streaming.setupEnabled, setupUrl: config.streaming.setupUrl,
   getClubRoleId: () => getClubRoleId(db) });
 setupKeepAliveServer({ streaming });
 

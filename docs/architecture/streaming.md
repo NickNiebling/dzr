@@ -1,6 +1,6 @@
 # OBS streaming announcements
 
-[Architecture index](README.md) · Parent: [bot and automation](bot-automation.md) · Related: [security](security.md), [data](data.md), [deployment setup](../../README.md#obs-streaming)
+[Architecture index](README.md) · Parent: [bot and automation](bot-automation.md) · Related: [security](security.md), [data](data.md), [deployment setup](../../README.md#obs-streaming), [isolated onboarding tests](../streaming-setup-testing.md)
 
 ## How does an OBS signal become one verified announcement?
 
@@ -60,9 +60,71 @@ The member installs Lua in OBS Studio. OBS dispatches frontend events and timer 
 
 The private OBS guide separates downloading `dzr-stream.lua`, opening **Tools / Værktøjer → Scripts**, clicking **+**, and selecting the file from **Downloads / Overførsler**. It maps the address/key to the existing OBS fields, explains automatic discovery of registered channels and the optional YouTube video link, then directs members to test in OBS and confirm the signal time in Discord.
 
-`/streaming_remove` revokes the invoking Club Member's key and sessions. Losing the role blocks both commands and their effectful components; it does not itself delete an existing registration. Leaving the guild revokes enrollment. `/streaming_overview [page]` requires Administrator or the configured DZR Admin role and shows Discord users, channel links, last verified live starts, broadcast links and errors. Responses are private and components are bound to their owner.
+`/streaming_add_new` runs a parallel browser-onboarding flow. The original command keeps its existing messages and rotation behavior. Both flows use the same modal builder, enrollment service, registration records, authentication and Lua distribution. A new registration returns a private one-time key and a guide button. An existing registration returns guide access without calling enrollment or changing the registration. A `createOnly` guard inside the existing registration transaction also rejects a duplicate/stale new-flow submission before changing channel claims, keys or pending work. The new handler then returns the existing guide access without displaying the losing attempt's generated key.
+
+The experiment defaults off. Only `STREAMING_SETUP_ENABLED=true` registers the new command and enables its slash, button and modal paths. Disabled handlers reject cached commands and stale forms before registration or role I/O. Restarting with the flag unset/false removes the command without revoking keys or stopping the shared streaming services. The public browser guide remains inspectable; native acceptance is tracked before activating the pilot, separately from review of the disabled code.
+
+`/streaming_remove` revokes the invoking Club Member's key and sessions. Losing the role blocks enrollment/removal commands and their effectful components; it does not itself delete an existing registration. Leaving the guild revokes enrollment. `/streaming_overview [page]` requires Administrator or the configured DZR Admin role and shows Discord users, channel links, last verified live starts, broadcast links and errors. Responses are private and components are bound to their owner.
 
 Channel ownership is trusted, without provider OAuth. Exclusive channel claims prevent two members registering the same channel; they do not prove ownership. Live verification checks the registered channel, not whether the Discord user owns it.
+
+## How does browser setup reuse the existing bot?
+
+Purpose: separate the browser's permitted file installation from the bot's existing registration, authentication and OBS connectivity responsibilities.
+
+![Browser OBS onboarding](generated/streaming-2.svg)
+
+<details>
+<summary>Editable Mermaid source</summary>
+
+```mermaid
+---
+config:
+  theme: base
+  themeVariables:
+    edgeLabelBackground: '#ffffff'
+  themeCSS: |
+    .edgeLabel, .edgeLabel p { font-size: 12px !important; }
+    :is(&) { background: #ffffff; }
+  flowchart:
+    padding: 5
+    nodeSpacing: 35
+    rankSpacing: 60
+---
+flowchart TB
+    browser["💻 Browser guide"] -->|Load guide and generic script| web["▲ Next.js on Vercel"]
+    web -->|GET existing Lua distribution| bot["🤖 Club bot on Render"]
+    browser -->|Save file with explicit permission| folder["📦 Selected local DZR folder"]
+    obs["⚙️ OBS Studio"] -->|Read Lua script| folder
+    obs -->|Send authenticated HTTPS callbacks| bot
+    discord["🎮 Discord"] -->|Deliver commands, forms and status checks| bot
+    bot -->|Read/write existing registration| db[("🔥 Firestore streaming_bot")]
+    bot -->|Send private setup and status replies| discord
+    classDef default fill:#eff6ff,stroke:#1d4ed8,color:#1f2328
+    classDef client fill:#fffbeb,stroke:#f59e0b,color:#1f2328
+    classDef vercel fill:#ffffff,stroke:#111111,color:#111111
+    classDef render fill:#faf5ff,stroke:#8A05FF,color:#1f2328
+    classDef external fill:#fff1f2,stroke:#b91c1c,color:#1f2328
+    class browser,folder,obs client
+    class web vercel
+    class bot render
+    class discord external
+    linkStyle default stroke:#1d4ed8
+    linkStyle 0,2,3,4 stroke:#f59e0b
+    linkStyle 1 stroke:#111111
+    linkStyle 5 stroke:#b91c1c
+    linkStyle 6,7 stroke:#8A05FF
+```
+
+</details>
+
+The public [setup page](../../app/streaming/setup/page.tsx) requires no browser login. It offers Windows/macOS instructions, explicit directory access where supported and a normal download elsewhere. The File System Access API uses the directory selected by the member; Documents is only a picker hint. It writes only the generic `dzr-stream.lua` in the selected DZR folder, preserves different existing files and keeps directory handles in memory. The browser never executes the script or changes OBS settings.
+
+The [website download route](../../app/api/streaming/script/route.ts) requests the bot's existing Lua endpoint server-side. The destination and the displayed callback address come from the same explicit `STREAMING_PUBLIC_URL` configuration. The route does not forward browser credentials or accept a destination from the request. It rejects failed, empty, oversized or invalid script downloads. This avoids browser CORS restrictions without a second script copy or extra backend service.
+
+The guide URL is generic: no key, Discord ID or registration session is appended. Members copy the private Discord key directly into OBS. Reopening the guide neither reads nor rotates a key. The guide explains that replacing a lost key through the original `/streaming_add` invalidates the old one. No key enters browser state, persistent storage, analytics or screenshots.
+
+Finishing the guide and saving a file are distinct from a verified connection. The optional test still uses **Test forbindelse** in OBS and the existing private Discord status button; the browser does not poll personal status or mark a connection verified. No platform selector is added: upstream's automatic registered-channel discovery remains in use. [Fork testing and comparison](../streaming-setup-testing.md) describe the native acceptance checks and the independently proposed improvements to the original flow.
 
 ## Callback and verification contract
 
@@ -103,6 +165,8 @@ Authenticated callback errors, provider/quota errors, discovery timeout and anno
 | Responsibility | Implementation |
 | --- | --- |
 | Commands, private forms, role checks | [handlers](../../apps/bot/handlers/streamingHandlers.js) |
+| Public browser guide and safe generic file installation | [setup page](../../app/streaming/setup/page.tsx), [wizard](../../components/streaming/StreamingSetupWizard.tsx), [installer](../../components/streaming/installScript.ts) |
+| Same-origin Lua download and common website configuration | [download route](../../app/api/streaming/script/route.ts), [configuration/download helper](../../app/lib/streamingSetup.ts) |
 | Callback ingress and download | [HTTP router](../../apps/bot/services/streaming/router.js), [OBS script](../../apps/bot/assets/dzr-stream.lua) |
 | Provider identity and public live checks | [providers](../../apps/bot/services/streaming/providers.js) |
 | Scheduling, deadline, delivery and alerts | [worker](../../apps/bot/services/streaming/service.js), [transaction store](../../apps/bot/services/streaming/store.js) |

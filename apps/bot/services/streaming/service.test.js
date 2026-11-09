@@ -44,6 +44,49 @@ test("onboarding stores only a hash; testing never announces or sets last-live",
   assert.equal((await s.service.getRegistration(userId)).lastCallbackAt, s.now());
 });
 
+test("create-only enrollment creates the same registration and authentication used by legacy onboarding", async () => {
+  const s = setup();
+  const { registration, token } = await s.service.enroll(userId, "Rider", { youtube: "@DZR" }, { createOnly: true });
+  assert.deepEqual(registration.channels, { youtube: channel });
+  assert.ok(tokenMatches(token, registration.tokenHash));
+  assert.equal(registration.createOnly, undefined);
+  assert.ok(!JSON.stringify([...s.db.documents]).includes(token));
+  await s.service.callback(token, s.event({ event: "test" }));
+  assert.equal((await s.service.getRegistration(userId)).lastCallbackAt, s.now());
+  assert.equal(s.published.length, 0);
+});
+
+test("create-only retries preserve existing registration, channel claims and active broadcast work", async () => {
+  const s = setup();
+  const first = await s.enroll();
+  await s.service.callback(first.token, s.event());
+  const before = structuredClone([...s.db.documents]);
+  s.advance(1000);
+  s.providers.resolveChannel = async () => ({ ...channel, id: "UCbbbbbbbbbbbbbbbbbbbbbb", url: "https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb" });
+  await assert.rejects(s.service.enroll(userId, "Changed name", { youtube: "@other" }, { createOnly: true }), { code: "registration_exists", status: 409 });
+  assert.deepEqual([...s.db.documents], before);
+  assert.ok(tokenMatches(first.token, (await s.service.getRegistration(userId)).tokenHash));
+  await s.service.tick();
+  assert.equal(s.published.length, 1);
+});
+
+test("concurrent create-only enrollments issue precisely one persisted key", async () => {
+  const s = setup();
+  const results = await Promise.allSettled([
+    s.service.enroll(userId, "Rider", { youtube: "@DZR" }, { createOnly: true }),
+    s.service.enroll(userId, "Rider", { youtube: "@DZR" }, { createOnly: true }),
+  ]);
+  const fulfilled = results.filter((item) => item.status === "fulfilled");
+  const rejected = results.filter((item) => item.status === "rejected");
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, "registration_exists");
+  const stored = await s.service.getRegistration(userId);
+  assert.equal(stored.registrationId, fulfilled[0].value.registration.registrationId);
+  assert.ok(tokenMatches(fulfilled[0].value.token, stored.tokenHash));
+  assert.equal([...s.db.documents.values()].filter((record) => record.kind === "member").length, 1);
+});
+
 test("a verified stream is announced once across repeated callbacks, new OBS sessions and bot restarts", async () => {
   const s = setup(); const { token } = await s.enroll();
   const started = s.event();

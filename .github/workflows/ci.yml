@@ -23,7 +23,8 @@ jobs:
 
   site:
     name: Site (typecheck + lint)
-    runs-on: ubuntu-latest
+    # Keep the browser runner on an OS supported by the pinned Playwright 1.56.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,6 +52,15 @@ jobs:
       # bot job's services/**/*.test.js glob would never see them and they would ship untested.
       - name: Shared unit tests
         run: npm test
+      - name: Streaming installer and proxy unit tests
+        run: npm run test:streaming-setup
+      - name: Install browser test tooling
+        run: npm ci --prefix scripts/architecture
+      - name: Install Chromium
+        run: node scripts/architecture/node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Streaming wizard browser regression (isolated Next.js site)
+        timeout-minutes: 10
+        run: npm run test:streaming-setup:browser
 
   bot:
     name: Bot (tests)

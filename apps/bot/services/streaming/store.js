@@ -20,10 +20,13 @@ function createStore(db, { now = Date.now, searchBudget = 90 } = {}) {
 
   async function getRegistration(guildId, discordId) { return read(await memberRef(guildId, discordId).get()); }
 
-  async function register({ guildId, discordId, discordName, channels, tokenHash }) {
+  async function register({ guildId, discordId, discordName, channels, tokenHash, createOnly = false }) {
     const target = memberRef(guildId, discordId);
     return db.runTransaction(async (tx) => {
       const previous = read(await tx.get(target));
+      if (createOnly && previous) {
+        throw new StreamingError("registration_exists", "Du er allerede tilmeldt. Din nøgle og dine kanaler er uændrede.", 409);
+      }
       const claims = await Promise.all(Object.entries(channels).map(async ([platform, channel]) => {
         const claimRef = channelRef(guildId, platform, channel);
         return { platform, channel, ref: claimRef, value: read(await tx.get(claimRef)) };
