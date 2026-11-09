@@ -22,7 +22,7 @@ function channelModal(userId, registration, saveAction = "save") {
 }
 
 function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, channelId,
-  setupUrl = `${shared.siteOrigin}/streaming/setup`, getClubRoleId = async () => null }) {
+  setupEnabled = false, setupUrl = `${shared.siteOrigin}/streaming/setup`, getClubRoleId = async () => null }) {
   const baseUrl = publicUrl.replace(/\/$/, "");
 
   function guideButton() {
@@ -78,6 +78,12 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
       const userId = interaction.user.id;
       const [, action, owner] = String(interaction.customId || "").split(":");
       if (interaction.customId && owner !== userId) throw new StreamingError("not_owner", "Start dit eget flow med /streaming_add.", 403);
+
+      // Discord can retain old commands, buttons and open modals after rollback.
+      // Reject all new-flow entry points before role lookups or registration I/O.
+      if (setupEnabled !== true && (interaction.commandName === "streaming_add_new" || ["channels_new", "save_new"].includes(action))) {
+        throw new StreamingError("setup_disabled", "Den nye installationsguide er ikke aktiveret. Brug /streaming_add. Dine kanaler og din OBS-nøgle er uændrede.", 503);
+      }
 
       // The new slash/modal paths can acknowledge before I/O. Buttons that open a modal cannot.
       if (interaction.commandName === "streaming_add_new" || (interaction.isModalSubmit() && action === "save_new")) {

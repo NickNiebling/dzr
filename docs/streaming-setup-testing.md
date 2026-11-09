@@ -4,6 +4,8 @@
 
 MVP’en sammenligner den eksisterende `/streaming_add` med `/streaming_add_new`. Begge bruger samme registrering, nøgleformat, Lua-fil, callback og verifikation. Browserguiden kræver ikke login og modtager ingen personlig OBS-nøgle. Automatisk platformregistrering følger det eksisterende Lua-script; der er ingen platformvælger i OBS.
 
+Forsøget er **deaktiveret som standard**. Koden kan reviewes med grønne automatiske kontroller, uden at den nye kommando bliver tilgængelig ved deployment. Native OBS- og Discord-tests står fortsat som ikke udført, indtil de faktisk gennemføres; de er acceptkriterier for aktivering af forsøget. Den offentlige guide kan stadig åbnes direkte, men kan ikke oprette registreringer eller ændre nøgler.
+
 ## Preview af browserguiden
 
 Skærmbillederne er fra lokal Chromium-test af den faktiske Next.js-side. OBS-billederne inde i guiden er mærkede illustrationer, ikke native OBS-skærmbilleder. Testen brugte en lokal Lua-filserver og en tom, skrivebeskyttet Firestore-testgrænse; ingen produktionsdata eller personlige nøgler indgår.
@@ -38,6 +40,7 @@ STREAMING_TEST_CHANNEL_ID=TESTKANALENS_ID
 STREAMING_TEST_IT_CHANNEL_ID=TEST_IT_KANALENS_ID
 STREAMING_TEST_PUBLIC_URL=https://BOT-HTTPS-ADRESSE
 STREAMING_SETUP_URL=https://WEBSITE-HTTPS-ADRESSE/streaming/setup
+STREAMING_SETUP_ENABLED=true
 STREAMING_TEST_PORT=3001
 YOUTUBE_API_KEY=API_NOEGLE_TIL_TEST
 TWITCH_CLIENT_ID=TWITCH_APP_ID_TIL_TEST
@@ -153,6 +156,7 @@ Registrér OS, browser, OBS-version og resultat i PR’en. Nedenstående afkryds
 | [ ] | Mobil og forkert OS-forslag | Hjælp til at fortsætte på OBS-computeren; link kan kopieres og OS ændres manuelt. |
 | [ ] | Ny bruger med YouTube, Twitch eller begge | Mindst én gyldig kanal kræves; én registrering og ny nøgle i et privat svar. |
 | [ ] | Eksisterende bruger og genåbnet guide | Ingen nye provideropslag til tilmelding, ingen ændrede kanaler, nøglehash, registrerings-id eller igangværende streamingarbejde. |
+| [ ] | Forsøg slået fra og bot genstartet | Den nye kommando registreres ikke. Gamle knapper, cached kommando og åbne formularer afvises privat før dataadgang. Eksisterende nøgle, OBS-callback, status og original onboarding virker stadig. |
 | [ ] | To åbne formularer/dobbelt indsendelse | Første oprettelse vinder; den anden får guideadgang uden ny nøgle eller rotation. |
 | [ ] | Ingen Club Member-rolle, forkert ejer eller DM | Afvisning uden registrering eller adgang til andres oplysninger. |
 | [ ] | Afbrudt mappevalg eller afvist adgang | Ingen falsk installationssucces; neutral besked eller hjælp, prøv igen og downloadalternativ. |
@@ -187,6 +191,8 @@ Den nuværende originale onboarding har tre Discord-handlinger før nøgleudleve
 
 ## Udrulning og grænser
 
-Gør først websiteguiden tilgængelig med korrekt bot-origin, og deploy derefter botkommandoen med guideadressen. Start med en lille pilot. Den eksisterende `/streaming_add` kan bruges gennem hele forsøget. Fjernes den nye kommando igen, er registreringerne stadig kompatible med de eksisterende services.
+Deploy med `STREAMING_SETUP_ENABLED` udeladt eller sat til `false`. Gør websiteguiden tilgængelig med korrekt bot-origin, og brug `STREAMING_SETUP_ENABLED=true` i den isolerede testbot til accepttesten. Før forsøget aktiveres for medlemmer, registreres native OBS-/Discord-resultaterne og eventuelle udestående platformbegrænsninger. Aktivér derefter med den præcise værdi `true` på botten og genstart den. Den eksisterende `/streaming_add` kan bruges gennem hele forsøget.
 
-MVP’en omfatter ikke browserlogin, nøgleoverførsel til websitet, automatisk OBS-konfiguration, personlig Lua, scriptopdatering, browserbaseret forbindelsesverifikation, nye registreringsdatabaser eller Linux-illustrationer. Illustrationernes kilder og native verifikationsbehov findes i [billedoversigten](../public/streaming/setup/README.md). PR’en skal målrettes `NickNiebling/dzr:main`, beskrive testresultater og åbne native tests og må ikke merges automatisk.
+Stop forsøget ved at fjerne flaget eller sætte det til `false` og genstarte botten. Det fjerner kun den nye kommando og afviser også gamle nye-flow-knapper/formularer. Registreringer og nøgler bevares, og OBS-callbacks og annonceringer fortsætter. CI tester off/on/off-konfiguration, uændrede gamle kommandoer og en kæde fra den nye formular gennem den rigtige registreringsservice og HTTP-callback til status efter deaktivering. Discord-transport og Firestore er testdoubles i denne kæde; den må ikke kaldes en rigtig Discord-/OBS-accepttest.
+
+MVP’en omfatter ikke browserlogin, nøgleoverførsel til websitet, automatisk OBS-konfiguration, personlig Lua, scriptopdatering, browserbaseret forbindelsesverifikation, nye registreringsdatabaser eller Linux-illustrationer. Illustrationernes kilder og native verifikationsbehov findes i [billedoversigten](../public/streaming/setup/README.md). Implementeringen reviewes i upstream-PR #90 mod `T00few2/dzr:main` efter den oprindelige fork-PR #10. PR’en skal beskrive testresultater og åbne native aktiveringstests og må ikke merges automatisk.

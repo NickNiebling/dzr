@@ -4,6 +4,7 @@ const shared = require("../../constants.json");
 const { readTestConfig, testCommands, registerTestCommands } = require("../../scripts/streaming-dev");
 
 const env = {
+  STREAMING_SETUP_ENABLED: "true",
   FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
   STREAMING_TEST_BOT_TOKEN: "test-only-token",
   STREAMING_TEST_CLIENT_ID: "222222222222222222",

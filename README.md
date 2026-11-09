@@ -124,7 +124,9 @@ npm run eval
 
 Club Members use `/streaming_add` in the DZR guild to enter their YouTube/Twitch channels in a private modal. Both `/streaming_add` and `/streaming_remove` require the role configured in `system_settings/global.membership.clubMemberRoleId`. The bot returns the Lua download, installation instructions and a personal OBS key; removal revokes enrollment. `/streaming_overview [page]` gives admins a private list of members, channel links, last verified live starts, broadcast links and errors. Channel ownership is trusted; members do not connect provider accounts.
 
-`/streaming_add_new` is the parallel browser-onboarding experiment. It uses the same Club Member checks, channel form, registration service, personal keys and generic Lua script. New members get a private registration confirmation, their newly created key and a link to `/streaming/setup`. Existing members get the guide without changing their channels or key, including when a stale `/streaming_add_new` form is submitted again. The original `/streaming_add` experience remains available with its existing key-rotation behavior.
+`/streaming_add_new` is the parallel browser-onboarding experiment, disabled by default. Set `STREAMING_SETUP_ENABLED=true` on the bot and restart it to register and enable the command. It uses the same Club Member checks, channel form, registration service, personal keys and generic Lua script. New members get a private registration confirmation, their newly created key and a link to `/streaming/setup`. Existing members get the guide without changing their channels or key, including when a stale `/streaming_add_new` form is submitted again. The original `/streaming_add` experience remains available with its existing key-rotation behavior.
+
+To stop the pilot, unset the flag or set it to `false` and restart the bot. Old experimental buttons, cached commands and open forms are rejected before any registration access. Existing keys, callbacks, announcements and the original onboarding remain operational. The public guide can still be inspected directly; it does not enroll members or receive their keys. Native OBS/Discord acceptance remains an activation check, not a claim made by automated tests or by deploying the disabled experiment.
 
 The existing Render service serves `GET /streaming/dzr-stream.lua` and authenticated `POST /streaming/obs`; no extra service or provider OAuth flow is required. Set on Render before onboarding:
 
@@ -134,6 +136,7 @@ The existing Render service serves `GET /streaming/dzr-stream.lua` and authentic
 | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` | Twitch application credentials. Required for Twitch registrations/verification. |
 | `STREAMING_PUBLIC_URL` | Optional external HTTPS bot origin; defaults to `RENDER_EXTERNAL_URL`, then `https://bot-tdnm.onrender.com`. Used in onboarding links. |
 | `STREAMING_SETUP_URL` | Optional HTTPS browser-guide URL; defaults to the shared DZR site origin plus `/streaming/setup`. Set to the test website URL when running the isolated test bot. Must not contain a query, fragment or personal key. |
+| `STREAMING_SETUP_ENABLED` | Bot opt-in for experimental onboarding. Only the exact value `true` enables command registration and new-flow handlers; unset, `false` and other values leave it disabled. Restart/redeploy after changing it. |
 | `STREAMING_CHANNEL_ID` | Optional destination override; defaults to `1196454773558345768` (`#streaming-now`). |
 | `IT_CHANNEL_ID` | Shared Discord IT destination; defaults to `1544209256100794378` (`#it`). Currently used for streaming errors. |
 | `STREAMING_YOUTUBE_SEARCH_BUDGET` | Optional daily search cap; default `90`, reset at Pacific midnight. Set `0` to allow known-video verification only. |

@@ -8,6 +8,9 @@ const COMMAND_NAMES = ["streaming_add", "streaming_add_new", "streaming_remove",
 class TestConfigurationError extends Error {}
 
 function readTestConfig(env = process.env) {
+  if (env.STREAMING_SETUP_ENABLED !== "true") {
+    throw new TestConfigurationError("Angiv STREAMING_SETUP_ENABLED=true for at aktivere browser-onboarding i testmiljøet.");
+  }
   const required = (name) => {
     const value = String(env[name] || "").trim();
     if (!value) throw new TestConfigurationError(`Angiv ${name} i testmiljøet.`);
@@ -140,7 +143,7 @@ async function main() {
     });
     const handlers = createStreamingHandlers({
       service: streaming, guildId: config.guildId, publicUrl: config.publicUrl,
-      setupUrl: config.setupUrl, channelId: config.channelId,
+      setupEnabled: true, setupUrl: config.setupUrl, channelId: config.channelId,
       getClubRoleId: async () => (await membership.get()).data()?.membership?.clubMemberRoleId || null,
     });
     client.on(Events.InteractionCreate, (interaction) => {
