@@ -186,8 +186,9 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
           id: ids.slice(offset, offset + 50).join(",") }), "items");
         for (const video of videos) {
           const startedAt = isoTime(video.liveStreamingDetails?.actualStartTime);
+          // Public stream replays can remain "uploaded" while YouTube processes the archive.
           if (!expected.has(video.id) || video.snippet?.channelId !== channel.id || video.status?.privacyStatus !== "public"
-              || video.status?.uploadStatus !== "processed" || !startedAt || !isoTime(video.liveStreamingDetails?.actualEndTime)) continue;
+              || !["uploaded", "processed"].includes(video.status?.uploadStatus) || !startedAt || !isoTime(video.liveStreamingDetails?.actualEndTime)) continue;
           found.set(video.id, { id: video.id, streamId: video.id, title: String(video.snippet?.title || "Se optagelsen"),
             url: `https://www.youtube.com/watch?v=${video.id}`, startedAt });
         }
