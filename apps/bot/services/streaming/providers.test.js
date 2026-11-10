@@ -224,7 +224,7 @@ test("monitoring errors and malformed responses never become confirmed offline s
   }
 });
 
-test("YouTube recordings require the matching channel, an ended broadcast and public processed video", async () => {
+test("YouTube recordings accept public uploaded or processed replays of the matching ended broadcast", async () => {
   const archive = { ...video, snippet: { ...video.snippet, liveBroadcastContent: "none" },
     status: { privacyStatus: "public", uploadStatus: "processed" }, contentDetails: { duration: "PT1H42M" },
     liveStreamingDetails: { ...video.liveStreamingDetails, actualEndTime: "2026-10-27T19:42:00Z" } };
@@ -236,13 +236,16 @@ test("YouTube recordings require the matching channel, an ended broadcast and pu
     return json({ items: [current] });
   } });
   const stream = { platform: "youtube", id: video.id };
-  assert.deepEqual(await providers.recordings(channel, [stream]), [{ id: video.id, streamId: video.id, title: "Racing",
-    url: `https://www.youtube.com/watch?v=${video.id}`, startedAt: "2026-10-27T18:00:00.000Z" }]);
+  for (const uploadStatus of ["uploaded", "processed"]) {
+    current = { ...archive, status: { ...archive.status, uploadStatus } };
+    assert.deepEqual(await providers.recordings(channel, [stream]), [{ id: video.id, streamId: video.id, title: "Racing",
+      url: `https://www.youtube.com/watch?v=${video.id}`, startedAt: "2026-10-27T18:00:00.000Z" }]);
+  }
   for (const changed of [
     { ...archive, id: "other-video" },
     { ...archive, snippet: { ...archive.snippet, channelId: "other-channel" } },
     { ...archive, status: { ...archive.status, privacyStatus: "private" } },
-    { ...archive, status: { ...archive.status, uploadStatus: "uploaded" } },
+    ...["failed", "rejected", "deleted", undefined].map((uploadStatus) => ({ ...archive, status: { ...archive.status, uploadStatus } })),
     { ...archive, liveStreamingDetails: { actualStartTime: video.liveStreamingDetails.actualStartTime } },
   ]) {
     current = changed;
