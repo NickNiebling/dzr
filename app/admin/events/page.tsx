@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import WeeklySeries from '@/app/admin/events/WeeklySeries'
 import {
@@ -10,22 +10,36 @@ import {
   Flex,
   Heading,
   Input,
+  SimpleGrid,
   Stack,
-  Table,
-  Tbody,
-  Td,
   Text,
-  Th,
-  Thead,
-  Tr,
 } from '@chakra-ui/react'
 import type { ZwiftEventSummary } from '@/packages/shared/zwiftEvents'
 
 type KitPreset = { id: string; label: string; tag: string }
 
+type Physics = {
+  frameGrams: string | null
+  frameCdaBias: string | null
+  frontWheelGrams: string | null
+  frontWheelCdaBias: string | null
+  frontWheelCrr: string | null
+  rearWheelGrams: string | null
+  rearWheelCdaBias: string | null
+  rearWheelCrr: string | null
+}
+
+type Unlock = { tag: string; name: string | null }
+
 type Course = {
   routeId: number | null
   routeName: string | null
+  routeMap: string | null
+  routeWorld: string | null
+  routeDistanceInMeters: number | null
+  routeAscentInMeters: number | null
+  leadInDistanceInMeters: number | null
+  leadInAscentInMeters: number | null
   mapId: number | null
   worldId: number | null
   world: string | null
@@ -34,31 +48,78 @@ type Course = {
   durationInSeconds: number | null
 }
 
-type Subgroup = Course & {
-  id: number | null
-  label: string | null
-  eventStart: string | null
-  startLocation: number | null
-  jerseyHash: number | null
-  bikeHash: number | null
-  unlockTags: string[]
-  tags: string[]
+type Equipment = {
+  bikeName: string | null
+  frontWheelHash: string | null
+  frontWheelName: string | null
+  rearWheelHash: string | null
+  rearWheelName: string | null
+  upgradePhysicsDisabled: boolean
+  physics: Physics
+  steering: 'enabled' | 'disabled'
+  brakingDisabled: boolean
 }
 
-type InspectedEvent = Course & {
-  id: number
-  name: string | null
-  type: string | null
-  sport: string | null
-  eventStart: string | null
-  jerseyHash: number | null
-  bikeHash: number | null
-  unlockTags: string[]
-  tags: string[]
-  kitPresets: KitPreset[]
-  url: string
-  subgroups: Subgroup[]
-}
+type Subgroup = Course &
+  Equipment & {
+    id: number | null
+    name: string | null
+    label: string | null
+    eventStart: string | null
+    registrationStart: string | null
+    registrationEnd: string | null
+    lineUpStart: string | null
+    lineUpEnd: string | null
+    startLocation: number | null
+    lateJoinInMinutes: number | null
+    rangeAccessLabel: string | null
+    rulesId: number | null
+    rules: string[]
+    signedUpCount: number | null
+    joinedCount: number | null
+    entrantCount: number | null
+    jerseyHash: number | null
+    bikeHash: number | null
+    unlockTags: string[]
+    unlocks: Unlock[]
+    tags: string[]
+  }
+
+type InspectedEvent = Course &
+  Equipment & {
+    id: number
+    name: string | null
+    description: string
+    type: string | null
+    sport: string | null
+    eventStart: string | null
+    imageUrl: string | null
+    rulesId: number | null
+    rules: string[]
+    cullingType: string | null
+    lateJoinInMinutes: number | null
+    visible: boolean | null
+    privateEvent: boolean | null
+    unlisted: boolean | null
+    restricted: boolean | null
+    invisibleToNonParticipants: boolean | null
+    categoryEnforcement: boolean | null
+    accessExpression: string | null
+    rangeAccessLabel: string | null
+    partnerClientId: string | null
+    signedUpCount: number | null
+    joinedCount: number | null
+    entrantCount: number | null
+    jerseyHash: number | null
+    bikeHash: number | null
+    unlockTags: string[]
+    unlocks: Unlock[]
+    tags: string[]
+    kitPresets: KitPreset[]
+    url: string
+    subgroups: Subgroup[]
+    raw: Record<string, unknown>
+  }
 
 type RouteHit = { routeId: number; name: string; world: string | null }
 
@@ -73,9 +134,9 @@ function formatStart(value: string | number | null | undefined) {
   }).format(date)
 }
 
-function formatDistance(meters: number | null) {
-  if (!meters) return '—'
-  return `${(meters / 1000).toFixed(1)} km`
+function formatDistance(meters: number | null | undefined) {
+  if (meters == null || Number.isNaN(meters)) return null
+  return `${(meters / 1000).toFixed(2)} km`
 }
 
 function dash(value: unknown) {
@@ -110,7 +171,111 @@ function TagList({ tags, scheme }: { tags: string[]; scheme: string }) {
 
 function lengthLabel(laps: number | null, distanceInMeters: number | null) {
   if (laps) return `${laps} lap${laps === 1 ? '' : 's'}`
-  return formatDistance(distanceInMeters)
+  if (distanceInMeters) return formatDistance(distanceInMeters) || '—'
+  return '—'
+}
+
+function formatClimb(meters: number | null | undefined) {
+  if (meters == null || Number.isNaN(meters)) return null
+  return `${Math.round(meters)} m`
+}
+
+function formatDuration(seconds: number | null | undefined) {
+  if (!seconds) return null
+  const minutes = Math.round(seconds / 60)
+  return `${minutes} min`
+}
+
+function yesNo(value: boolean | null | undefined) {
+  if (value == null) return '—'
+  return value ? 'Yes' : 'No'
+}
+
+const WORLD_LABELS: Record<string, string> = {
+  WATOPIA: 'Watopia',
+  RICHMOND: 'Richmond',
+  LONDON: 'London',
+  NEWYORK: 'New York',
+  INNSBRUCK: 'Innsbruck',
+  BOLOGNA: 'Bologna',
+  YORKSHIRE: 'Yorkshire',
+  CRITCITY: 'Crit City',
+  MAKURIISLANDS: 'Makuri Islands',
+  FRANCE: 'France',
+  PARIS: 'Paris',
+  SCOTLAND: 'Scotland',
+}
+
+function worldLabel(value: string | null | undefined) {
+  if (!value) return null
+  const folded = value.toUpperCase().replace(/[^A-Z]/g, '')
+  return WORLD_LABELS[folded] || value
+}
+
+const RULE_LABELS: Record<string, string> = {
+  ENFORCE_HRM: 'Heart-rate monitor required',
+  ENFORCE_NO_ZPOWER: 'No zPower',
+  NO_POWERUPS: 'No powerups',
+  SHOW_RACE_RESULTS: 'Results shown',
+  NO_TT_BIKES: 'No TT bikes',
+}
+
+function ruleLabel(rule: string) {
+  return RULE_LABELS[rule] || rule
+}
+
+function cullingLabel(value: string | null | undefined) {
+  if (!value) return '—'
+  if (value === 'CULLING_SUBGROUP_ONLY') return 'Own category only'
+  return value
+}
+
+function steeringOf(tags: string[] | undefined, reported?: string | null) {
+  if (reported === 'disabled' || reported === 'enabled') return reported
+  const disabled = (tags || []).some((tag) => tag.trim().toLowerCase() === 'steering_disabled')
+  return disabled ? 'disabled' : 'enabled'
+}
+
+function steeringLabel(value: string | null | undefined) {
+  if (value === 'disabled') return 'Disabled'
+  return 'Enabled'
+}
+
+function namedThing(name: string | null | undefined, hash: string | number | null | undefined) {
+  if (name && hash != null && hash !== '') return `${name} (${hash})`
+  if (name) return name
+  if (hash != null && hash !== '') return String(hash)
+  return '—'
+}
+
+function physicsLines(physics: Physics | null | undefined, upgradesDisabled: boolean) {
+  const lines: string[] = []
+  if (physics?.frameGrams || physics?.frameCdaBias) {
+    lines.push(`Frame ${physics.frameGrams ?? '—'} g, CdA bias ${physics.frameCdaBias ?? '—'}`)
+  }
+  if (physics?.frontWheelGrams || physics?.frontWheelCdaBias || physics?.frontWheelCrr) {
+    lines.push(
+      `Front wheel ${physics.frontWheelGrams ?? '—'} g, CdA bias ${physics.frontWheelCdaBias ?? '—'}, Crr ${physics.frontWheelCrr ?? '—'}`
+    )
+  }
+  if (physics?.rearWheelGrams || physics?.rearWheelCdaBias || physics?.rearWheelCrr) {
+    lines.push(
+      `Rear wheel ${physics.rearWheelGrams ?? '—'} g, CdA bias ${physics.rearWheelCdaBias ?? '—'}, Crr ${physics.rearWheelCrr ?? '—'}`
+    )
+  }
+  if (upgradesDisabled) lines.push('Upgrade physics disabled')
+  return lines
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Box>
+      <Text fontSize="xs" color="gray.500" mb={1}>
+        {label}
+      </Text>
+      <Box color="gray.100">{children}</Box>
+    </Box>
+  )
 }
 
 export default function AdminEventsPage() {
@@ -129,6 +294,7 @@ export default function AdminEventsPage() {
   const [laps, setLaps] = useState('')
   const [distanceKm, setDistanceKm] = useState('')
   const [notice, setNotice] = useState('')
+  const [dumpCopied, setDumpCopied] = useState(false)
   const detailsRef = useRef<HTMLDivElement>(null)
 
   async function reloadDetails(id: number) {
@@ -169,6 +335,7 @@ export default function AdminEventsPage() {
     setBusy('inspect')
     setError('')
     setNotice('')
+    setDumpCopied(false)
     setEventId(trimmed)
     const res = await fetch(`/api/admin/events/${trimmed}`)
     setBusy('')
@@ -381,14 +548,141 @@ export default function AdminEventsPage() {
             </Heading>
             <Text fontWeight="semibold">{event.name || 'Untitled event'}</Text>
             <Text color="gray.300">{formatStart(event.eventStart)}</Text>
+            <Text color="gray.300" mb={2}>
+              {[event.sport, event.type].filter(Boolean).join(' · ') || '—'}
+              {event.partnerClientId ? ` · ${event.partnerClientId}` : ''}
+            </Text>
+            {event.description ? (
+              <Text color="gray.200" mb={2}>
+                {event.description}
+              </Text>
+            ) : null}
             <Text mb={2}>
               <a href={event.url} target="_blank" rel="noreferrer">
                 Zwift
               </a>
+              {event.imageUrl ? (
+                <>
+                  {' · '}
+                  <a href={event.imageUrl} target="_blank" rel="noreferrer">
+                    Header image
+                  </a>
+                </>
+              ) : null}
             </Text>
             <Text color="gray.300">
-              {event.routeName || 'No route'} · {lengthLabel(event.laps, event.distanceInMeters)}
+              {event.routeName || 'No route'}
+              {event.routeWorld ? `, ${worldLabel(event.routeWorld)}` : ''} · {lengthLabel(event.laps, event.distanceInMeters)}
             </Text>
+            <Text color="gray.300">
+              {event.signedUpCount ?? '—'} signed up · {event.joinedCount ?? '—'} joined
+            </Text>
+          </Box>
+
+          <Box borderWidth="1px" borderColor="gray.700" rounded="md" p={4}>
+            <Heading size="sm" mb={4}>
+              What Zwift has stored
+            </Heading>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+              <Detail label="Steering">
+                <Text fontWeight="semibold">{steeringLabel(steeringOf(event.tags, event.steering))}</Text>
+                <Text fontSize="sm" color="gray.400" mt={1}>
+                  Zwift writes steering_disabled only when steering is turned off. When that tag is missing, steering is
+                  enabled.
+                </Text>
+              </Detail>
+              <Detail label="Braking">{event.brakingDisabled ? 'Disabled' : 'No nobraking tag'}</Detail>
+              <Detail label="Route">
+                {event.routeName || 'No route'}
+                {event.routeId != null ? ` · ${event.routeId}` : ''}
+              </Detail>
+              <Detail label="Route length">
+                {[formatDistance(event.routeDistanceInMeters), formatClimb(event.routeAscentInMeters)]
+                  .filter(Boolean)
+                  .join(' · ') || '—'}
+              </Detail>
+              <Detail label="Lead-in">
+                {[formatDistance(event.leadInDistanceInMeters), formatClimb(event.leadInAscentInMeters)]
+                  .filter(Boolean)
+                  .join(' · ') || '—'}
+              </Detail>
+              <Detail label="Event length">
+                {[
+                  lengthLabel(event.laps, event.distanceInMeters),
+                  formatDuration(event.durationInSeconds),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Detail>
+              <Detail label="Route world">
+                {worldLabel(event.routeWorld) || '—'}
+                {event.mapId != null ? ` · map ${event.mapId}` : ''}
+              </Detail>
+              <Detail label="Event world">
+                {worldLabel(event.world) || '—'}
+                {event.worldId != null ? ` · worldId ${event.worldId}` : ''}
+                {worldLabel(event.routeWorld) &&
+                worldLabel(event.world) &&
+                worldLabel(event.routeWorld) !== worldLabel(event.world) ? (
+                  <Text fontSize="sm" color="orange.300" mt={1}>
+                    The route is on {worldLabel(event.routeWorld)}. The stored world is still {worldLabel(event.world)}.
+                  </Text>
+                ) : null}
+              </Detail>
+              <Detail label="Who you see">{cullingLabel(event.cullingType)}</Detail>
+              <Detail label="Late join">
+                {event.lateJoinInMinutes != null ? `${event.lateJoinInMinutes} min` : '—'}
+              </Detail>
+              <Detail label="Rules">
+                {event.rules?.length ? (
+                  <Stack spacing={0}>
+                    {event.rules.map((rule) => (
+                      <Text key={rule}>{ruleLabel(rule)}</Text>
+                    ))}
+                    {event.rulesId != null ? (
+                      <Text fontSize="sm" color="gray.500">
+                        Rules id {event.rulesId}
+                      </Text>
+                    ) : null}
+                  </Stack>
+                ) : (
+                  dash(event.rulesId)
+                )}
+              </Detail>
+              <Detail label="Bike">{namedThing(event.bikeName, event.bikeHash)}</Detail>
+              <Detail label="Front wheel">{namedThing(event.frontWheelName, event.frontWheelHash)}</Detail>
+              <Detail label="Rear wheel">{namedThing(event.rearWheelName, event.rearWheelHash)}</Detail>
+              <Detail label="Bike physics">
+                {physicsLines(event.physics, event.upgradePhysicsDisabled).length ? (
+                  <Stack spacing={0}>
+                    {physicsLines(event.physics, event.upgradePhysicsDisabled).map((line) => (
+                      <Text key={line}>{line}</Text>
+                    ))}
+                  </Stack>
+                ) : (
+                  '—'
+                )}
+              </Detail>
+              <Detail label="Visible in game">{yesNo(event.visible)}</Detail>
+              <Detail label="Unlisted">{yesNo(event.unlisted)}</Detail>
+              <Detail label="Restricted">{yesNo(event.restricted)}</Detail>
+              <Detail label="Private">{yesNo(event.privateEvent)}</Detail>
+              <Detail label="Hidden from non-participants">{yesNo(event.invisibleToNonParticipants)}</Detail>
+              <Detail label="Category enforcement">{yesNo(event.categoryEnforcement)}</Detail>
+              <Detail label="Score range">{dash(event.rangeAccessLabel)}</Detail>
+              <Detail label="Signed up">{dash(event.signedUpCount)}</Detail>
+              <Detail label="Joined">{dash(event.joinedCount)}</Detail>
+            </SimpleGrid>
+            {event.accessExpression ? (
+              <Box mt={4}>
+                <Text fontSize="xs" color="gray.500" mb={1}>
+                  Who can enter
+                </Text>
+                <Box as="pre" whiteSpace="pre-wrap" fontSize="sm" color="gray.200">
+                  {event.accessExpression}
+                </Box>
+              </Box>
+            ) : null}
           </Box>
 
           <Box borderWidth="1px" borderColor="gray.700" rounded="md" p={4}>
@@ -399,7 +693,16 @@ export default function AdminEventsPage() {
               Unlocks
             </Text>
             <Box mb={4}>
-              <TagList tags={event.unlockTags} scheme="green" />
+              <TagList
+                tags={(event.unlocks || []).map((unlock) => (unlock.name ? `${unlock.name} · ${unlock.tag}` : unlock.tag))}
+                scheme="green"
+              />
+            </Box>
+            <Text fontSize="sm" color="gray.400" mb={2}>
+              On the event
+            </Text>
+            <Box mb={4}>
+              <TagList tags={event.tags || []} scheme="gray" />
             </Box>
             <Flex gap={2} wrap="wrap" mb={4}>
               {event.kitPresets.map((kit) => (
@@ -516,32 +819,85 @@ export default function AdminEventsPage() {
             <Heading size="sm" mb={3}>
               Categories
             </Heading>
-            <Box overflowX="auto">
-              <Table size="sm" variant="unstyled">
-                <Thead>
-                  <Tr>
-                    <Th color="gray.500">Category</Th>
-                    <Th color="gray.500">Start</Th>
-                    <Th color="gray.500">Route</Th>
-                    <Th color="gray.500">Length</Th>
-                    <Th color="gray.500">Unlocks</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {event.subgroups.map((subgroup) => (
-                    <Tr key={subgroup.id ?? subgroup.label}>
-                      <Td>{subgroup.label || 'Category'}</Td>
-                      <Td>{formatStart(subgroup.eventStart)}</Td>
-                      <Td>{subgroup.routeName || dash(subgroup.routeId)}</Td>
-                      <Td>{lengthLabel(subgroup.laps, subgroup.distanceInMeters)}</Td>
-                      <Td>
-                        <TagList tags={subgroup.unlockTags} scheme="green" />
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+            <Stack spacing={3}>
+              {(event.subgroups || []).map((subgroup) => (
+                <Box key={subgroup.id ?? subgroup.label} borderWidth="1px" borderColor="gray.700" rounded="md" p={4}>
+                  <Text fontWeight="semibold" mb={3}>
+                    {subgroup.label || 'Category'}
+                    {subgroup.name && subgroup.name !== event.name ? ` · ${subgroup.name}` : ''}
+                    {subgroup.id != null ? ` · ${subgroup.id}` : ''}
+                  </Text>
+                  <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                    <Detail label="Start">{formatStart(subgroup.eventStart)}</Detail>
+                    <Detail label="Sign-up">
+                      {formatStart(subgroup.registrationStart)} – {formatStart(subgroup.registrationEnd)}
+                    </Detail>
+                    <Detail label="Lineup">
+                      {formatStart(subgroup.lineUpStart)} – {formatStart(subgroup.lineUpEnd)}
+                    </Detail>
+                    <Detail label="Start pen">{dash(subgroup.startLocation)}</Detail>
+                    <Detail label="Route">
+                      {subgroup.routeName || dash(subgroup.routeId)}
+                      {subgroup.routeId != null && subgroup.routeName ? ` · ${subgroup.routeId}` : ''}
+                    </Detail>
+                    <Detail label="Length">{lengthLabel(subgroup.laps, subgroup.distanceInMeters)}</Detail>
+                    <Detail label="Steering">
+                      {steeringLabel(steeringOf(subgroup.tags, subgroup.steering))}
+                      {steeringOf(subgroup.tags, subgroup.steering) !== steeringOf(event.tags, event.steering)
+                        ? ' · differs from the event'
+                        : ''}
+                    </Detail>
+                    <Detail label="Score range">{dash(subgroup.rangeAccessLabel)}</Detail>
+                    <Detail label="Signed up">{dash(subgroup.signedUpCount)}</Detail>
+                    <Detail label="Joined">{dash(subgroup.joinedCount)}</Detail>
+                    <Detail label="Late join">
+                      {subgroup.lateJoinInMinutes != null ? `${subgroup.lateJoinInMinutes} min` : '—'}
+                    </Detail>
+                    <Detail label="Rules">
+                      {subgroup.rules?.length ? subgroup.rules.map(ruleLabel).join(' · ') : '—'}
+                    </Detail>
+                  </SimpleGrid>
+                  <Text fontSize="xs" color="gray.500" mt={3} mb={1}>
+                    Tags
+                  </Text>
+                  <TagList tags={subgroup.tags || []} scheme="gray" />
+                </Box>
+              ))}
+              {!event.subgroups?.length ? <Text color="gray.500">No categories.</Text> : null}
+            </Stack>
+          </Box>
+
+          <Box as="details" borderWidth="1px" borderColor="gray.700" rounded="md" p={4}>
+            <Box as="summary" cursor="pointer" fontWeight="semibold" color="white">
+              Full event
             </Box>
+              <Text fontSize="sm" color="gray.400" mt={3} mb={3}>
+                Zwift&apos;s event document. The join secret is left out.
+              </Text>
+              <Button
+                size="sm"
+                mb={3}
+                {...readableOutline}
+                onClick={() => {
+                  void navigator.clipboard.writeText(JSON.stringify(event.raw, null, 2)).then(() => {
+                    setDumpCopied(true)
+                  })
+                }}
+              >
+                {dumpCopied ? 'Copied' : 'Copy'}
+              </Button>
+              <Box
+                as="pre"
+                overflowX="auto"
+                whiteSpace="pre"
+                fontSize="xs"
+                color="gray.300"
+                bg="gray.900"
+                rounded="md"
+                p={3}
+              >
+                {JSON.stringify(event.raw, null, 2)}
+              </Box>
           </Box>
         </Stack>
       ) : null}

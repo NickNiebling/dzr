@@ -1,9 +1,12 @@
-import requests
-import backoff
 import logging
 import time
-from requests.exceptions import RequestException
 from typing import Any, Dict, List, Optional
+
+import backoff
+import requests
+from requests.exceptions import RequestException
+
+from zwift_inspect import event_dump, flag_tag, number_or_none, physics_from_tags, steering_from_tags, tag_value, world_label
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -438,9 +441,16 @@ class ZwiftAPI:
         world_id = source.get("worldId")
         if world_id is None:
             world_id = fallback_world_id
+        route = route_meta or {}
         return {
             "routeId": route_id,
             "routeName": self._route_name(route_meta),
+            "routeMap": route.get("map"),
+            "routeWorld": world_label(route.get("map")),
+            "routeDistanceInMeters": number_or_none(route.get("distanceInMeters")),
+            "routeAscentInMeters": number_or_none(route.get("ascentInMeters")),
+            "leadInDistanceInMeters": number_or_none(route.get("leadinDistanceInMeters")),
+            "leadInAscentInMeters": number_or_none(route.get("leadinAscentInMeters")),
             "mapId": map_id,
             "worldId": source.get("worldId"),
             "world": self._world_name(world_id) or self._world_name(map_id),
@@ -449,39 +459,123 @@ class ZwiftAPI:
             "durationInSeconds": source.get("durationInSeconds"),
         }
 
+    def _item_name(self, section: str, item_key: str, signature) -> Optional[str]:
+        """Name of one game-dictionary item, matched on its signature."""
+        try:
+            wanted = int(signature)
+        except (TypeError, ValueError):
+            return None
+        try:
+            items = self._load_game_dictionary().get(section, {}).get(item_key, [])
+        except (requests.RequestException, ValueError, ZwiftError) as exc:
+            logger.warning("Game dictionary unavailable: %s", exc)
+            return None
+        for item in items or []:
+            try:
+                if int(item.get("signature")) == wanted:
+                    name = item.get("name")
+                    return str(name) if name else None
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return None
+
+    def _named_unlocks(self, tags: List[str]) -> List[dict]:
+        named = []
+        for tag in tags:
+            name = None
+            if "=" in tag:
+                name = self._item_name("JERSEYS", "JERSEY", tag.split("=", 1)[1])
+            named.append({"tag": tag, "name": name})
+        return named
+
+    def _equipment(self, tags, bike_hash) -> Dict[str, Any]:
+        """Bike, wheels, and the steering flag Zwift stores on the event tags."""
+        front = tag_value(tags, "fwheel_override")
+        rear = tag_value(tags, "rwheel_override")
+        return {
+            "bikeName": self._item_name("BIKEFRAMES", "BIKEFRAME", bike_hash),
+            "frontWheelHash": front,
+            "frontWheelName": self._item_name("BIKEFRONTWHEELS", "BIKEFRONTWHEEL", front),
+            "rearWheelHash": rear,
+            "rearWheelName": self._item_name("BIKEREARWHEELS", "BIKEREARWHEEL", rear),
+            "upgradePhysicsDisabled": flag_tag(tags, "disable_bike_upgrade_physics"),
+            "physics": physics_from_tags(tags),
+            "steering": steering_from_tags(tags),
+            "brakingDisabled": flag_tag(tags, "nobraking"),
+        }
+
+    def _inspect_subgroup(self, subgroup: dict, fallback_world_id) -> Dict[str, Any]:
+        tags = [str(tag) for tag in (subgroup.get("tags") or [])]
+        unlocks, other_tags = split_tags(tags)
+        return {
+            "id": subgroup.get("id"),
+            "name": subgroup.get("name"),
+            "label": subgroup.get("subgroupLabel"),
+            "eventStart": subgroup.get("eventSubgroupStart"),
+            "registrationStart": subgroup.get("registrationStart"),
+            "registrationEnd": subgroup.get("registrationEnd"),
+            "lineUpStart": subgroup.get("lineUpStart"),
+            "lineUpEnd": subgroup.get("lineUpEnd"),
+            "startLocation": subgroup.get("startLocation"),
+            "lateJoinInMinutes": subgroup.get("lateJoinInMinutes"),
+            "rangeAccessLabel": subgroup.get("rangeAccessLabel"),
+            "rulesId": subgroup.get("rulesId"),
+            "rules": list(subgroup.get("rulesSet") or []),
+            "signedUpCount": subgroup.get("totalSignedUpCount"),
+            "joinedCount": subgroup.get("totalJoinedCount"),
+            "entrantCount": subgroup.get("totalEntrantCount"),
+            "jerseyHash": subgroup.get("jerseyHash"),
+            "bikeHash": subgroup.get("bikeHash"),
+            "unlockTags": unlocks,
+            "unlocks": self._named_unlocks(unlocks),
+            "tags": other_tags,
+            **self._equipment(tags, subgroup.get("bikeHash")),
+            **self._describe_course(subgroup, fallback_world_id),
+        }
+
     def inspect_event(self, event_id: int) -> Dict[str, Any]:
-        """Settings and unlocks for one event. Reads only."""
+        """Settings Zwift stores for one event, plus the event document. Reads only."""
         _template_id, event = self.get_event(event_id)
-        unlocks, other_tags = split_tags(event.get("tags"))
-        subgroups = []
-        for subgroup in event.get("eventSubgroups") or []:
-            sub_unlocks, sub_tags = split_tags(subgroup.get("tags"))
-            subgroups.append(
-                {
-                    "id": subgroup.get("id"),
-                    "label": subgroup.get("subgroupLabel"),
-                    "eventStart": subgroup.get("eventSubgroupStart"),
-                    "startLocation": subgroup.get("startLocation"),
-                    "jerseyHash": subgroup.get("jerseyHash"),
-                    "bikeHash": subgroup.get("bikeHash"),
-                    "unlockTags": sub_unlocks,
-                    "tags": sub_tags,
-                    **self._describe_course(subgroup, event.get("worldId")),
-                }
-            )
+        tags = [str(tag) for tag in (event.get("tags") or [])]
+        unlocks, other_tags = split_tags(tags)
+        subgroups = [
+            self._inspect_subgroup(subgroup, event.get("worldId"))
+            for subgroup in event.get("eventSubgroups") or []
+        ]
         return {
             "id": event.get("id") or int(event_id),
             "name": event.get("name"),
+            "description": event.get("description") or "",
             "type": event.get("type") or event.get("eventType"),
             "sport": event.get("sport"),
             "eventStart": event.get("eventStart"),
+            "imageUrl": event.get("imageUrl"),
+            "rulesId": event.get("rulesId"),
+            "rules": list(event.get("rulesSet") or []),
+            "cullingType": event.get("cullingType"),
+            "lateJoinInMinutes": event.get("lateJoinInMinutes"),
+            "visible": event.get("visible"),
+            "privateEvent": event.get("privateEvent"),
+            "unlisted": event.get("unlisted"),
+            "restricted": event.get("restricted"),
+            "invisibleToNonParticipants": event.get("invisibleToNonParticipants"),
+            "categoryEnforcement": event.get("categoryEnforcement"),
+            "accessExpression": event.get("accessExpression"),
+            "rangeAccessLabel": event.get("rangeAccessLabel"),
+            "partnerClientId": event.get("partnerClientId"),
+            "signedUpCount": event.get("totalSignedUpCount"),
+            "joinedCount": event.get("totalJoinedCount"),
+            "entrantCount": event.get("totalEntrantCount"),
             "jerseyHash": event.get("jerseyHash"),
             "bikeHash": event.get("bikeHash"),
             "unlockTags": unlocks,
+            "unlocks": self._named_unlocks(unlocks),
             "tags": other_tags,
             "kitPresets": [dict(kit) for kit in DZR_KITS],
             "url": f"https://www.zwift.com/events/view/{int(event_id)}",
             "subgroups": subgroups,
+            "raw": event_dump(event),
+            **self._equipment(tags, event.get("bikeHash")),
             **self._describe_course(event),
         }
 
