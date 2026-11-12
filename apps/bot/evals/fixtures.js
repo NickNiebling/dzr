@@ -495,7 +495,7 @@ const fixtures = [
       },
     },
     expect: "Describes the race from power and heart rate. Must NOT mention core temperature, body temperature or heat sensors at all.",
-    forbid: [/core/i, /kernetemperatur/i, /kropstemperatur/i],
+    forbid: [/\bcore\b/i, /kernetemperatur/i, /kropstemperatur/i],
   },
 ];
 
