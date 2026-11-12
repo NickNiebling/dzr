@@ -16,6 +16,8 @@ const {
   seriesStats,
   enrichIntervals,
   segmentSummary,
+  activityTimeline,
+  heatAnalysis,
 } = require("./streamMetrics");
 
 test("irregular sampling is placed on a real time grid, not by array index", () => {
@@ -206,4 +208,106 @@ test("empty and malformed input never throws", () => {
   assert.equal(normalizedPower([]), null);
   assert.deepEqual(detectIntervals([], { thresholdWatts: 250 }), []);
   assert.equal(timeInZones([], []), null);
+});
+
+test("intervals and segments without a core sensor carry no core-temperature fields", () => {
+  const watts = Array(600).fill(300);
+  const heartrate = Array(600).fill(160);
+  const [interval] = enrichIntervals(
+    [{ startSeconds: 0, durationSeconds: 300, averageWatts: 300, peakWatts: 300 }],
+    { heartrate }
+  );
+  assert.equal("averageCoreTemperatureC" in interval, false);
+  assert.equal("maxCoreTemperatureC" in interval, false);
+  const seg = segmentSummary({ watts, heartrate }, 0, 600, { ftp: 280 });
+  assert.equal("averageCoreTemperatureC" in seg, false);
+  assert.equal("minCoreTemperatureC" in seg, false);
+});
+
+test("a timeline without a core sensor has only the streams that were recorded", () => {
+  const watts = [...Array(1800).fill(200), ...Array(1800).fill(250)];
+  const heartrate = [...Array(1800).fill(140), ...Array(1800).fill(155)];
+  const timeline = activityTimeline({ watts, heartrate, coreTemperature: [], cadence: Array(3600).fill(0) });
+  assert.deepEqual(timeline.columns, ["minute", "watts", "heartRate"]);
+  assert.equal(timeline.bucketSeconds, 60);
+  assert.equal(timeline.rows.length, 60);
+  assert.equal(timeline.rows[0], "0, 200, 140");
+  assert.equal(timeline.rows[59], "59, 250, 155");
+});
+
+test("a timeline adds a core-temperature column when the ride recorded it", () => {
+  const watts = Array(600).fill(250);
+  const heartrate = Array(600).fill(150);
+  // Sensor reads 0 while it pairs, then real values.
+  const coreTemperature = [...Array(60).fill(0), ...Array(540).fill(37.81)];
+  const timeline = activityTimeline({ watts, heartrate, coreTemperature });
+  assert.deepEqual(timeline.columns, ["minute", "watts", "heartRate", "coreTemperatureC"]);
+  assert.equal(timeline.rows[0], "0, 250, 150, -", "the pairing minute has no reading");
+  assert.equal(timeline.rows[1], "1, 250, 150, 37.81");
+});
+
+test("a long ride gets coarser timeline buckets and a short segment finer ones", () => {
+  const watts = Array(4 * 3600).fill(200);
+  const long = activityTimeline({ watts });
+  assert.equal(long.bucketSeconds, 180, "four hours fits in 90 rows at three minutes");
+  assert.ok(long.rows.length <= 90);
+  const segment = activityTimeline({ watts }, { fromSeconds: 600, toSeconds: 900, minBucketSeconds: 30, maxRows: 60 });
+  assert.equal(segment.bucketSeconds, 30);
+  assert.equal(segment.rows[0], "10, 200");
+  assert.equal(segment.rows.length, 10);
+});
+
+test("a timeline is null when nothing was recorded", () => {
+  assert.equal(activityTimeline({ watts: Array(600).fill(0) }), null);
+  assert.equal(activityTimeline({}), null);
+});
+
+test("heat analysis is null without a core sensor or with only glitches", () => {
+  assert.equal(heatAnalysis({ watts: Array(3600).fill(250), heartrate: Array(3600).fill(150) }), null);
+  assert.equal(heatAnalysis({ coreTemperature: Array(3600).fill(0) }), null);
+  assert.equal(heatAnalysis({ coreTemperature: Array(3600).fill(99) }), null, "out-of-range readings are ignored");
+});
+
+test("heat analysis describes how core temperature developed against power and heart rate", () => {
+  // 45 min: core climbs steadily from 37.3 to 38.5 over the first 30 min, then holds.
+  // Power holds at 250 W while heart rate drifts up, so the heart pays more per watt late on.
+  const seconds = 45 * 60;
+  const coreTemperature = Array.from({ length: seconds }, (_, t) =>
+    t < 1800 ? 37.3 + (1.2 * t) / 1800 : 38.5
+  );
+  const watts = Array(seconds).fill(250);
+  const heartrate = Array.from({ length: seconds }, (_, t) => (t < 900 ? 140 : t < 1800 ? 150 : 160));
+  const heat = heatAnalysis({ watts, heartrate, coreTemperature });
+
+  assert.ok(Math.abs(heat.startC - 37.32) < 0.02);
+  assert.equal(heat.peakC, 38.5);
+  assert.ok(heat.peakMinute >= 29.9 && heat.peakMinute <= 30, `peak at ${heat.peakMinute}`);
+  assert.equal(heat.endC, 38.5);
+  assert.ok(Math.abs(heat.riseCPer10MinToPeak - 0.4) < 0.02, `rise ${heat.riseCPer10MinToPeak}`);
+  assert.ok(Math.abs(heat.largestRiseIn10MinC - 0.4) < 0.01);
+  assert.equal(heat.minutesAboveC["38.5"], 15);
+  assert.ok(heat.minutesAboveC["38.0"] > heat.minutesAboveC["38.5"]);
+  assert.equal(heat.minutesAboveC["39.0"], 0);
+
+  assert.equal(heat.byThird.length, 3);
+  assert.deepEqual(heat.byThird.map((part) => part.averageHeartRate), [140, 150, 160]);
+  assert.deepEqual(heat.byThird.map((part) => part.heartRatePer100W), [56, 60, 64]);
+  assert.ok(heat.byThird[0].averageCoreTemperatureC < heat.byThird[2].averageCoreTemperatureC);
+});
+
+test("heat analysis without power keeps heart rate and temperature by third", () => {
+  const coreTemperature = Array(1800).fill(38);
+  const heartrate = Array(1800).fill(150);
+  const heat = heatAnalysis({ heartrate, coreTemperature });
+  assert.equal(heat.byThird[0].averageHeartRate, 150);
+  assert.equal("averageWatts" in heat.byThird[0], false);
+  assert.equal("heartRatePer100W" in heat.byThird[0], false);
+});
+
+test("heat analysis of a segment reports minutes from the ride start", () => {
+  const coreTemperature = [...Array(1200).fill(37.5), ...Array(1200).fill(38.2)];
+  const heat = heatAnalysis({ coreTemperature }, { fromSeconds: 1200, toSeconds: 2400 });
+  assert.equal(heat.startC, 38.2);
+  assert.equal(heat.peakMinute, 20);
+  assert.equal(heat.minutesAboveC["38.0"], 20);
 });

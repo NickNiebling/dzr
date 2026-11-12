@@ -437,6 +437,65 @@ const fixtures = [
     expect: "Confirms it can see the ride's detail and gives a few relevant numbers. Must NOT ask for a .fit, TCX or other file, must NOT say it lacks the raw stream, and must NOT end with a menu of options.",
     forbid: [/\.fit\b/i, /tcx/i, /upload/i],
   },
+  {
+    name: "analyses core temperature against power and heart rate",
+    context: base,
+    message: "Jeg kørte løb i går med CORE-sensor. Blev jeg overophedet og mistede watt?",
+    expectTools: ["get_activity_metrics"],
+    toolResults: {
+      get_recent_activities: {
+        activities: [{ id: "i200100100", start_date_local: "2026-11-11T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
+      },
+      get_activity_metrics: {
+        metrics: {
+          durationSeconds: 3240, averageWatts: 252, normalizedPower: 289, intensityFactor: 0.957, ftpUsed: 302,
+          averageHeartRate: 139, maxHeartRate: 169,
+          averageCoreTemperatureC: 38.15, minCoreTemperatureC: 37.29, maxCoreTemperatureC: 38.43,
+          heat: {
+            startC: 37.31, endC: 38.41, peakC: 38.43, peakMinute: 36.2, riseFromStartToPeakC: 1.12,
+            riseCPer10MinToPeak: 0.31, largestRiseIn10MinC: 0.42,
+            minutesAboveC: { "38.0": 31.5, "38.5": 0, "39.0": 0 },
+            byThird: [
+              { fromMinute: 0, toMinute: 18, averageWatts: 281, averageHeartRate: 150, averageCoreTemperatureC: 37.7, heartRatePer100W: 53.4 },
+              { fromMinute: 18, toMinute: 36, averageWatts: 238, averageHeartRate: 152, averageCoreTemperatureC: 38.25, heartRatePer100W: 63.9 },
+              { fromMinute: 36, toMinute: 54, averageWatts: 236, averageHeartRate: 154, averageCoreTemperatureC: 38.41, heartRatePer100W: 65.3 },
+            ],
+          },
+          timeline: {
+            bucketSeconds: 60,
+            columns: ["minute", "watts", "heartRate", "coreTemperatureC"],
+            rows: ["0, 240, 128, 37.31", "15, 361, 161, 38.01", "36, 230, 153, 38.43", "53, 470, 158, 38.41"],
+          },
+        },
+      },
+    },
+    expect: "Uses the core-temperature data together with power and heart rate: core rose gradually from about 37.3 to a peak of about 38.4 °C around minute 36 and then held, never above 38.5 °C, while heart rate per 100 W rose from about 53 to 65 as power fell. Says this fits growing heat and cardiovascular strain but cannot prove heat caused the power drop. Must NOT say core-temperature data is missing or unavailable.",
+    forbid: [/ingen (core|kerne)/i, /kan ikke se[^.]*(core|kerne|temperatur)/i],
+  },
+  {
+    name: "does not bring up core temperature when the ride has none",
+    context: base,
+    message: "Hvordan gik mit løb i går?",
+    expectTools: ["get_activity_metrics"],
+    toolResults: {
+      get_recent_activities: {
+        activities: [{ id: "i200100101", start_date_local: "2026-11-11T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
+      },
+      get_activity_metrics: {
+        metrics: {
+          durationSeconds: 3240, averageWatts: 252, normalizedPower: 289, intensityFactor: 0.957, ftpUsed: 302,
+          averageHeartRate: 139, maxHeartRate: 169,
+          timeline: {
+            bucketSeconds: 60,
+            columns: ["minute", "watts", "heartRate"],
+            rows: ["0, 240, 128", "15, 361, 161", "36, 230, 153", "53, 470, 158"],
+          },
+        },
+      },
+    },
+    expect: "Describes the race from power and heart rate. Must NOT mention core temperature, body temperature or heat sensors at all.",
+    forbid: [/core/i, /kernetemperatur/i, /kropstemperatur/i],
+  },
 ];
 
 module.exports = { base, fixtures };
