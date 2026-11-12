@@ -283,6 +283,8 @@ test("heat analysis describes how core temperature developed against power and h
   assert.equal(heat.peakC, 38.5);
   assert.ok(heat.peakMinute >= 29.9 && heat.peakMinute <= 30, `peak at ${heat.peakMinute}`);
   assert.equal(heat.endC, 38.5);
+  assert.equal(heat.minutesAfterPeak, 15, "held at 38.5 for the last 15 minutes");
+  assert.equal(heat.changeAfterPeakC, 0);
   assert.ok(Math.abs(heat.riseCPer10MinToPeak - 0.4) < 0.02, `rise ${heat.riseCPer10MinToPeak}`);
   assert.ok(Math.abs(heat.largestRiseIn10MinC - 0.4) < 0.01);
   assert.equal(heat.minutesAboveC["38.5"], 15);

@@ -444,7 +444,7 @@ const fixtures = [
     expectTools: ["get_activity_metrics"],
     toolResults: {
       get_recent_activities: {
-        activities: [{ id: "i200100100", start_date_local: "2026-11-11T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
+        activities: [{ id: "i200100100", start_date_local: "2026-09-05T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
       },
       get_activity_metrics: {
         metrics: {
@@ -454,6 +454,7 @@ const fixtures = [
           heat: {
             startC: 37.31, endC: 38.41, peakC: 38.43, peakMinute: 36.2, riseFromStartToPeakC: 1.12,
             riseCPer10MinToPeak: 0.31, largestRiseIn10MinC: 0.42,
+            minutesAfterPeak: 17.8, changeAfterPeakC: -0.02,
             minutesAboveC: { "38.0": 31.5, "38.5": 0, "39.0": 0 },
             byThird: [
               { fromMinute: 0, toMinute: 18, averageWatts: 281, averageHeartRate: 150, averageCoreTemperatureC: 37.7, heartRatePer100W: 53.4 },
@@ -479,7 +480,7 @@ const fixtures = [
     expectTools: ["get_activity_metrics"],
     toolResults: {
       get_recent_activities: {
-        activities: [{ id: "i200100101", start_date_local: "2026-11-11T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
+        activities: [{ id: "i200100101", start_date_local: "2026-09-05T19:00:00", name: "Zwift - Race", moving_time: 3240, source: "ZWIFT" }],
       },
       get_activity_metrics: {
         metrics: {
@@ -494,7 +495,7 @@ const fixtures = [
       },
     },
     expect: "Describes the race from power and heart rate. Must NOT mention core temperature, body temperature or heat sensors at all.",
-    forbid: [/core/i, /kernetemperatur/i, /kropstemperatur/i],
+    forbid: [/core/i, /kernetemperatur/i, /kropstemperatur/i],
   },
 ];
 
