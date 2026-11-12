@@ -483,6 +483,8 @@ function heatAnalysis(
   }
 
   const minutesToPeak = (peakIndex - first) / 60;
+  // What happened after the peak: a plateau and a drop look alike from start/peak/end alone.
+  const minutesAfterPeak = (last - peakIndex) / 60;
   const minutesAboveC = Object.fromEntries(
     HEAT_THRESHOLDS_C.map((threshold) => [
       threshold.toFixed(1),
@@ -522,6 +524,8 @@ function heatAnalysis(
     peakC: round(peakC, 2),
     peakMinute: round((from + peakIndex) / 60, 1),
     riseFromStartToPeakC: round(peakC - startC, 2),
+    minutesAfterPeak: minutesAfterPeak >= 2 ? round(minutesAfterPeak, 1) : null,
+    changeAfterPeakC: minutesAfterPeak >= 2 ? round(endC - peakC, 2) : null,
     riseCPer10MinToPeak: minutesToPeak >= 5 ? round(((peakC - startC) / minutesToPeak) * 10, 2) : null,
     largestRiseIn10MinC: round(maxRise, 2),
     minutesAboveC,
