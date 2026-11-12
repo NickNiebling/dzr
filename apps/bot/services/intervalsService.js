@@ -24,7 +24,7 @@ const CONNECT_TOKEN_TTL_MS = 15 * 60 * 1000;
 const STREAM_CACHE_COLLECTION = "coach_activity_metrics";
 const USER_AGENT = "DZR-Coach/1.0";
 // Bump when activity metrics change shape or meaning, so stale cache rows are recomputed.
-const METRICS_CACHE_VERSION = 7;
+const METRICS_CACHE_VERSION = 8;
 
 function notClubMemberResult() {
   return {
@@ -577,6 +577,11 @@ async function getActivityDetails(discordId, activityId) {
   });
 }
 
+/** The entries of `fields` whose value is not null or undefined. */
+function withPresent(fields) {
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value != null));
+}
+
 function streamArray(streams, names) {
   for (const name of names) {
     // intervals.icu returns streams as [{ type, data }]; older callers passed an object keyed by type.
@@ -762,6 +767,7 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
     const activityDiscovery = discovery.discoverActivityFields(activity);
 
     let streams = null;
+    let streamsFailed = false;
     try {
       const baseStreamTypes = ["time", "watts", "heartrate", "cadence"];
       // Request every stream Intervals advertises. Known streams get sport-specific calculations;
@@ -778,6 +784,8 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
       streams = streamRes.data;
     } catch (err) {
       if (err?.code === "needs_reconnect" || err?.code === "not_connected" || err?.code === "rate_limited") throw err;
+      streamsFailed = true;
+      console.warn(`activity ${id} streams fetch failed:`, err?.message || err);
     }
 
     const time = streamArray(streams, ["time"]);
@@ -833,13 +841,30 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
         : {}),
       ...(activityDiscovery.truncated ? { sourceDataTruncated: true } : {}),
     };
+    const timelineSeries = {
+      watts,
+      heartrate,
+      cadence,
+      coreTemperature,
+      skinTemperature: additionalStreams.skinTemperature,
+    };
+    const timeline = metrics.activityTimeline(timelineSeries);
+    const heat = metrics.heatAnalysis({ watts, heartrate, coreTemperature });
     const common = {
       averageHeartRate: hr?.average ?? num(activity?.average_heartrate),
       maxHeartRate: hr?.max ?? num(activity?.max_heartrate),
       averageCadence: cad?.average ?? num(activity?.average_cadence),
-      averageCoreTemperatureC: core?.average ?? null,
-      minCoreTemperatureC: core?.min ?? null,
-      maxCoreTemperatureC: core?.max ?? null,
+      // Only riders with a core sensor get these, so the model never sees an empty temperature
+      // field and starts talking about data the rider never recorded.
+      ...(core
+        ? {
+            averageCoreTemperatureC: core.average,
+            minCoreTemperatureC: core.min,
+            maxCoreTemperatureC: core.max,
+          }
+        : {}),
+      ...(heat ? { heat } : {}),
+      ...(timeline ? { timeline } : {}),
       ...(wPrimeCapacityJ != null
         ? {
             wPrimeCapacityJ,
@@ -894,6 +919,7 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
     } else if (
       common.averageHeartRate != null ||
       common.averageCoreTemperatureC != null ||
+      timeline != null ||
       Object.keys(additional).length > 0 ||
       Object.keys(sourceData).length > 0 ||
       Object.keys(additionalStreamData).length > 0
@@ -913,17 +939,23 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
       ? "This ride has no usable power data. Use only the available sensor fields without implying missing data exists."
       : null;
 
-    try {
-      await cacheRef.set({
-        discordId: String(discordId),
-        activityId: id,
-        metrics: summary,
-        message,
-        version: METRICS_CACHE_VERSION,
-        cachedAt: new Date(),
-      });
-    } catch (err) {
-      console.warn("activity metrics cache write failed:", err?.message || err);
+    // A ride cached without its streams would stay that way for good, and the coach would then
+    // contradict a fresh time-range call that does see them. Only cache complete results.
+    const coreAdvertised = advertisedStreamTypes.includes("core_temperature");
+    const streamsIncomplete = streamsFailed || (coreAdvertised && !core);
+    if (!streamsIncomplete) {
+      try {
+        await cacheRef.set({
+          discordId: String(discordId),
+          activityId: id,
+          metrics: summary,
+          message,
+          version: METRICS_CACHE_VERSION,
+          cachedAt: new Date(),
+        });
+      } catch (err) {
+        console.warn("activity metrics cache write failed:", err?.message || err);
+      }
     }
 
     if (range) {
@@ -953,6 +985,19 @@ async function getActivityMetrics(discordId, activityId, { fromMinute, toMinute 
           segment: {
             ...segment,
             ...additionalStreamSummary(additionalStreams, range.fromSeconds, range.toSeconds),
+            ...withPresent({
+              // A part of the ride gets a finer timeline than the whole ride.
+              timeline: metrics.activityTimeline(timelineSeries, {
+                fromSeconds: range.fromSeconds,
+                toSeconds: range.toSeconds,
+                minBucketSeconds: 30,
+                maxRows: 60,
+              }),
+              heat: metrics.heatAnalysis(
+                { watts, heartrate, coreTemperature },
+                { fromSeconds: range.fromSeconds, toSeconds: range.toSeconds }
+              ),
+            }),
             ...(Object.keys(segmentStreamData).length
               ? { additionalStreamData: segmentStreamData }
               : {}),

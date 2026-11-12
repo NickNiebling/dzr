@@ -277,8 +277,8 @@ function enrichIntervals(intervals, { heartrate = [], cadence = [], coreTemperat
       averageHeartRate: hr?.average ?? null,
       maxHeartRate: hr?.max ?? null,
       averageCadence: cad?.average ?? null,
-      averageCoreTemperatureC: core?.average ?? null,
-      maxCoreTemperatureC: core?.max ?? null,
+      // Most riders have no core sensor; an empty field would invite the model to talk about it.
+      ...(core ? { averageCoreTemperatureC: core.average, maxCoreTemperatureC: core.max } : {}),
     };
   });
 }
@@ -327,12 +327,207 @@ function segmentSummary(
     averageHeartRate: hr?.average ?? null,
     maxHeartRate: hr?.max ?? null,
     averageCadence: cad?.average ?? null,
-    averageCoreTemperatureC: core?.average ?? null,
-    minCoreTemperatureC: core?.min ?? null,
-    maxCoreTemperatureC: core?.max ?? null,
+    ...(core
+      ? {
+          averageCoreTemperatureC: core.average,
+          minCoreTemperatureC: core.min,
+          maxCoreTemperatureC: core.max,
+        }
+      : {}),
     aerobicDecouplingPercent: aerobicDecoupling(w, h),
     intervals,
   };
+}
+
+/** Core body temperature outside this range is a sensor glitch or a sensor not yet worn. */
+const CORE_TEMPERATURE_RANGE_C = [34, 42];
+
+function plausibleCore(raw) {
+  if (raw == null || raw === "") return null;
+  const value = Number(raw);
+  const [low, high] = CORE_TEMPERATURE_RANGE_C;
+  return Number.isFinite(value) && value >= low && value <= high ? value : null;
+}
+
+function round(value, digits) {
+  return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(digits));
+}
+
+function meanOf(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+/** [from, to) clamped to the longest of the given series. Null when shorter than `minSeconds`. */
+function clampWindow(seriesList, fromSeconds, toSeconds, minSeconds) {
+  const length = Math.max(0, ...seriesList.map((s) => (Array.isArray(s) ? s.length : 0)));
+  const from = Math.max(0, Math.floor(Number(fromSeconds) || 0));
+  const requestedTo = Number(toSeconds);
+  const to = Math.min(length, Number.isFinite(requestedTo) ? Math.floor(requestedTo) : length);
+  return to - from >= minSeconds ? { from, to } : null;
+}
+
+const TIMELINE_BUCKETS = [30, 60, 120, 180, 300, 600, 900, 1800];
+
+/**
+ * The ride as a short table, one row per time bucket, so the model can see how power, heart rate
+ * and body temperature moved together rather than only their whole-ride averages.
+ *
+ * A column is present only when its stream has data in the window, so a rider without a core
+ * sensor gets no temperature column at all. Each row is one comma-separated line in `columns`
+ * order, to keep the payload small: a one-hour ride is 60 short lines.
+ */
+function activityTimeline(
+  { watts = [], heartrate = [], cadence = [], coreTemperature = [], skinTemperature = [] } = {},
+  { fromSeconds = 0, toSeconds = Infinity, maxRows = 90, minBucketSeconds = 60 } = {}
+) {
+  const window = clampWindow(
+    [watts, heartrate, cadence, coreTemperature, skinTemperature],
+    fromSeconds,
+    toSeconds,
+    60
+  );
+  if (!window) return null;
+  const { from, to } = window;
+  const duration = to - from;
+  const bucketSeconds =
+    TIMELINE_BUCKETS.find((b) => b >= minBucketSeconds && Math.ceil(duration / b) <= maxRows) ??
+    TIMELINE_BUCKETS[TIMELINE_BUCKETS.length - 1];
+
+  const positiveMean = (slice) => {
+    const values = slice.map(Number).filter((v) => Number.isFinite(v) && v > 0);
+    return values.length ? Math.round(meanOf(values)) : null;
+  };
+  const candidates = [
+    {
+      name: "watts",
+      series: watts,
+      // Coasting is real zero power, so it stays in the average.
+      stat: (slice) => (slice.length ? Math.round(meanOf(slice.map((v) => Number(v) || 0))) : null),
+      present: (slice) => slice.some((v) => Number(v) > 0),
+    },
+    { name: "heartRate", series: heartrate, stat: positiveMean },
+    { name: "cadence", series: cadence, stat: positiveMean },
+    {
+      name: "coreTemperatureC",
+      series: coreTemperature,
+      stat: (slice) => round(meanOf(slice.map(plausibleCore).filter((v) => v != null)), 2),
+      present: (slice) => slice.some((v) => plausibleCore(v) != null),
+    },
+    {
+      name: "skinTemperatureC",
+      series: skinTemperature,
+      stat: (slice) => seriesStats(slice, { digits: 1, positiveOnly: true })?.average ?? null,
+    },
+  ];
+  const columns = candidates.filter((column) => {
+    const slice = Array.isArray(column.series) ? column.series.slice(from, to) : [];
+    return column.present ? column.present(slice) : slice.some((v) => Number(v) > 0);
+  });
+  if (!columns.length) return null;
+
+  // Rows are "minute, value, value" strings: Firestore (the metrics cache) rejects nested arrays,
+  // and a plain table reads well for the model. "-" marks a bucket with no reading.
+  const rows = [];
+  for (let start = from; start < to; start += bucketSeconds) {
+    const end = Math.min(to, start + bucketSeconds);
+    const values = [
+      round(start / 60, 1),
+      ...columns.map((column) => column.stat(column.series.slice(start, end))),
+    ];
+    rows.push(values.map((value) => (value == null ? "-" : String(value))).join(", "));
+  }
+  return {
+    bucketSeconds,
+    columns: ["minute", ...columns.map((column) => column.name)],
+    rows,
+  };
+}
+
+const HEAT_THRESHOLDS_C = [38, 38.5, 39];
+
+/**
+ * How core temperature developed and how the heart's cost of each watt changed alongside it.
+ * Returns null without at least two minutes of plausible core-temperature samples, so riders
+ * without a sensor get nothing.
+ */
+function heatAnalysis(
+  { watts = [], heartrate = [], coreTemperature = [] } = {},
+  { fromSeconds = 0, toSeconds = Infinity } = {}
+) {
+  const window = clampWindow([coreTemperature], fromSeconds, toSeconds, 120);
+  if (!window) return null;
+  const { from, to } = window;
+  const core = coreTemperature.slice(from, to).map(plausibleCore);
+  const valid = [];
+  core.forEach((value, i) => {
+    if (value != null) valid.push(i);
+  });
+  if (valid.length < 120) return null;
+
+  const averageBetween = (a, b) =>
+    meanOf(core.slice(Math.max(0, a), Math.max(0, b)).filter((v) => v != null));
+  const first = valid[0];
+  const last = valid[valid.length - 1];
+  const startC = averageBetween(first, first + 60);
+  const endC = averageBetween(last - 59, last + 1);
+
+  let peakIndex = first;
+  for (const i of valid) if (core[i] > core[peakIndex]) peakIndex = i;
+  const peakC = core[peakIndex];
+
+  let maxRise = null;
+  for (let i = 0; i + 600 < core.length; i++) {
+    if (core[i] == null || core[i + 600] == null) continue;
+    const rise = core[i + 600] - core[i];
+    if (maxRise == null || rise > maxRise) maxRise = rise;
+  }
+
+  const minutesToPeak = (peakIndex - first) / 60;
+  const minutesAboveC = Object.fromEntries(
+    HEAT_THRESHOLDS_C.map((threshold) => [
+      threshold.toFixed(1),
+      round(valid.filter((i) => core[i] >= threshold).length / 60, 1),
+    ])
+  );
+
+  // Thirds of the window: does the heart pay more per watt as the body heats up?
+  let byThird = null;
+  if (to - from >= 900) {
+    const size = Math.floor((to - from) / 3);
+    byThird = [0, 1, 2].map((part) => {
+      const a = from + part * size;
+      const b = part === 2 ? to : a + size;
+      const w = Array.isArray(watts) ? watts.slice(a, b).map((v) => Number(v) || 0) : [];
+      const hasPower = w.some((v) => v > 0);
+      const averageWatts = hasPower ? Math.round(meanOf(w)) : null;
+      const averageHeartRate = positiveStats(Array.isArray(heartrate) ? heartrate.slice(a, b) : [])?.average ?? null;
+      const coreAverage = round(averageBetween(a - from, b - from), 2);
+      return Object.fromEntries(
+        Object.entries({
+          fromMinute: round(a / 60, 1),
+          toMinute: round(b / 60, 1),
+          averageWatts,
+          averageHeartRate,
+          averageCoreTemperatureC: coreAverage,
+          heartRatePer100W:
+            averageWatts && averageHeartRate ? round((averageHeartRate / averageWatts) * 100, 1) : null,
+        }).filter(([, value]) => value != null)
+      );
+    });
+  }
+
+  const summary = {
+    startC: round(startC, 2),
+    endC: round(endC, 2),
+    peakC: round(peakC, 2),
+    peakMinute: round((from + peakIndex) / 60, 1),
+    riseFromStartToPeakC: round(peakC - startC, 2),
+    riseCPer10MinToPeak: minutesToPeak >= 5 ? round(((peakC - startC) / minutesToPeak) * 10, 2) : null,
+    largestRiseIn10MinC: round(maxRise, 2),
+    minutesAboveC,
+    byThird,
+  };
+  return Object.fromEntries(Object.entries(summary).filter(([, value]) => value != null));
 }
 
 module.exports = {
@@ -352,4 +547,6 @@ module.exports = {
   seriesStats,
   enrichIntervals,
   segmentSummary,
+  activityTimeline,
+  heatAnalysis,
 };
