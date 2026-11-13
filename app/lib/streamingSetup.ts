@@ -1,7 +1,6 @@
 /** Server-side configuration shared by the guide and its Lua download route. */
 export function getStreamingSetupConfig(env: { STREAMING_PUBLIC_URL?: string } = { STREAMING_PUBLIC_URL: process.env.STREAMING_PUBLIC_URL }) {
-  const value = env.STREAMING_PUBLIC_URL
-  if (!value) throw new Error('STREAMING_PUBLIC_URL is required')
+  const value = env.STREAMING_PUBLIC_URL ?? 'https://bot-tdnm.onrender.com'
   const url = new URL(value)
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
     || (url.pathname !== '/' && url.pathname !== '')) {

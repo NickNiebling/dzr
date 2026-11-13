@@ -864,7 +864,6 @@ const commands = [
         .setDescription("Ladder match id (default: the team's next match)")
         .setRequired(false)
     ),
-].map(cmd => cmd.toJSON())
-  .filter(cmd => cmd.name !== "streaming_add_new" || process.env.STREAMING_SETUP_ENABLED === "true");
+].map(cmd => cmd.toJSON());
 
 module.exports = commands;
