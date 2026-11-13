@@ -94,4 +94,50 @@ async function getNextFixture(team) {
   return null;
 }
 
-module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture };
+function rosterError(message) {
+  const error = new Error(message);
+  error.userMessage = message;
+  return error;
+}
+
+function createRosterReader({ fetchPage = getPage, parseTeamPage = (html) => require("./ladderRoster").parseRosterPage(html), parseIdentity = (html) => require("./ladderRoster").parseProfileIdentity(html) } = {}) {
+  return async function getRoster(team) {
+    const id = String(team?.id || "");
+    if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw rosterError("Holdets Ladder-id er ugyldigt.");
+    // Read the complete current roster every time; only riderPower's existing power cache is reused.
+    const roster = parseTeamPage(await fetchPage(`/team/n/${id}`));
+    if (String(roster.id) !== id) throw rosterError("Ladder-siden viser et andet hold end det valgte.");
+    const profiles = [...new Set(roster.riders.filter((rider) => !rider.zwiftId && rider.profileId).map((rider) => String(rider.profileId)))];
+    const identities = new Map();
+    const queue = [...profiles];
+    const worker = async () => {
+      for (let profileId = queue.shift(); profileId !== undefined; profileId = queue.shift()) {
+        if (!/^[1-9]\d*$/.test(profileId) || !Number.isSafeInteger(Number(profileId))) continue;
+        let html;
+        try { html = await fetchPage(`/profile/${profileId}`); } catch { continue; }
+        // A Ladder profile id alone is not proof of a Zwift identity.
+        identities.set(profileId, parseIdentity(html));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+    const known = new Map();
+    const riders = [];
+    for (const rider of roster.riders) {
+      const zwiftId = rider.zwiftId || identities.get(String(rider.profileId)) || null;
+      const mapped = { name: rider.name, zwiftId, wkg: { ...rider.wkg } };
+      if (zwiftId && known.has(String(zwiftId))) {
+        const existing = known.get(String(zwiftId));
+        for (const [seconds, value] of Object.entries(mapped.wkg)) if (existing.wkg[seconds] == null) existing.wkg[seconds] = value;
+        continue;
+      }
+      if (zwiftId) known.set(String(zwiftId), mapped);
+      riders.push(mapped);
+    }
+    if (!known.size) throw rosterError(`${roster.name}: Ingen ryttere har et verificerbart Zwift-id fra et Zwift- eller ZwiftPower-profillink.`);
+    return { ...team, id, name: roster.name, path: `/team/n/${id}`, url: `https://ladder.cycleracing.club/team/n/${id}`, riders };
+  };
+}
+
+const getRoster = createRosterReader();
+
+module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, createRosterReader, getRoster };
