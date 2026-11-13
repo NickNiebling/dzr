@@ -1,7 +1,7 @@
 // Reads ladder.cycleracing.club through the Flask API (/ladder_page), which holds the club's ladder login.
 const axios = require("axios");
 const config = require("../../config/config");
-const { parseFixtureList, parseFixture } = require("./ladderParser");
+const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity, parseSummaryTeams, parseTeamInput, teamReference } = require("./ladderParser");
 
 // Short reason shown to the user, so a failing API can be told apart without looking in the logs.
 function describeFailure(err) {
@@ -94,50 +94,93 @@ async function getNextFixture(team) {
   return null;
 }
 
-function rosterError(message) {
-  const error = new Error(message);
-  error.userMessage = message;
-  return error;
+// Scout searches share one in-memory catalog; complete rosters are fetched on every command.
+const CATALOG_TTL_MS = 15 * 60 * 1000;
+let catalog = [];
+let catalogExpires = 0;
+let catalogRefresh = null;
+let retryAfter = 0;
+const normalize = (name) => name.trim().normalize("NFKC").toLocaleLowerCase("da");
+const scoutError = (message) => Object.assign(new Error(message), { userMessage: message });
+
+function refreshCatalog() {
+  if (!catalogRefresh) {
+    catalogRefresh = getPage("/summary").then((html) => {
+      catalog = parseSummaryTeams(html);
+      catalogExpires = Date.now() + CATALOG_TTL_MS;
+      retryAfter = 0;
+    }).catch((error) => {
+      retryAfter = Date.now() + 30000;
+      throw error;
+    }).finally(() => { catalogRefresh = null; });
+  }
+  return catalogRefresh;
 }
 
-function createRosterReader({ fetchPage = getPage, parseTeamPage = (html) => require("./ladderRoster").parseRosterPage(html), parseIdentity = (html) => require("./ladderRoster").parseProfileIdentity(html) } = {}) {
-  return async function getRoster(team) {
-    const id = String(team?.id || "");
-    if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw rosterError("Holdets Ladder-id er ugyldigt.");
-    // Read the complete current roster every time; only riderPower's existing power cache is reused.
-    const roster = parseTeamPage(await fetchPage(`/team/n/${id}`));
-    if (String(roster.id) !== id) throw rosterError("Ladder-siden viser et andet hold end det valgte.");
-    const profiles = [...new Set(roster.riders.filter((rider) => !rider.zwiftId && rider.profileId).map((rider) => String(rider.profileId)))];
-    const identities = new Map();
-    const queue = [...profiles];
-    const worker = async () => {
-      for (let profileId = queue.shift(); profileId !== undefined; profileId = queue.shift()) {
-        if (!/^[1-9]\d*$/.test(profileId) || !Number.isSafeInteger(Number(profileId))) continue;
-        let html;
-        try { html = await fetchPage(`/profile/${profileId}`); } catch { continue; }
-        // A Ladder profile id alone is not proof of a Zwift identity.
-        identities.set(profileId, parseIdentity(html));
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
-    const known = new Map();
-    const riders = [];
-    for (const rider of roster.riders) {
-      const zwiftId = rider.zwiftId || identities.get(String(rider.profileId)) || null;
-      const mapped = { name: rider.name, zwiftId, wkg: { ...rider.wkg } };
-      if (zwiftId && known.has(String(zwiftId))) {
-        const existing = known.get(String(zwiftId));
-        for (const [seconds, value] of Object.entries(mapped.wkg)) if (existing.wkg[seconds] == null) existing.wkg[seconds] = value;
-        continue;
-      }
-      if (zwiftId) known.set(String(zwiftId), mapped);
-      riders.push(mapped);
+function warmCatalog() {
+  if (Date.now() >= catalogExpires && Date.now() >= retryAfter && !catalogRefresh) {
+    refreshCatalog().catch(() => console.warn("[ladder scout] Holdkataloget kunne ikke opdateres."));
+  }
+}
+
+function autocomplete(input) {
+  warmCatalog();
+  let parsed;
+  try { parsed = input.trim() ? parseTeamInput(input) : { name: "" }; } catch { return []; }
+  return catalog.filter((team) => parsed.id ? team.id === parsed.id : normalize(team.name).includes(normalize(parsed.name)))
+    .slice(0, 25).map((team) => ({ name: `${team.name} (#${team.id})`.slice(0, 100), value: team.url }));
+}
+
+async function resolveTeam(input) {
+  const parsed = parseTeamInput(input);
+  // Links validate the actual team page, even when the team is absent from /summary.
+  if (parsed.path) {
+    const team = parseRosterPage(await getPage(parsed.path));
+    if (parsed.id && String(team.id) !== parsed.id) throw scoutError("Holdlinket førte ikke til det forventede Ladder-hold.");
+    return teamReference(team.id, team.name);
+  }
+  if (Date.now() >= catalogExpires) {
+    try { await refreshCatalog(); } catch (error) { if (!catalog.length) throw error; }
+  }
+  const name = normalize(parsed.name);
+  const exact = catalog.filter((team) => normalize(team.name) === name);
+  const matches = exact.length ? exact : catalog.filter((team) => normalize(team.name).includes(name));
+  if (matches.length === 1) return matches[0];
+  throw scoutError(matches.length
+    ? `Flere Ladder-hold matcher “${parsed.name}”. Vælg et konkret forslag eller et holdlink.`
+    : `Intet Ladder-hold matcher “${parsed.name}”. Prøv et andet navn eller et holdlink.`);
+}
+
+async function getRoster(team, { fetchPage = getPage } = {}) {
+  const id = String(team.id);
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw scoutError("Holdets Ladder-id er ugyldigt.");
+  const roster = parseRosterPage(await fetchPage(`/team/n/${id}`));
+  if (String(roster.id) !== id) throw scoutError("Ladder-siden viser et andet hold end det valgte.");
+  const profiles = [...new Set(roster.riders.map((rider) => rider.profileId).filter(Boolean))];
+  const identities = new Map();
+  const worker = async () => {
+    for (let profileId = profiles.shift(); profileId !== undefined; profileId = profiles.shift()) {
+      let html;
+      try { html = await fetchPage(`/profile/${profileId}`); } catch { continue; }
+      identities.set(profileId, parseProfileIdentity(html));
     }
-    if (!known.size) throw rosterError(`${roster.name}: Ingen ryttere har et verificerbart Zwift-id fra et Zwift- eller ZwiftPower-profillink.`);
-    return { ...team, id, name: roster.name, path: `/team/n/${id}`, url: `https://ladder.cycleracing.club/team/n/${id}`, riders };
   };
+  await Promise.all(Array.from({ length: Math.min(4, profiles.length) }, worker));
+  const known = new Map();
+  const riders = [];
+  for (const rider of roster.riders) {
+    const zwiftId = identities.get(rider.profileId) || null;
+    const mapped = { name: rider.name, zwiftId, wkg: rider.wkg };
+    if (zwiftId && known.has(zwiftId)) {
+      const existing = known.get(zwiftId);
+      for (const [seconds, value] of Object.entries(mapped.wkg)) if (existing.wkg[seconds] == null) existing.wkg[seconds] = value;
+      continue;
+    }
+    if (zwiftId) known.set(zwiftId, mapped);
+    riders.push(mapped);
+  }
+  if (!known.size) throw scoutError(`${roster.name}: Ingen ryttere har et verificerbart Zwift-id fra et profillink.`);
+  return { ...teamReference(id, roster.name), riders };
 }
 
-const getRoster = createRosterReader();
-
-module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, createRosterReader, getRoster };
+module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, warmCatalog, autocomplete, resolveTeam, getRoster };

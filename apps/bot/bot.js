@@ -31,7 +31,7 @@ const { createStreamingHandlers, isStreamingInteraction } = require("./handlers/
 const shared = require("./constants.json");
 const { loadZwiftCatalog, startZwiftCatalogRefresh } = require("./services/zwiftCatalog");
 const { getClubRoleId } = require("./services/onboardingStatus");
-const { warmCatalog: warmLadderCatalog } = require("./services/ladder/ladderCatalog");
+const { warmCatalog: warmLadderCatalog } = require("./services/ladder/ladderClient");
 
 // Create Discord Bot Client
 const client = new Client({ 

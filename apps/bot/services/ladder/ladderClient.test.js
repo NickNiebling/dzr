@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { refreshSignups, refreshFixture, describeFailure, getFixtureStart, createRosterReader } = require("./ladderClient");
+const { refreshSignups, refreshFixture, describeFailure, getFixtureStart, getRoster, warmCatalog, autocomplete, resolveTeam } = require("./ladderClient");
 
 const MIN = 60 * 1000;
 
@@ -65,66 +65,59 @@ test("describeFailure names the API status, a timeout or a missing connection", 
   assert.equal(describeFailure({ code: "ENOTFOUND" }), "ingen forbindelse til API");
 });
 
-test("scout reads fresh complete rosters, verifies identities from profiles, deduplicates known ids and keeps unknown members", async () => {
-  const calls = [];
-  const read = createRosterReader({
-    fetchPage: async (path) => { calls.push(path); return path; },
-    parseTeamPage: () => ({ id: "82", name: "Our team", riders: [
-      { name: "First", profileId: 10, zwiftId: null, wkg: { 15: 8 } },
-      { name: "Duplicate", profileId: 11, zwiftId: null, wkg: { 300: 4 } },
-      { name: "No profile one", profileId: null, zwiftId: null, wkg: {} },
-      { name: "No profile two", profileId: null, zwiftId: null, wkg: {} },
-      { name: "No external link", profileId: 12, zwiftId: null, wkg: {} },
-      { name: "No power", profileId: 13, zwiftId: null, wkg: {} },
-    ] }),
-    parseIdentity: (path) => ({ "/profile/10": 1001, "/profile/11": 1001, "/profile/12": null, "/profile/13": 1002 })[path],
+test("scout catalog shares refreshes, caches for 15 minutes and resolves only unambiguous names or valid links", async (t) => {
+  const axios = require("axios");
+  const config = require("../../config/config");
+  const original = config.contentApi;
+  config.contentApi = { baseUrl: "http://localhost", apiKey: "test" };
+  t.after(() => { config.contentApi = original; });
+  let now = 1000, calls = 0, finish;
+  t.mock.method(Date, "now", () => now);
+  const teams = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Team ${i}` }));
+  const html = `const playonTeams = ${JSON.stringify([...teams, teams[0]])};`;
+  const roster = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  t.mock.method(axios, "get", async (_url, { params }) => {
+    if (params.path !== "/summary") return { data: roster };
+    calls += 1;
+    return new Promise((resolve) => { finish = () => resolve({ data: html }); });
   });
-  const first = await read({ id: "82" });
-  assert.equal(first.riders.length, 5);
-  assert.equal(first.riders[0].zwiftId, 1001);
-  assert.deepEqual(first.riders[0].wkg, { 15: 8, 300: 4 });
-  assert.equal(first.riders.filter((rider) => rider.zwiftId === null).length, 3);
-  assert.deepEqual(first.riders.find((rider) => rider.zwiftId === 1002).wkg, {});
-  assert.equal(first.url, "https://ladder.cycleracing.club/team/n/82");
-  await read({ id: "82" });
-  assert.equal(calls.filter((path) => path === "/team/n/82").length, 2);
-  assert.equal(calls.filter((path) => path === "/profile/10").length, 2);
+  warmCatalog();
+  assert.deepEqual(autocomplete("Team"), []);
+  const pending = resolveTeam("Team 0");
+  assert.equal(calls, 1);
+  finish();
+  assert.equal((await pending).id, "1");
+  assert.equal(autocomplete("").length, 25);
+  assert.equal(autocomplete("Team 0").length, 1);
+  await assert.rejects(resolveTeam("Team"), /Flere Ladder-hold/);
+  now += 15 * MIN - 1;
+  autocomplete("");
+  assert.equal(calls, 1);
+  now += 1;
+  autocomplete("");
+  const refreshed = resolveTeam("Team 0");
+  assert.equal(calls, 2);
+  finish();
+  await refreshed;
+  for (const path of ["team/n/501", "teamView/Example%20Home", "matchlist/fixtures/Example%20Home"]) {
+    assert.equal((await resolveTeam(`https://ladder.cycleracing.club/${path}`)).id, "501");
+  }
+  await assert.rejects(resolveTeam("https://example.com/team/n/501"), /ladder.cycleracing.club/);
+  await assert.rejects(resolveTeam("/team/n/502"), /forventede/);
 });
 
-test("scout does not treat internal Ladder profile ids as verified Zwift ids", async () => {
-  const read = createRosterReader({
-    fetchPage: async () => "no external identity",
-    parseTeamPage: () => ({ id: "82", name: "Team", riders: [{ name: "Unknown", profileId: 9999, wkg: {} }] }),
-    parseIdentity: () => null,
-  });
-  await assert.rejects(read({ id: "82" }), /Ingen ryttere.*verificerbart Zwift-id/);
-});
-
-test("scout keeps members whose profile fetch failed and limits concurrent profile reads", async () => {
-  let active = 0;
-  let peak = 0;
-  const read = createRosterReader({
-    fetchPage: async (path) => {
-      if (path.startsWith("/team/")) return "team";
-      active += 1;
-      peak = Math.max(peak, active);
-      await new Promise((resolve) => setImmediate(resolve));
-      active -= 1;
-      if (path === "/profile/2") throw new Error("profile unavailable");
-      return path;
-    },
-    parseTeamPage: () => ({ id: "82", name: "Team", riders: Array.from({ length: 11 }, (_, index) => ({ name: `Rider ${index}`, profileId: index + 1, wkg: {} })) }),
-    parseIdentity: (path) => Number(path.split("/").pop()) + 1000,
-  });
-  const roster = await read({ id: "82" });
-  assert.equal(roster.riders.length, 11);
-  assert.equal(roster.riders.filter((rider) => !rider.zwiftId).length, 1);
-  assert.equal(peak, 4);
-});
-
-test("scout rejects unknown roster format and a team identity mismatch", async () => {
-  const badFormat = createRosterReader({ fetchPage: async () => "bad", parseTeamPage: () => { throw new Error("Ukendt rosterformat"); } });
-  await assert.rejects(badFormat({ id: "82" }), /Ukendt rosterformat/);
-  const wrongTeam = createRosterReader({ fetchPage: async () => "wrong team", parseTeamPage: () => ({ id: "102", name: "Wrong", riders: [] }) });
-  await assert.rejects(wrongTeam({ id: "82" }), /andet hold/);
+test("scout fetches complete rosters each time, deduplicates verified identities and retains unknown members", async () => {
+  const html = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  let teamReads = 0;
+  const fetchPage = async (path) => {
+    if (path.startsWith("/team/")) { teamReads += 1; return html; }
+    return ["/profile/50100", "/profile/50101"].includes(path) ? '<a href="https://zwiftpower.com/profile.php?z=123">ZP</a>' : "";
+  };
+  const roster = await getRoster({ id: "501" }, { fetchPage });
+  assert.equal(roster.riders.length, 10);
+  assert.equal(roster.riders.filter((rider) => rider.zwiftId === 123).length, 1);
+  assert.equal(roster.riders.filter((rider) => !rider.zwiftId).length, 9);
+  await getRoster({ id: "501" }, { fetchPage });
+  assert.equal(teamReads, 2);
+  await assert.rejects(getRoster({ id: "501" }, { fetchPage: async (path) => path.startsWith("/team/") ? html : "" }), /Ingen ryttere.*Zwift-id/);
 });

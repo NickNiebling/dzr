@@ -7,8 +7,7 @@ import logging
 import os
 import re
 import threading
-from html.parser import HTMLParser
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote
 
 import requests
 
@@ -20,7 +19,10 @@ ALLOWED_PATH = re.compile(
     r"matchlist/fixtures/[^/?#]+|fixture/\d+|rSignups/\d+)"
 )
 _FIXTURE_PATH = re.compile(r"^/fixture/(\d+)$")
-_ACCESS_CHECK_PATH = "/team/n/82"
+_SIGN_IN_FORM = re.compile(
+    r"""<(?:form\b[^>]*\s(?:id|action)\s*=\s*["']?/?(?:signin|login)["'\s>]|"""
+    r"""input\b[^>]*\stype\s*=\s*["']?password["'\s>])""", re.I
+)
 
 
 class LadderError(Exception):
@@ -47,40 +49,8 @@ def is_allowed_path(path: str) -> bool:
     )
 
 
-class _PageSignals(HTMLParser):
-    """Inspect auth and protected-team markers without depending on HTML attribute quoting."""
-
-    def __init__(self, body: str):
-        super().__init__(convert_charrefs=True)
-        self.sign_in = False
-        self.roster = False
-        self.logout = False
-        self.feed(body or "")
-
-    def handle_starttag(self, tag, attrs):
-        attrs = dict(attrs)
-        if tag == "form":
-            action = urlsplit(attrs.get("action") or "").path.rstrip("/").lower()
-            if (attrs.get("id") or "").lower() == "signin" or action in ("/signin", "/login", "signin", "login"):
-                self.sign_in = True
-        if tag == "input" and (attrs.get("type") or "").lower() == "password":
-            self.sign_in = True
-        if attrs.get("id") == "pane-roster":
-            self.roster = True
-        if tag == "a" and urlsplit(attrs.get("href") or "").path.rstrip("/") == "/logout":
-            self.logout = True
-
-
 def _is_sign_in_page(body: str) -> bool:
-    return _PageSignals(body).sign_in
-
-
-def _requires_login(res: requests.Response) -> bool:
-    return _is_sign_in_page(res.text) or urlsplit(res.url or "").path.rstrip("/").lower() in ("/signin", "/login")
-
-
-def _is_discord_gate(body: str) -> bool:
-    return "discord verification required" in (body or "").lower()
+    return bool(_SIGN_IN_FORM.search(body or ""))
 
 
 def _is_refreshing_page(body: str) -> bool:
@@ -105,48 +75,15 @@ class LadderClient:
             raise LadderError(f"Ladder credentials are not configured: missing {missing}")
         self.session.cookies.clear()
         # The form only works with the session cookie issued when the form itself is fetched.
-        form = self.session.get(f"{LADDER_BASE}/signin", timeout=20)
-        if form.status_code >= 400:
-            raise LadderError(f"Ladder sign-in form failed (HTTP {form.status_code})")
+        self.session.get(f"{LADDER_BASE}/signin", timeout=20)
         res = self.session.post(
             f"{LADDER_BASE}/signin",
             data={"email": self.email, "password": self.password, "returnTo": "/summary", "service": "clubladder"},
             timeout=20,
         )
-        if res.status_code >= 400 or _requires_login(res):
+        if res.status_code >= 400 or _is_sign_in_page(res.text):
             raise LadderError("Ladder login failed")
-        # /summary is public and a successful POST alone does not prove the session is accepted.
-        self.verify_access()
         self.logged_in = True
-
-    def _skip_discord_gate(self, path: str, res: requests.Response) -> requests.Response:
-        if _is_discord_gate(res.text):
-            skipped = self.session.get(f"{LADDER_BASE}/discord/skip", timeout=20)
-            skipped.raise_for_status()
-            res = self._get(path)
-        return res
-
-    def verify_access(self) -> None:
-        """Prove this session can read an authenticated team, not a public summary or login form."""
-        res = self._skip_discord_gate(_ACCESS_CHECK_PATH, self._get(_ACCESS_CHECK_PATH))
-        if _requires_login(res):
-            raise LadderError("Ladder protected team still requires login after sign-in")
-        if _is_discord_gate(res.text):
-            raise LadderError("Ladder Discord verification still required after skip")
-        if res.status_code != 200:
-            raise LadderError(f"Ladder protected team access failed (HTTP {res.status_code})")
-        target = urlsplit(res.url or "")
-        signals = _PageSignals(res.text)
-        is_team = bool(re.fullmatch(r"/team/n/[1-9][0-9]*|/teamView/[^/]+", target.path))
-        if (
-            target.scheme != "https"
-            or target.netloc != urlsplit(LADDER_BASE).netloc
-            or not is_team
-            or not signals.roster
-            or not signals.logout
-            or not re.search(r"\b(?:const|let|var)\s+TEAMID\s*=\s*82\s*;", res.text)
-        ):
-            raise LadderError("Ladder protected team access could not be verified: expected team 82 roster and signed-in controls")
 
     def _get(self, path: str) -> requests.Response:
         return self.session.get(f"{LADDER_BASE}{path}", timeout=30)
@@ -166,18 +103,20 @@ class LadderClient:
             if not self.logged_in:
                 self.login()
             res = self._get(path)
-            if _requires_login(res):
+            if _is_sign_in_page(res.text):
                 self.login()
                 res = self._get(path)
             # The site interposes an optional "link Discord" page; /discord/skip is its own bypass.
-            res = self._skip_discord_gate(path, res)
+            if "Discord Verification Required" in res.text:
+                self.session.get(f"{LADDER_BASE}/discord/skip", timeout=20)
+                res = self._get(path)
             if _is_refreshing_page(res.text):
                 self._finish_signup_refresh(path)
                 res = self._get(path)
-            if _requires_login(res):
+            if _is_sign_in_page(res.text):
                 self.logged_in = False
                 raise LadderError("Ladder session rejected after login")
-            if _is_discord_gate(res.text):
+            if "Discord Verification Required" in res.text:
                 self.logged_in = False
                 raise LadderError("Ladder Discord verification still required after skip")
             res.raise_for_status()
@@ -195,20 +134,3 @@ def get_client() -> LadderClient:
         password = os.getenv("LADDER_PASSWORD") or os.getenv("ZWIFT_PASSWORD")
         _client = LadderClient(email, password)
     return _client
-
-
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser(description="Check Ladder access using the active session's environment variables.")
-    parser.add_argument("--check-access", action="store_true", required=True)
-    parser.parse_args()
-    try:
-        get_client().login()
-    except (LadderError, requests.RequestException) as error:
-        # No environment values, request payloads or cookies are written to output.
-        message = str(error) if isinstance(error, LadderError) else f"Ladder network request failed ({type(error).__name__})"
-        print(message, file=sys.stderr)
-        sys.exit(1)
-    print("Ladder access verified: protected team 82 roster is accessible with the active session credentials.")

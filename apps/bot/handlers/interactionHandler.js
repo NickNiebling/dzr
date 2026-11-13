@@ -25,7 +25,7 @@ const { handleCoach } = require("../services/coachDm");
 const { isRiderSelect, riderSelectOwner } = require("../services/riderSearch");
 const { handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout } = require("./ladderHandlers");
 const ladderTeams = require("../services/ladder/ladderTeams");
-const ladderCatalog = require("../services/ladder/ladderCatalog");
+const ladderClient = require("../services/ladder/ladderClient");
 const {
   handleSetupRoles,
   handleAddSelfRole,
@@ -89,7 +89,7 @@ async function handleAutocomplete(interaction) {
 
       await interaction.respond(filtered);
     } else if (commandName === "ladder_scout" && focusedOption.name === "opponent") {
-      await interaction.respond(ladderCatalog.autocomplete(focusedOption.value));
+      await interaction.respond(ladderClient.autocomplete(focusedOption.value));
     } else if (focusedOption.name === 'team' && (commandName === "ladder_preview" || commandName === "ladder_analysis" || commandName === "ladder_ai" || commandName === "ladder_scout")) {
       const typed = focusedOption.value.toLowerCase();
       const names = (await ladderTeams.list()).map(team => team.name);
