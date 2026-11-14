@@ -1,6 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseFixtureList, parseFixture } = require("./ladderParser");
+const { parseTeamPage, parseFixtureList, parseFixture } = require("./ladderParser");
+
+test("parseTeamPage reads the team's own fixtures link without needing any matches", () => {
+  // These are the identity markers on the live /teamView/Chonky%20Chaser page.
+  assert.equal(parseTeamPage('<script>const TEAMID = 82;</script><a class="btn" href="/matchlist/fixtures/Chonky Chaser">Fixtures</a>'), "Chonky Chaser");
+  assert.equal(parseTeamPage('<script>const TEAMID = 3;</script><a href="/matchlist/fixtures/Dan&#39;s &amp; co">Fixtures</a>'), "Dan's & co");
+  assert.equal(parseTeamPage('<script>const TEAMID = 3;</script><a href="/matchlist/fixtures/Dan\'s%20team">Fixtures</a>'), "Dan's team");
+  assert.equal(parseTeamPage("<script>const TEAMID = 3;</script><a href='/matchlist/fixtures/%C3%86%20&#x26;%20co'>Fixtures</a>"), "Æ & co");
+  assert.equal(parseTeamPage('<title>404</title>'), null);
+  assert.equal(parseTeamPage('<a href="/matchlist/fixtures/Other">Menu link without team identity</a>'), null);
+  assert.equal(parseTeamPage('<script>const TEAMID = 3;</script><a href="/matchlist/fixtures/%ZZ">Fixtures</a>'), null);
+});
 
 test("parseFixtureList reads id, teams and route from a fixture row", () => {
   const html = `<table><tr class="x" data-id="17200"><td>

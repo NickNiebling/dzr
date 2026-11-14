@@ -1,4 +1,4 @@
-// Scheduled ladder posts: a preview shortly before each match and a reminder on match day, both in the ladder channel.
+// Scheduled ladder posts: a preview before each match and a reminder on match day, in each team's primary channel.
 const { EmbedBuilder } = require("discord.js");
 const config = require("../../config/config");
 const ladderTeams = require("./ladderTeams");
@@ -57,12 +57,18 @@ function dayEmbed(fixture, ourTeam, info = null) {
 }
 
 async function syncTeam(client, team, now) {
+  if (!team.channelId) {
+    console.warn(`[ladder] Team ${team.name} has no primary channel; run /ladder_link in its channel.`);
+    return;
+  }
   const fixtures = await ladderClient.getFixtures(team.name);
-  const channel = await client.channels.fetch(config.ladder.channelId);
+  const channel = await client.channels.fetch(team.channelId);
 
   for (const { id } of fixtures) {
-    const wantPreview = !(await ladderState.isPosted("postedLadderPreview", id));
-    const wantReminder = !(await ladderState.isPosted("postedLadderDayReminder", id));
+    // Two linked teams may meet in the same fixture; each must receive its own posts.
+    const postId = `${id}:${team.name.trim().toLowerCase()}`;
+    const wantPreview = !(await ladderState.isPosted("postedLadderPreview", postId));
+    const wantReminder = !(await ladderState.isPosted("postedLadderDayReminder", postId));
     if (!wantPreview && !wantReminder) continue;
 
     try {
@@ -73,13 +79,13 @@ async function syncTeam(client, team, now) {
         const fixture = await ladderClient.getFixture(id);
         const info = describeProfile(await loadMatchProfile(fixture));
         await channel.send({ embeds: [dayEmbed(fixture, team.name, info)] });
-        await ladderState.markPosted("postedLadderDayReminder", id);
+        await ladderState.markPosted("postedLadderDayReminder", postId);
       }
       if (wantPreview && isPreviewDue(start, windowMinutes, now)) {
         // Re-fetch inside the window so signups are current; this also presses the ladder's refresh button.
         const fixture = await ladderClient.refreshFixture(await ladderClient.getFixture(id));
         await channel.send(await buildLadderPreviewMessage(fixture, team.name));
-        await ladderState.markPosted("postedLadderPreview", id);
+        await ladderState.markPosted("postedLadderPreview", postId);
       }
     } catch (err) {
       console.error(`[ladder] Match ${id} (${team.name}) failed:`, err.message);

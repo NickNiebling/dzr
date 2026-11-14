@@ -1,7 +1,7 @@
 // Reads ladder.cycleracing.club through the Flask API (/ladder_page), which holds the club's ladder login.
 const axios = require("axios");
 const config = require("../../config/config");
-const { parseFixtureList, parseFixture } = require("./ladderParser");
+const { parseTeamPage, parseFixtureList, parseFixture } = require("./ladderParser");
 
 // Short reason shown to the user, so a failing API can be told apart without looking in the logs.
 function describeFailure(err) {
@@ -32,6 +32,31 @@ async function getPage(path) {
 
 function fixturesPath(team) {
   return `/matchlist/fixtures/${encodeURIComponent(team)}`;
+}
+
+// URL text is only a lookup key. Fetch the team page before trusting it as a team name.
+async function resolveTeamName(input, { fetchPage = getPage } = {}) {
+  const text = input.trim();
+  if (!/^(?:[a-z][a-z\d+.-]*:|\/\/|www\.)/i.test(text)) return text;
+  let lookup;
+  try {
+    const url = new URL(text);
+    const path = url.pathname.match(/^\/(?:teamView|matchlist\/fixtures)\/([^/]+)\/?$/i);
+    if (!/^https?:$/.test(url.protocol) || url.hostname !== "ladder.cycleracing.club" || url.port || url.username || url.password || !path) throw new Error("Invalid ladder URL");
+    lookup = decodeURIComponent(path[1]).trim();
+    if (!lookup || /[/\\?#]/.test(lookup) || lookup.includes("..")) throw new Error("Invalid team path");
+  } catch {
+    const error = new Error("Invalid ladder team URL");
+    error.userMessage = "Brug et hold-link fra ladder.cycleracing.club/teamView/ eller /matchlist/fixtures/.";
+    throw error;
+  }
+  const name = parseTeamPage(await fetchPage(`/teamView/${encodeURIComponent(lookup)}`));
+  if (!name) {
+    const error = new Error("Ladder team page did not contain a team name");
+    error.userMessage = "Kunne ikke finde holdnavnet på ladder-siden. Tjek hold-linket. Holdet er ikke linket.";
+    throw error;
+  }
+  return name;
 }
 
 async function getFixtures(team) {
@@ -94,4 +119,4 @@ async function getNextFixture(team) {
   return null;
 }
 
-module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture };
+module.exports = { getPage, describeFailure, fixturesPath, resolveTeamName, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture };

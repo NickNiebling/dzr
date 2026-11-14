@@ -1,8 +1,58 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { refreshSignups, refreshFixture, describeFailure, getFixtureStart } = require("./ladderClient");
+const { resolveTeamName, refreshSignups, refreshFixture, describeFailure, getFixtureStart } = require("./ladderClient");
 
 const MIN = 60 * 1000;
+
+test("plain team names remain accepted without a lookup", async () => {
+  assert.equal(await resolveTeamName("  Chonky Chaser ", { fetchPage: () => assert.fail("No URL to look up") }), "Chonky Chaser");
+});
+
+test("team and fixtures URLs fetch the team's canonical name before it is used", async () => {
+  for (const url of [
+    "https://ladder.cycleracing.club/teamView/chonky%20chaser",
+    "https://ladder.cycleracing.club/matchlist/fixtures/chonky%20chaser?x=1#top",
+    "https://ladder.cycleracing.club/teamView/chonky%20chaser/",
+  ]) {
+    const calls = [];
+    const name = await resolveTeamName(url, { fetchPage: async (path) => {
+      calls.push(path);
+      return '<script>const TEAMID = 82;</script><a href="/matchlist/fixtures/Chonky Chaser">Fixtures</a>';
+    } });
+    assert.equal(name, "Chonky Chaser");
+    assert.deepEqual(calls, ["/teamView/chonky%20chaser"]);
+  }
+});
+
+test("invalid or foreign URLs are rejected before a page is fetched", async () => {
+  for (const url of [
+    "https://example.com/teamView/Chonky",
+    "https://ladder.cycleracing.club.evil.test/teamView/Chonky",
+    "https://ladder.cycleracing.club/fixture/123",
+    "https://ladder.cycleracing.club/teamView/",
+    "https://ladder.cycleracing.club/teamView/bad%ZZ",
+    "https://ladder.cycleracing.club/teamView/a%2Fb",
+    "https://user:password@ladder.cycleracing.club/teamView/Chonky",
+    "ftp://ladder.cycleracing.club/teamView/Chonky",
+    "https://[bad-url",
+  ]) {
+    await assert.rejects(resolveTeamName(url, { fetchPage: () => assert.fail("Invalid URL must not be fetched") }),
+      (error) => /Brug et hold-link/.test(error.userMessage));
+  }
+});
+
+test("HTTP 200 error/login pages do not turn the URL text into a saved name", async () => {
+  for (const html of ['<title>404</title>', '<title>Sign-in</title><form id="signin"></form>', '<script>const TEAMID = 82;</script>']) {
+    await assert.rejects(resolveTeamName("https://ladder.cycleracing.club/teamView/Unknown", { fetchPage: async () => html }),
+      (error) => /Holdet er ikke linket/.test(error.userMessage));
+  }
+});
+
+test("a failed lookup propagates the API error instead of falling back to URL text", async () => {
+  const failure = Object.assign(new Error("502"), { userMessage: "Ladder-siden kunne ikke hentes lige nu." });
+  await assert.rejects(resolveTeamName("https://ladder.cycleracing.club/teamView/Chonky", { fetchPage: async () => { throw failure; } }),
+    (error) => error === failure);
+});
 
 test("refreshSignups calls the ladder once per 30 minutes per event", async () => {
   const calls = [];

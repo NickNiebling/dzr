@@ -795,7 +795,7 @@ const commands = [
   // Ladder match previews (team list is stored in Firestore collection ladder_bot)
   new SlashCommandBuilder()
     .setName("ladder_link")
-    .setDescription("Add or remove a ladder team that gets previews and match-day reminders")
+    .setDescription("Link a ladder team to this primary channel for previews and reminders, or remove it")
     .addStringOption(option =>
       option
         .setName("team")
