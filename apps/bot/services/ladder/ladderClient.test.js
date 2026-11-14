@@ -74,10 +74,16 @@ test("scout catalog shares refreshes, caches for 15 minutes and resolves only un
   let now = 1000, calls = 0, finish;
   t.mock.method(Date, "now", () => now);
   const teams = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Team ${i}` }));
+  teams.push({ id: 501, name: "Example Home" });
   const html = `const playonTeams = ${JSON.stringify([...teams, teams[0]])};`;
   const roster = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  const unlisted = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-10.html`, "utf8");
+  const teamReads = [];
   t.mock.method(axios, "get", async (_url, { params }) => {
-    if (params.path !== "/summary") return { data: roster };
+    if (params.path !== "/summary") {
+      teamReads.push(params.path);
+      return { data: params.path === "/team/n/502" ? unlisted : roster };
+    }
     calls += 1;
     return new Promise((resolve) => { finish = () => resolve({ data: html }); });
   });
@@ -99,11 +105,14 @@ test("scout catalog shares refreshes, caches for 15 minutes and resolves only un
   assert.equal(calls, 2);
   finish();
   await refreshed;
-  for (const path of ["team/n/501", "teamView/Example%20Home", "matchlist/fixtures/Example%20Home"]) {
+  for (const path of ["teamView/Example%20Home", "matchlist/fixtures/Example%20Home"]) {
     assert.equal((await resolveTeam(`https://ladder.cycleracing.club/${path}`)).id, "501");
   }
+  assert.deepEqual(teamReads, []);
+  assert.equal((await resolveTeam("https://ladder.cycleracing.club/team/n/502")).id, "502");
+  assert.deepEqual(teamReads, ["/team/n/502"]);
   await assert.rejects(resolveTeam("https://example.com/team/n/501"), /ladder.cycleracing.club/);
-  await assert.rejects(resolveTeam("/team/n/502"), /forventede/);
+  await assert.rejects(resolveTeam("/team/n/999"), /forventede/);
 });
 
 test("scout fetches complete rosters each time, deduplicates verified identities and retains unknown members", async () => {

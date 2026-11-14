@@ -130,7 +130,7 @@ async function handleLadderScout(interaction) {
   try {
     const team = interaction.options.getString("team", true);
     const opponent = interaction.options.getString("opponent", true);
-    const linked = (await ladderTeams.list()).find((entry) => entry.name.toLowerCase() === team.trim().toLowerCase());
+    const linked = await ladderTeams.getTeam(team);
     if (!linked) {
       await interaction.editReply({ content: "Vælg et DZR-hold fra listen i team. Listen kommer fra /ladder_link." });
       return;

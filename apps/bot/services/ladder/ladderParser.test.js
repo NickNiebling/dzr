@@ -64,7 +64,7 @@ test("parseFixture reads the Zwift event id from the hidden field or the sign-in
 // Authenticated examples had 11/10 current members and 21 matching external profile links.
 const rosterExample = (count) => fs.readFileSync(path.join(__dirname, "fixtures", `roster-${count}.html`), "utf8");
 
-test("current roster examples retain all 11/10 members and 90-day power", () => {
+test("current roster examples retain all 11/10 members and reuse 90-day table power", () => {
   for (const count of [11, 10]) {
     const roster = parseRosterPage(rosterExample(count));
     assert.equal(roster.riders.length, count);
@@ -73,20 +73,20 @@ test("current roster examples retain all 11/10 members and 90-day power", () => 
   }
   const html = rosterExample(11);
   const row = html.match(/<tr data-rider-id="50100"[\s\S]*?<\/tr>/)[0];
-  assert.equal(parseRosterPage(html.replace("</tbody>", `${row}</tbody>`)).riders.length, 12);
+  assert.equal(parseRosterPage(html.replace("</tbody>", `${row}</tbody>`)).riders.length, 11);
+  const withoutPowerRow = parseRosterPage(html.replace(row, ""));
+  assert.equal(withoutPowerRow.riders.length, 11);
+  assert.deepEqual(withoutPowerRow.riders[0].wkg, {});
 });
 
-test("roster completeness rejects truncation, pagination and same-name missing members", () => {
+test("unknown roster formats, malformed membership, pagination and wrong teams fail", () => {
   const html = rosterExample(11);
-  const withoutFirst = (source) => source.replace(/<tr data-rider-id="50100"[\s\S]*?<\/tr>/, "");
-  assert.throws(() => parseRosterPage(withoutFirst(html)), /stemmer ikke overens/);
   assert.throws(() => parseRosterPage(html.replace("</table>", '</table><a rel="next" href="?page=2">Next</a>')), /pagineret/);
   assert.throws(() => parseRosterPage(html.replace('"LadderTeam":501', '"LadderTeam":999')), /nuværende medlemmer/);
+  assert.throws(() => parseRosterPage(html.replace('"ZPName":"Rider 01"', '"ZPName":""')), /mangler navn/);
+  assert.throws(() => parseRosterPage(html.replace("Ladder.roster =", "Ladder.unknown =")), /medlemsliste mangler/);
+  assert.throws(() => parseRosterPage(html.replace('"LadderTeam":501', '"LadderTeam":')), /ugyldig eller afkortet/);
   assert.throws(() => parseRosterPage("<title>Unknown</title>"), /ukendt rosterformat/);
-  const sameName = html.replaceAll("Rider 02", "Rider 01")
-    .replace("data-goto=/profile/50100", "").replace("data-goto=/profile/50101", "");
-  assert.equal(parseRosterPage(sameName).riders.filter((rider) => !rider.profileId).length, 2);
-  assert.throws(() => parseRosterPage(withoutFirst(sameName)), /stemmer ikke overens/);
 });
 
 test("explicit profile links establish identity; missing identity or power retains the member", () => {
@@ -95,8 +95,9 @@ test("explicit profile links establish identity; missing identity or power retai
   for (const href of ["/profile/42", "https://zwiftpower.com.evil.example/profile.php?z=42", "https://www.zwift.com/athlete/00000000-0000-4000-8000-000000000001"])
     assert.equal(parseProfileIdentity(`<a href="${href}">Profile</a>`), null);
   assert.throws(() => parseProfileIdentity('<a href="https://zwiftpower.com/profile.php?z=42">ZP</a><a href="https://www.zwift.com/athlete/43">Zwift</a>'), /modstridende/);
-  const roster = parseRosterPage(rosterExample(11).replace("data-goto=/profile/50100", "").replace(">4.51</td>", ">0</td>"));
+  const roster = parseRosterPage(rosterExample(11).replace('"id":50100', '"id":null'));
   assert.equal(roster.riders.length, 11);
   assert.equal(roster.riders[0].profileId, null);
-  assert.equal(roster.riders[0].wkg[300], null);
+  assert.deepEqual(roster.riders[0].wkg, {});
+  assert.equal(parseRosterPage(rosterExample(11).replace(">4.51</td>", ">0</td>")).riders[0].wkg[300], null);
 });

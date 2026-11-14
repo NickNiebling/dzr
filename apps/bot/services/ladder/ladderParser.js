@@ -4,13 +4,13 @@ const { parseArchPowerups, parsePowerupPercent } = require("../powerupPlaces");
 
 const POWER_SECONDS = [5, 10, 15, 30, 60, 120, 300, 600, 1200, 1800, 3600];
 
-function decodeEntities(value) {
-  return String(value || "").replace(/&(?:amp|lt|gt|quot|apos|#39|#x[\da-f]+|#\d+);/gi, (entity) => {
-    const named = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'", "&#39;": "'" };
-    if (named[entity.toLowerCase()]) return named[entity.toLowerCase()];
-    const code = entity.toLowerCase().startsWith("&#x") ? parseInt(entity.slice(3, -1), 16) : Number(entity.slice(2, -1));
-    return Number.isInteger(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity;
-  });
+function decodeEntities(text) {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 // Returns [{ id, home, away, route }] from /matchlist/fixtures/{team}.
@@ -179,55 +179,22 @@ function parseRosterPage(input) {
   if (/\b(?:pagination|paginator|paginate|paging|loadMore|infiniteScroll|serverSide)\b|\brel\s*=\s*["']next["']|[?&](?:page|offset|cursor)=/i.test(section)) {
     throw rosterError("medlemslisten er pagineret eller indlæses i flere dele; det komplette format er ikke verificeret.");
   }
-  const tables = [...section.matchAll(/<table\b[^>]*>[\s\S]*?<\/table>/gi)]
-    .filter(([table]) => /\bnewPowerTable\b/.test(attribute(table.slice(0, table.indexOf(">") + 1), "class") || ""));
-  if (tables.length !== 1) throw rosterError("der forventes præcis én tabel med aktuelle medlemmer (ukendt rosterformat).");
-  const tbody = /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i.exec(tables[0][0]);
-  if (!tbody) throw rosterError("medlemstabellens indhold mangler (ukendt rosterformat).");
-  const riders = [];
-  for (const [row] of tbody[1].matchAll(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi)) {
-    const riderName = plainText((row.match(/<[^>]*\bclass\s*=\s*["'][^"']*\bsticky-truncate\b[^"']*["'][^>]*>([\s\S]*?)<\//i) || [])[1]);
-    if (!riderName) throw rosterError("en medlemsrække mangler navn (ukendt rosterformat).");
-    const profile = (row.match(/\bdata-goto\s*=\s*["']?\/profile\/(\d+)(?=["'\s>])/i) || [])[1];
-    const profileId = positiveId(profile);
-    const rowId = positiveId(attribute(row.slice(0, row.indexOf(">") + 1), "data-rider-id"));
-    if (rowId && profileId && rowId !== profileId) throw rosterError("en medlemsrække har modstridende profil-id'er.");
-    const wkg = {};
-    for (const [, opening, value] of row.matchAll(/(<td\b[^>]*>)([\s\S]*?)<\/td>/gi)) {
-      if (attribute(opening, "data-format") !== "wkg" || attribute(opening, "data-time") !== "90") continue;
-      const seconds = positiveId(attribute(opening, "data-power-time"));
-      if (!seconds) continue;
-      const power = Number(plainText(value));
-      wkg[seconds] = Number.isFinite(power) && power > 0 ? power : null;
-    }
-    riders.push({ name: riderName, profileId, zwiftId: null, wkg });
-  }
-  const declared = embeddedArray(html, "Ladder.roster");
-  if (!declared) throw rosterError("den indlejrede medlemsliste mangler (ukendt rosterformat).");
-  if (!declared.length) throw rosterError("holdet har ingen medlemmer med brugbare id'er.");
-  if (declared.some((rider) => !rider || typeof rider !== "object" || Number(rider.LadderTeam) !== id)) {
+  // Verified on both complete live rosters: Ladder.roster is the authoritative
+  // current membership; the existing table parser supplies 90-day power only.
+  const members = embeddedArray(html, "Ladder.roster");
+  if (!members) throw rosterError("den indlejrede medlemsliste mangler (ukendt rosterformat).");
+  if (!members.length) throw rosterError("holdet har ingen medlemmer med brugbare id'er.");
+  if (members.some((member) => !member || typeof member !== "object" || Number(member.LadderTeam) !== id)) {
     throw rosterError("medlemslisten kan ikke afgrænses til holdets nuværende medlemmer.");
   }
-  const expectedIds = new Set(declared.map((rider) => positiveId(rider.id)).filter(Boolean));
-  const remaining = [...declared];
-  let complete = true;
-  // Consume identity matches first: a missing-id row must not take the place of
-  // a different member who happens to share its name. Extra rows with an already
-  // matched profile id remain available for the later explicit-id deduplication.
-  for (const rider of riders.filter((member) => member.profileId)) {
-    const index = remaining.findIndex((member) => positiveId(member.id) === rider.profileId);
-    if (index !== -1) remaining.splice(index, 1);
-    else if (!expectedIds.has(rider.profileId)) complete = false;
+  if (members.some((member) => typeof member.ZPName !== "string" || !member.ZPName.trim())) {
+    throw rosterError("et medlem mangler navn (ukendt rosterformat).");
   }
-  for (const rider of riders.filter((member) => !member.profileId)) {
-    const index = remaining.findIndex((member) => String(member.ZPName || "").trim() === rider.name);
-    if (index !== -1) remaining.splice(index, 1);
-    else complete = false;
-  }
-  if (!complete || remaining.length) {
-    throw rosterError(`medlemstabellen og den indlejrede liste stemmer ikke overens (${riders.length} rækker, ${declared.length} registrerede medlemmer).`);
-  }
-  if (!riders.length) throw rosterError("medlemstabellen er tom.");
+  const tablePower = new Map(parseSignups(section).riders.map((rider) => [rider.zwiftId, rider.wkg]));
+  const riders = members.map((member) => ({
+    name: member.ZPName.trim(), profileId: positiveId(member.id), zwiftId: null,
+    wkg: tablePower.get(positiveId(member.id)) || {},
+  }));
   return { id, name, riders };
 }
 
@@ -294,10 +261,8 @@ function parseTeamInput(input) {
   if (named) {
     let name;
     try { name = decodeURIComponent(named[2]).trim(); } catch { throw parserError("Holdlinket har ugyldig tegnkodning."); }
-    const unsafe = [...name].some((char) => "/\\?#".includes(char) || char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
-    if (name && !unsafe && name !== "." && name !== "..") {
-      return { name, path: `/teamView/${encodeURIComponent(name)}` };
-    }
+    // Named links use the same catalog lookup as typed names; only numeric team pages are fetched.
+    if (name) return { name };
   }
   throw parserError("Brug et Ladder-holdlink med /team/n/{id}, /teamView/{navn} eller /matchlist/fixtures/{navn}.");
 }

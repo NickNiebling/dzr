@@ -38,7 +38,7 @@ test("scout sends all 9 versus 11 riders through enrichment and chart, including
 });
 
 test("handler rejects teams outside ladder_link and the same resolved team before roster reads", async (t) => {
-  t.mock.method(ladderTeams, "list", async () => [{ name: "DZR" }]);
+  t.mock.method(ladderTeams, "getTeam", async (name) => name === "DZR" ? { name: "DZR" } : null);
   t.mock.method(ladderClient, "resolveTeam", async () => ({ id: "82" }));
   const load = t.mock.method(ladderClient, "getRoster", async () => assert.fail("Rejected teams must not load rosters"));
   let chosen = "Other";
