@@ -25,26 +25,28 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
   setupUrl = `${shared.siteOrigin}/streaming/setup`, getClubRoleId = async () => null }) {
   const baseUrl = publicUrl.replace(/\/$/, "");
 
-  function guideButton() {
+  function guideUrl() {
     let url;
     try { url = new URL(setupUrl); } catch { /* reported without logging configuration */ }
     if (!url || url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
       throw new StreamingError("setup_unavailable", "Installationsguiden er midlertidigt utilgængelig. Prøv igen senere.", 503);
     }
-    return new ButtonBuilder().setLabel("Åbn installationsguiden").setStyle(ButtonStyle.Link).setURL(url.href);
+    return url.href;
   }
 
   async function showGuide(interaction, registration, token) {
+    const url = guideUrl();
     const channels = Object.entries(registration.channels).map(([platform, channel]) => `${platform === "youtube" ? "YouTube" : "Twitch"}: ${channel.url}`).join("\n");
     await interaction.editReply({ content: (token
       ? "✅ **Dine kanaler er tilmeldt**\n"
       : "✅ **Du er allerede tilmeldt**\n") + channels + "\n\n"
       + (token ? `**Din personlige OBS-nøgle:**\n\`${token}\`\nNøglen vises kun i denne private besked. Del den ikke.\n\n`
         : "Din nøgle og dine kanaler er uændrede. Behold nøglen i OBS, hvis den allerede er indsat.\n\n")
-      + "Åbn guiden på den computer, hvor du bruger OBS. Forbindelsestesten er valgfri.\n\n"
+      + `Åbn [guiden](<${url}>) på den computer, hvor du bruger OBS. Forbindelsestesten er valgfri.\n\n`
       + "**Mistet nøglen?** Se din tidligere private Discord-besked. Du kan få en ny med /streaming_add, "
       + "men når du gemmer dér, bliver den gamle nøgle ugyldig, og du skal opdatere OBS.",
-    components: [row(guideButton(), button("status", interaction.user.id, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))],
+    components: [row(new ButtonBuilder().setLabel("Åbn installationsguiden").setEmoji("🔴").setStyle(ButtonStyle.Link).setURL(url),
+      button("status", interaction.user.id, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))],
     allowedMentions: { parse: [] } });
   }
 
@@ -91,7 +93,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
       }
 
       if (interaction.commandName === "streaming_add_new" || action === "save_new") {
-        guideButton(); // Fail before registration if the configured guide link is unusable.
+        guideUrl(); // Fail before registration if the configured guide link is unusable.
       }
 
       if (interaction.isButton() && ["channels", "channels_new"].includes(action)) {
