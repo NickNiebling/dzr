@@ -7,7 +7,6 @@ export function getStreamingSetupConfig(env: { STREAMING_PUBLIC_URL?: string } =
     throw new Error('STREAMING_PUBLIC_URL must be an HTTPS origin')
   }
   return {
-    callbackUrl: `${url.origin}/streaming/obs`,
     upstreamScriptUrl: `${url.origin}/streaming/dzr-stream.lua`,
     scriptUrl: '/api/streaming/script',
   }

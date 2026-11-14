@@ -157,7 +157,7 @@ test("channel button opens a two-platform modal before acknowledging the interac
   assert.equal(i.calls[0][1].components.length, 2);
 });
 
-test("modal returns download, endpoint and personal key only in an ephemeral response", async () => {
+test("modal returns download and personal key privately without endpoint configuration", async () => {
   const i = interaction({ customId: `streaming:save:${userId}`, isModalSubmit: () => true, fields: { getTextInputValue: () => "@DZR" } });
   await handler({ async enroll(id) {
     assert.equal(id, userId);
@@ -167,12 +167,13 @@ test("modal returns download, endpoint and personal key only in an ephemeral res
   const reply = JSON.stringify(i.calls[1][1]);
   assert.ok(reply.includes("personal-key"));
   assert.ok(reply.includes("https://bot.example.test/streaming/dzr-stream.lua"));
-  assert.ok(reply.includes("https://bot.example.test/streaming/obs"));
+  assert.ok(!reply.includes("DZR endpoint"));
+  assert.ok(!reply.includes("https://bot.example.test/streaming/obs"));
   assert.equal(i.calls[1][1].embeds.length, 3);
   assert.ok(reply.includes("Downloads / Overførsler"));
   assert.ok(reply.includes("Test forbindelse"));
   assert.ok(reply.includes("DZR finder automatisk"));
-  assert.ok(reply.includes("Du skal ikke vælge platform i OBS"));
+  assert.ok(reply.includes("en eller flere platforme på samme tid"));
   assert.ok(reply.includes("inden for fem minutter"));
   assert.ok(!reply.includes("Vælg **YouTube** eller **Twitch**"));
   assert.equal(i.calls[1][1].components[0].toJSON().components[0].custom_id, `streaming:status:${userId}`);
@@ -197,7 +198,7 @@ test("onboarding with both channels and a long public URL fits Discord message l
   // Serializing builders also runs discord.js's embed validation.
   const reply = JSON.parse(JSON.stringify(i.calls[1][1]));
   const serialized = JSON.stringify(reply);
-  for (const value of [token, `${publicUrl}/streaming/dzr-stream.lua`, `${publicUrl}/streaming/obs`,
+  for (const value of [token, `${publicUrl}/streaming/dzr-stream.lua`,
     channels.youtube.url, channels.twitch.url]) assert.ok(serialized.includes(value));
   assert.ok(reply.content.length <= 2000);
   assert.ok(reply.embeds.length > 0 && reply.embeds.length <= 10);

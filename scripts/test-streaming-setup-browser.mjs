@@ -16,9 +16,10 @@ const browser = await chromium.launch({
 try {
   for (const supportsPicker of [true, false]) {
     const context = await browser.newContext({ acceptDownloads: true })
+    let downloadFails = false
     await context.route('**/*', route => new URL(route.request().url()).origin === baseUrl.origin ? route.continue() : route.abort())
     await context.route('**/api/auth/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-    await context.route('**/api/streaming/script', route => route.fulfill({ status: 200, contentType: 'text/plain', body: script }))
+    await context.route('**/api/streaming/script', route => route.fulfill({ status: downloadFails ? 503 : 200, contentType: 'text/plain', body: downloadFails ? 'Unavailable' : script }))
     const page = await context.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
@@ -59,11 +60,31 @@ try {
       assert.equal(await checkbox.count(), 0, 'An unresolved conflict must not offer manual confirmation')
       assert.equal(await page.getByText('Åbn Downloads / Overførsler.', { exact: false }).count(), 0, 'Manual move instructions must stay hidden')
       assert.equal(await page.getByRole('button', { name: /Hent/ }).count(), 0, 'Download must not look like a way past the conflict')
-      assert.equal(await next.isDisabled(), true)
+      assert.equal(await next.count(), 0, 'A conflict must hide Continue even after an earlier download or installation')
       assert.doesNotMatch((await page.getByRole('alert').allTextContents()).join(' '), /hent filen i stedet/i)
     }
-    assert.equal(await next.isDisabled(), true)
+    assert.equal(await next.count(), 0, 'Continue must not appear before a successful file transfer')
+    assert.equal(await page.getByRole('button', { name: 'Tilbage', exact: true }).isVisible(), true)
     assert.equal(await checkbox.count(), 0, 'Manual confirmation requires a successful download')
+    assert.equal(await page.getByText('Åbn Downloads / Overførsler.', { exact: false }).count(), 0)
+
+    downloadFails = true
+    await page.getByRole('button', { name: supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua', exact: true }).click()
+    await page.locator('main').getByRole('alert').waitFor()
+    assert.equal(await next.count(), 0, 'A failed download must not reveal Continue or manual confirmation')
+    assert.equal(await checkbox.count(), 0)
+    downloadFails = false
+
+    if (supportsPicker) {
+      for (const result of ['cancel', 'denied']) {
+        await page.evaluate(value => { window.streamingTest.result = value }, result)
+        await page.getByRole('button', { name: 'Installér DZR OBS-script', exact: true }).click()
+        await page.locator('main').getByRole('alert').waitFor()
+        assert.equal(await next.count(), 0, 'Cancelled or denied folder selection is not a file transfer')
+        assert.equal(await page.getByRole('button', { name: 'Tilbage', exact: true }).isVisible(), true)
+      }
+      await page.evaluate(() => { window.streamingTest.result = 'conflict' })
+    }
 
     async function download() {
       const [file] = await Promise.all([
@@ -74,6 +95,8 @@ try {
       assert.deepEqual(await readFile(await file.path()), script)
     }
     await download()
+    assert.equal(await next.isVisible(), true)
+    assert.equal(await next.isDisabled(), true, 'A downloaded file still needs permanent-folder confirmation')
     await confirmation.click()
     assert.equal(await checkbox.isChecked(), true)
     assert.equal(await next.isEnabled(), true, 'Plain download still accepts manual placement')
@@ -105,17 +128,47 @@ try {
           await page.evaluate(() => { window.streamingTest.result = 'conflict' })
           await page.getByRole('button', { name: 'Installér DZR OBS-script', exact: true }).click()
           await conflict.waitFor()
-          assert.equal(await next.isDisabled(), true, 'Conflict also replaces earlier installation success')
+          assert.equal(await next.count(), 0, 'Conflict also replaces earlier installation success')
         }
       }
       assert.equal(await page.evaluate(() => window.streamingTest.writes), 1)
     }
     await next.click()
     await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
+    for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+    await page.getByRole('heading', { name: 'Forbind OBS med DZR', exact: true }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Kopiér adresse', exact: true }).count(), 0)
+    assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
+    assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
+    assert.ok(!(await page.locator('main').innerText()).includes('streaming-test.invalid'))
+    assert.match(await page.locator('main').innerText(), /én eller flere platforme/)
+    await page.getByRole('button', { name: 'Jeg har udfyldt OBS', exact: true }).click()
+    await page.getByRole('button', { name: 'Vis forbindelsestest – valgfrit', exact: true }).click()
+    assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
+    assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
     assert.deepEqual(errors, [])
     console.log(`PASS ${supportsPicker ? 'picker conflict, sticky warning, cancellation/denial, navigation and saved/identical recovery' : 'download-only browser with manual confirmation'}`)
     await context.close()
   }
+
+  const mobile = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+  })
+  await mobile.route('**/*', route => new URL(route.request().url()).origin === baseUrl.origin ? route.continue() : route.abort())
+  await mobile.route('**/api/auth/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+  const page = await mobile.newPage()
+  await page.goto(new URL('/streaming/setup', baseUrl).href, { waitUntil: 'networkidle', timeout: 180_000 })
+  const warning = page.getByRole('heading', { name: 'Fortsæt på computeren med OBS', exact: true })
+  await warning.waitFor()
+  assert.match(await warning.locator('..').innerText(), /mobil/)
+  assert.match(await warning.locator('..').innerText(), /OBS.*installeret/)
+  assert.equal(await page.getByRole('button', { name: 'Kopiér guideadresse', exact: true }).isVisible(), true)
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Mobile guide must fit the viewport')
+  await page.getByRole('button', { name: 'Vis guiden alligevel', exact: true }).click()
+  assert.equal(await warning.count(), 0)
+  await mobile.close()
+  console.log('PASS mobile warning, computer explanation, copy/dismiss controls and viewport')
 } finally {
   await browser.close()
 }

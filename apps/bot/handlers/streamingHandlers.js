@@ -129,7 +129,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
             if (!(error instanceof StreamingError) || error.code !== "registration_exists") throw error;
             // Another form won the transaction. Never display this attempt's discarded key.
             const registration = await service.getRegistration(userId);
-            if (!registration) throw new StreamingError("registration_changed", "Din tilmelding er ændret. Start igen med /streaming_add_new.", 409);
+            if (!registration) throw new StreamingError("registration_changed", "Din tilmelding er ændret. Start igen med /streaming_add.", 409);
             await showGuide(interaction, registration);
           }
         }
@@ -145,20 +145,19 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
             + "5. Find og vælg **dzr-stream.lua**, som du lige har downloadet. Den ligger ofte i **Downloads / Overførsler**. Klik **Åbn / Open**.\n"
             + "6. Klik på **dzr-stream.lua** i listen. Nu vises de felter, du skal udfylde i næste afsnit.");
         const settings = new EmbedBuilder().setTitle("2. Forbind OBS med DZR").setColor(0x3498db)
-          .setDescription("Udfyld felterne for **dzr-stream.lua** i Scripts-vinduet. Feltnavnene nedenfor er de samme som i OBS.")
+          .setDescription("Vælg **dzr-stream.lua** i Scripts-vinduet, og indsæt din personlige nøgle i **DZR key**.")
           .addFields(
-            { name: "DZR endpoint — DZR-adresse", value: `Kopiér denne adresse, og indsæt den i **DZR endpoint**:\n\`${baseUrl}/streaming/obs\`` },
             { name: "DZR key — din personlige DZR-nøgle", value: `Kopiér denne nøgle, og indsæt den i **DZR key**:\n\`${token}\`\n`
               + "Den forbinder OBS med din DZR-tilmelding. Det er ikke din streamnøgle til YouTube eller Twitch.\n"
               + "Nøglen vises kun i denne private besked. Del den ikke. En tidligere DZR-nøgle er nu ugyldig; opdatér derfor også OBS, hvis du var tilmeldt før." },
-            { name: "Dine streamingplatforme", value: "DZR finder automatisk ud af, hvilke af dine tilmeldte YouTube- og Twitch-kanaler der er live. Du skal ikke vælge platform i OBS.\n"
+            { name: "Dine streamingplatforme", value: "DZR finder automatisk ud af, hvilke af dine tilmeldte YouTube- og Twitch-kanaler der er live. Du kan streame til en eller flere platforme på samme tid og behøver ikke nøjes med én.\n"
               + "**YouTube-videolink** er valgfrit og kan stå tomt. Brug linket til den aktuelle stream; hvis videoen ikke er live, søger DZR automatisk på din kanal." },
           );
         const connection = new EmbedBuilder().setTitle("3. Test forbindelsen").setColor(0x3498db)
           .setDescription("1. Klik på **Test forbindelse** i OBS.\n"
             + "2. Gå tilbage til denne besked i Discord, og klik på **Kontrollér OBS-forbindelse** nedenfor.\n"
             + "3. Du skal se en bekræftelse med tidspunktet for signalet fra OBS. Kontrollér, at tidspunktet passer med din test.\n\n"
-            + "Hvis der ikke er modtaget et signal: Kontrollér **DZR endpoint** og **DZR key** i OBS, tryk **Test forbindelse** igen, og kontrollér derefter i Discord.\n\n"
+            + "Hvis der ikke er modtaget et signal: Kontrollér **DZR key** i OBS, tryk **Test forbindelse** igen, og kontrollér derefter i Discord.\n\n"
             + `Testen sender ingen offentlig besked. Når din offentlige stream er bekræftet live, poster DZR én besked i <#${channelId}>. Ekstra platforme tilføjes til samme opslag, hvis de bliver fundet inden for fem minutter. Planlagte streams annonceres ikke.\n\n`
             + "Du kan afmelde dig med /streaming_remove. Har du mistet DZR-nøglen, kan du få en ny med /streaming_add. Det gør den gamle nøgle ugyldig, så husk at opdatere OBS.");
         await interaction.editReply({ content:
@@ -186,7 +185,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         const registration = await service.getRegistration(userId);
         await interaction.editReply({ content: registration?.lastCallbackAt
           ? `✅ DZR har modtaget et signal fra OBS ${stamp(registration.lastCallbackAt)}. En test sender ingen offentlig Discord-besked.`
-          : "Der er endnu ikke modtaget et signal. Kontrollér adresse og nøgle, og tryk Test forbindelse i OBS." });
+          : "Der er endnu ikke modtaget et signal. Kontrollér din DZR key, og tryk Test forbindelse i OBS." });
       } else if (interaction.commandName === "streaming_overview") {
         await overview(interaction);
       } else {
