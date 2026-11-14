@@ -8,6 +8,11 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 const sauceFiles = ['./data/sauce/**/*']
 
 const nextConfig = {
+  env: {
+    // Keep Vercel previews distinct from production in the browser too.
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      || process.env.VERCEL_ENV || process.env.NODE_ENV,
+  },
   // A package-lock.json in a parent folder would otherwise become the Turbopack root.
   turbopack: {
     root: projectRoot,

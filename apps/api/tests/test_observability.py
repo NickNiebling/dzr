@@ -10,7 +10,7 @@ import sentry_sdk
 from sentry_sdk.transport import Transport
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from observability import init_sentry, monitor_responses
+from observability import DEFAULT_DSN, init_sentry, monitor_responses
 
 
 class MemoryTransport(Transport):
@@ -82,3 +82,16 @@ class ObservabilityTest(unittest.TestCase):
         with patch.dict(os.environ, {"SENTRY_DSN": ""}):
             init_sentry()
         self.assertIsNone(sentry_sdk.get_client().transport)
+
+    def test_default_dsn_is_only_used_in_production_and_can_be_disabled(self):
+        for env, expected_dsn, expected_environment in [
+            ({}, "", "development"),
+            ({"K_SERVICE": "dzr-api"}, DEFAULT_DSN, "production"),
+            ({"SENTRY_ENVIRONMENT": "production"}, DEFAULT_DSN, "production"),
+            ({"K_SERVICE": "dzr-api", "SENTRY_DSN": ""}, "", "production"),
+            ({"SENTRY_DSN": "https://override@example.invalid/1"}, "https://override@example.invalid/1", "development"),
+        ]:
+            with self.subTest(env=env), patch.dict(os.environ, env, clear=True), patch("observability.sentry_sdk.init") as init:
+                init_sentry()
+                self.assertEqual(init.call_args.kwargs["dsn"], expected_dsn)
+                self.assertEqual(init.call_args.kwargs["environment"], expected_environment)

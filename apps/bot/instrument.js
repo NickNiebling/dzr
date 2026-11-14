@@ -1,11 +1,16 @@
 // Load before Discord, Express and other application modules.
 require("dotenv").config();
 const Sentry = require("@sentry/node");
+const constants = require("./constants.json");
+const environment = process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV
+  || (process.env.RENDER === "true" ? "production" : "development");
+const dsn = process.env.SENTRY_DSN
+  ?? (environment === "production" ? constants.sentry.dsn : undefined);
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  enabled: Boolean(process.env.SENTRY_DSN),
-  environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
+  dsn,
+  enabled: Boolean(dsn),
+  environment,
   dataCollection: {
     userInfo: false, cookies: false, httpHeaders: false, httpBodies: [],
     urlQueryParams: false, stackFrameVariables: false, databaseQueryData: false,

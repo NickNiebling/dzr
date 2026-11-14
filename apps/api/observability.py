@@ -1,15 +1,22 @@
 """Central error reporting for Flask, logging, and handled HTTP 5xx responses."""
 import os
+import json
+from pathlib import Path
 
 import sentry_sdk
 from flask import g, got_request_exception, request
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 
+DEFAULT_DSN = json.loads(Path(__file__).with_name("constants.json").read_text(encoding="utf-8"))["sentry"]["dsn"]
+
+
 def init_sentry():
+    environment = os.getenv("SENTRY_ENVIRONMENT") or ("production" if os.getenv("K_SERVICE") else "development")
+    dsn = os.getenv("SENTRY_DSN", DEFAULT_DSN if environment == "production" else "")
     sentry_sdk.init(
-        dsn=os.getenv("SENTRY_DSN") or "",
-        environment=os.getenv("SENTRY_ENVIRONMENT", "development"),
+        dsn=dsn,
+        environment=environment,
         integrations=[FlaskIntegration()],
         data_collection={
             "user_info": False, "cookies": {"mode": "off"},

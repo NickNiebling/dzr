@@ -16,12 +16,18 @@ All three already deploy from this repo. Local secrets live in `.env.local` (sit
 
 ## Sentry errors
 
-Set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on Vercel, Render and Cloud Run.
-Use a Sentry project per runtime, or reuse one DSN and filter the `service` tag
-(`website`, `website-browser`, `bot`, `api`). For the browser, also set
-`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` on Vercel
-**before building**. Redeploy each service after setting its variables. With no DSN,
-reporting is disabled. No Sentry auth token is needed to send errors.
+The existing Sentry project's **public DSN** is configured in
+`packages/shared/constants.json`, synced into the API and bot copies. It grants no
+read/admin access. Production deployments on Vercel, Render and Cloud Run use it
+automatically; merge and deploy this change on all three hosts to activate reporting.
+Local development and Vercel previews do not report by default.
+
+Optional overrides: `SENTRY_DSN` and `SENTRY_ENVIRONMENT` on the server runtimes;
+`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` for the browser (set before
+building). An explicitly empty DSN disables that runtime, including production. Use
+both DSN variables to disable website server and browser reporting. Vercel environment
+names are passed through to the browser so preview errors stay distinct when enabled.
+No Sentry auth token is needed to send errors.
 
 Coverage: Next.js server/request and browser errors, React's global error boundary,
 `console.error` on the site and bot, bot uncaught exceptions/unhandled rejections and
@@ -35,8 +41,8 @@ not automatically reported. Use the existing error logger or `captureException`
 Error sampling stays at 100%; tracing, profiling, replay and Sentry Logs are off.
 Automatic user data, headers, cookies, query parameters, request bodies, AI content,
 local variables, raw console arguments and breadcrumbs are excluded. Keep credentials,
-chat content and personal data out of error messages and configure Sentry's server-side data scrubbing for application-specific
-fields. Set `SENTRY_RELEASE` to the deployed git SHA if the host does not supply a
+chat content and personal data out of error messages and configure Sentry's server-side
+data scrubbing for application-specific fields. Set `SENTRY_RELEASE` to the deployed git SHA if the host does not supply a
 release automatically.
 
 Optional readable production browser stacks: set `SENTRY_UPLOAD_SOURCEMAPS=true`,
