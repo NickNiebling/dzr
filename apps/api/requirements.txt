@@ -6,3 +6,5 @@ firebase-admin==7.7.0
 python-dotenv==1.2.4
 backoff==2.2.1
 pytz==2026.5
+
+sentry-sdk[flask]==2.75.0

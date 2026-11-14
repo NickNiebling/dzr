@@ -1,3 +1,4 @@
+const Sentry = require("./instrument");
 const { Client, GatewayIntentBits, REST, Routes, Partials } = require("discord.js");
 const config = require("./config/config");
 const commands = require("./commands/slashCommands");
@@ -238,6 +239,7 @@ async function gracefulShutdown() {
   }, SHUTDOWN_MAX_MS));
   await Promise.race([Promise.all([statsGrace, flush]), cap]);
   console.log('👋 Bot shutting down');
+  await Sentry.close(2000);
   process.exit(0);
 }
 
@@ -263,6 +265,7 @@ async function verifyCoachKeyOrExit() {
       "Starting would write new memory under a second key and make current memory unreadable.\n" +
       "Check that Vercel and Render hold the same COACH_MEMORY_KEY, then restart."
     );
+    await Sentry.close(2000);
     process.exit(1);
   }
   if (result.status === "created") {
@@ -280,7 +283,8 @@ client.login(config.discord.token);
 
 verifyCoachKeyOrExit()
   .then(startCoachBot)
-  .catch((err) => {
+  .catch(async (err) => {
     console.error("Coach key check failed unexpectedly:", err);
+    await Sentry.close(2000);
     process.exit(1);
   }); 

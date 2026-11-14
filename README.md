@@ -14,6 +14,43 @@ Three runtimes stay separate. Do not add npm workspaces (Vercel must keep using 
 
 All three already deploy from this repo. Local secrets live in `.env.local` (site) and `apps/api/.env` / `apps/bot/.env`. Do not commit `service-account-key.json` or `.env` files.
 
+## Sentry errors
+
+Set `SENTRY_DSN` and `SENTRY_ENVIRONMENT=production` on Vercel, Render and Cloud Run.
+Use a Sentry project per runtime, or reuse one DSN and filter the `service` tag
+(`website`, `website-browser`, `bot`, `api`). For the browser, also set
+`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT=production` on Vercel
+**before building**. Redeploy each service after setting its variables. With no DSN,
+reporting is disabled. No Sentry auth token is needed to send errors.
+
+Coverage: Next.js server/request and browser errors, React's global error boundary,
+`console.error` on the site and bot, bot uncaught exceptions/unhandled rejections and
+Express errors, Flask exceptions and Python `logging.error`/`logging.exception`.
+Flask also reports handled HTTP 5xx responses, grouped by method and route template;
+these generic events have no original exception stack. Swallowed errors, Python
+`print(...)`, warnings, and Next.js/bot routes that only return an error response are
+not automatically reported. Use the existing error logger or `captureException`
+(`capture_exception` in Python) when handling such errors.
+
+Error sampling stays at 100%; tracing, profiling, replay and Sentry Logs are off.
+Automatic user data, headers, cookies, query parameters, request bodies, AI content,
+local variables, raw console arguments and breadcrumbs are excluded. Keep credentials,
+chat content and personal data out of error messages and configure Sentry's server-side data scrubbing for application-specific
+fields. Set `SENTRY_RELEASE` to the deployed git SHA if the host does not supply a
+release automatically.
+
+Optional readable production browser stacks: set `SENTRY_UPLOAD_SOURCEMAPS=true`,
+`SENTRY_ORG`, `SENTRY_PROJECT`, and a **build-only** `SENTRY_AUTH_TOKEN` with source-map
+upload permissions on Vercel. The read-only token used by the Sentry assistant cannot
+upload source maps. Never prefix that token with `NEXT_PUBLIC_`. Source-map upload is
+disabled by default so local builds and builds without upload credentials still work.
+
+After deployment, verify an existing error or a controlled error on a staging instance
+in each runtime; check the environment, release and service tags in Sentry. Local
+regression tests use in-memory transports and send nothing to Sentry:
+`node --test apps/bot/services/observability.test.js` and
+`python -m unittest discover -s apps/api/tests -p test_observability.py`.
+
 ## Website (this directory)
 
 ```powershell
@@ -92,7 +129,7 @@ Optional second bot **DZR Coach** (silent in channels; coaching DMs only). Creat
 
 Required bot env names: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`. Also set `CONTENT_API_*`, `OPENAI_API_KEY`, and `COACH_CONNECT_SECRET` for the features that use them.
 
-**Ladder previews** (`apps/bot/services/ladder`, commands `/ladder_link`, `/ladder_preview`, `/ladder_analysis`): the bot posts a preview image about 65 minutes before each ladder match, and a match-day reminder from 12:00 Copenhagen time, in the ladder channel (`LADDER_CHANNEL_ID`, default `1382817917984313404`). Teams are added with `/ladder_link`. State lives in the Firestore collection `ladder_bot` (created on first write; denied to clients in `firestore.rules`). The bot has no ladder or Zwift password: it calls the Flask API (`/ladder_page` for fixture pages, `/rider_data/<id>` for W/kg, `/zwift_profile/<id>` for racing score and category) with `CONTENT_API_KEY`, and the API signs in with the club account (`ZWIFT_USERNAME` / `ZWIFT_PASSWORD`, or `LADDER_EMAIL` / `LADDER_PASSWORD`). The route picture is the site profile (`/api/route-profile`), with powerup icons when the fixture tags name them. Deploy the API before the bot. Errors are logged to the Render logs only. `/ladder_ai` adds an AI analysis of how to ride the match (tactics and points strategy) through the same OpenAI setup as the coach. It costs tokens, so each user gets `LADDER_AI_DAILY_RUNS` fresh runs per day (default 5, `0` switches it off), and an analysis is reused for 30 minutes per match and team.
+**Ladder previews** (`apps/bot/services/ladder`, commands `/ladder_link`, `/ladder_preview`, `/ladder_analysis`): the bot posts a preview image about 65 minutes before each ladder match, and a match-day reminder from 12:00 Copenhagen time, in the ladder channel (`LADDER_CHANNEL_ID`, default `1382817917984313404`). Teams are added with `/ladder_link`. State lives in the Firestore collection `ladder_bot` (created on first write; denied to clients in `firestore.rules`). The bot has no ladder or Zwift password: it calls the Flask API (`/ladder_page` for fixture pages, `/rider_data/<id>` for W/kg, `/zwift_profile/<id>` for racing score and category) with `CONTENT_API_KEY`, and the API signs in with the club account (`ZWIFT_USERNAME` / `ZWIFT_PASSWORD`, or `LADDER_EMAIL` / `LADDER_PASSWORD`). The route picture is the site profile (`/api/route-profile`), with powerup icons when the fixture tags name them. Deploy the API before the bot. Errors remain in Render logs; `console.error` also reaches Sentry when configured. `/ladder_ai` adds an AI analysis of how to ride the match (tactics and points strategy) through the same OpenAI setup as the coach. It costs tokens, so each user gets `LADDER_AI_DAILY_RUNS` fresh runs per day (default 5, `0` switches it off), and an analysis is reused for 30 minutes per match and team.
 
 **Ladder scout**: `/ladder_scout team:<linked DZR team> opponent:<team name or Ladder team link>` privately compares both complete current squads using the existing enrichment, power cache and chart. Both fields are required; select the DZR team from `/ladder_link`. Opponent suggestions come from `/summary`, cached for 15 minutes. Numeric team links also work for unlisted teams. Known Zwift ids are deduplicated; members missing identity or power remain in the comparison. Rendering failures return the full roster as text. Unknown or paginated roster formats are rejected. Deploy API support before the bot.
 

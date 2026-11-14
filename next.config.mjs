@@ -1,3 +1,4 @@
+import { withSentryConfig } from '@sentry/nextjs/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -28,4 +29,14 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+const uploadSourcemaps = process.env.SENTRY_UPLOAD_SOURCEMAPS === 'true'
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: true,
+  telemetry: false,
+  release: { create: uploadSourcemaps, finalize: uploadSourcemaps },
+  // Upload requires a build token with write access, separate from read-only tooling.
+  sourcemaps: { disable: !uploadSourcemaps },
+})
