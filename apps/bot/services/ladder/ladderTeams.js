@@ -1,4 +1,4 @@
-// Ladder teams that get previews and reminders in the ladder channel.
+// Ladder teams and their primary channels for previews, reminders and command defaults.
 const { createStore } = require("./ladderStore");
 
 const MAX_TEAMS = 10;
@@ -12,30 +12,24 @@ function key(teamName) {
   return teamName.trim().toLowerCase();
 }
 
-// Accepts a plain team name or a ladder URL such as https://ladder.cycleracing.club/teamView/Chonky%20Chaser.
-function parseTeamName(input) {
-  const text = input.trim();
-  const urlMatch = text.match(/^https?:\/\/[^/]+\/(?:teamView|matchlist\/fixtures)\/([^/?#]+)/i);
-  if (urlMatch) {
-    try {
-      return decodeURIComponent(urlMatch[1]).trim();
-    } catch {
-      return urlMatch[1].trim();
-    }
-  }
-  return text;
-}
-
-// channelId is the channel /ladder_link was used in: commands run there default to this team.
+// Each team must have one primary channel. Refuse to take another team's channel away.
 // Returns false when the team is new and the team limit has been reached.
 async function link(teamName, channelId) {
+  if (!teamName.trim() || !String(channelId || "").trim()) {
+    const error = new Error("A team name and primary channel are required");
+    error.userMessage = "Kør /ladder_link i holdets primære kanal og angiv et holdnavn eller hold-link.";
+    throw error;
+  }
   const teams = await load();
   if (!teams[key(teamName)] && Object.keys(teams).length >= MAX_TEAMS) return false;
-  if (channelId) {
-    for (const other of Object.values(teams)) if (other.channelId === String(channelId)) delete other.channelId;
+  const other = Object.values(teams).find((team) => team.channelId === String(channelId) && key(team.name) !== key(teamName));
+  if (other) {
+    const error = new Error("Primary channel already belongs to another team");
+    error.userMessage = `Denne kanal er allerede primær kanal for ${other.name}. Kør /ladder_link i det nye holds egen kanal, eller fjern først det eksisterende link med remove.`;
+    throw error;
   }
-  teams[key(teamName)] = { ...teams[key(teamName)], name: teamName.trim(), ...(channelId ? { channelId: String(channelId) } : {}) };
-  store.persist();
+  teams[key(teamName)] = { ...teams[key(teamName)], name: teamName.trim(), channelId: String(channelId) };
+  await store.persist();
   return true;
 }
 
@@ -68,4 +62,4 @@ async function getTeam(teamName) {
   return (await load())[key(teamName)] || null;
 }
 
-module.exports = { MAX_TEAMS, parseTeamName, link, unlink, list, getTeam, findByChannel, setPreviewMinutes };
+module.exports = { MAX_TEAMS, link, unlink, list, getTeam, findByChannel, setPreviewMinutes };

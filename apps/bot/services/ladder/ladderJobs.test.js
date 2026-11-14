@@ -1,7 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { isPreviewDue, isReminderDue, localDate, localHour } = require("./ladderJobs");
-const { parseTeamName } = require("./ladderTeams");
 const { createStore } = require("./ladderStore");
 const { summarizeProfile, formPercent } = require("./riderPower");
 
@@ -28,12 +27,6 @@ test("reminder is due from 12:00 local time on match day until the match starts"
   assert.equal(isReminderDue(start, new Date("2026-10-15T10:00:00Z"), TZ), true);
   assert.equal(isReminderDue(start, new Date("2026-10-15T18:01:00Z"), TZ), false);
   assert.equal(isReminderDue(start, new Date("2026-10-14T12:00:00Z"), TZ), false);
-});
-
-test("parseTeamName accepts plain names and ladder links", () => {
-  assert.equal(parseTeamName("  Chonky Chaser "), "Chonky Chaser");
-  assert.equal(parseTeamName("https://ladder.cycleracing.club/teamView/Chonky%20Chaser"), "Chonky Chaser");
-  assert.equal(parseTeamName("https://ladder.cycleracing.club/matchlist/fixtures/Mad%20Dogs?x=1"), "Mad Dogs");
 });
 
 test("summarizeProfile splits recent and all-time best W/kg and picks the latest category", () => {

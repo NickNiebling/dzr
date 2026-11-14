@@ -10,7 +10,24 @@ function decodeEntities(text) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (_, code) => {
+      const point = code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : "";
+    });
+}
+
+// A team page has a TEAMID and its own fixtures link, even when it has no upcoming matches.
+// Do not use <title>: the site also returns login/404 pages with HTTP 200.
+function parseTeamPage(html) {
+  if (!/\bconst\s+TEAMID\s*=\s*\d+\s*;/.test(html)) return null;
+  const path = html.match(/\bhref=(["'])\/matchlist\/fixtures\/(.*?)\1/i);
+  if (!path) return null;
+  try {
+    return decodeURIComponent(decodeEntities(path[2])).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 // Returns [{ id, home, away, route }] from /matchlist/fixtures/{team}.
@@ -119,4 +136,4 @@ function parseFixture(html) {
   };
 }
 
-module.exports = { parseFixtureList, parseFixture, POWER_SECONDS };
+module.exports = { parseTeamPage, parseFixtureList, parseFixture, POWER_SECONDS };

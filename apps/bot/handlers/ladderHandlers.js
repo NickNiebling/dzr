@@ -8,7 +8,7 @@ const config = require("../config/config");
 // The team from the option, else the team added from this channel, else the only added team.
 async function resolveTeam(interaction) {
   const input = interaction.options.getString("team");
-  if (input) return ladderTeams.parseTeamName(input);
+  if (input) return ladderClient.resolveTeamName(input);
   const inChannel = await ladderTeams.findByChannel(interaction.channelId);
   if (inChannel) return inChannel.name;
   const teams = await ladderTeams.list();
@@ -44,7 +44,7 @@ async function replyError(interaction, name, error) {
 
 async function handleLadderLink(interaction) {
   try {
-    const teamName = ladderTeams.parseTeamName(interaction.options.getString("team", true));
+    const teamName = await ladderClient.resolveTeamName(interaction.options.getString("team", true));
     if (!teamName) {
       await interaction.editReply({ content: "Angiv et holdnavn eller et ladder-link." });
       return;
@@ -63,7 +63,7 @@ async function handleLadderLink(interaction) {
     }
     if (minutes) await ladderTeams.setPreviewMinutes(teamName, minutes);
     await interaction.editReply({
-      content: `${teamName} får nu preview og løbsdag-besked i <#${config.ladder.channelId}>${minutes ? `, preview ${minutes} minutter før start` : ""}. Kommandoer i denne kanal bruger holdet som standard.`,
+      content: `${teamName} er linket til sin primære kanal <#${interaction.channelId}>. Preview og løbsdag-besked postes her, preview ${minutes || (await ladderTeams.getTeam(teamName)).previewMinutes || config.ladder.previewMinutes} minutter før start. Kommandoer i denne kanal bruger holdet som standard.`,
     });
   } catch (error) {
     await replyError(interaction, "ladder_link", error);
