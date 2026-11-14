@@ -29,7 +29,7 @@ npm run test:streaming-setup:browser
 
 - Opret en registrering på testserveren, og genåbn guiden: privat nøgle ved oprettelse, ingen rotation ved genåbning eller dobbelt indsendelse. Kontrollér også afvisning uden Club Member-rollen og det uændrede `/streaming_add`-flow.
 - Følg Windows/macOS-guiden på OBS-computeren. Prøv mappevalg og almindelig download; en anderledes eksisterende fil skal bevares, og annullering eller fejl må ikke ligne succes. Kontrollér også mobilvisningen.
-- Indlæs Lua i OBS, kopiér endpoint fra guiden og din personlige nøgle fra Discord. Prøv eventuelt **Test forbindelse** og Discord-statusknappen: et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test; en gemt fil beviser ikke en forbindelse.
+- Indlæs Lua i OBS, og kopiér din personlige nøgle fra Discord til **DZR key**. Der skal ikke være et endpointfelt; en tidligere gemt endpointindstilling skal ignoreres. Prøv eventuelt **Test forbindelse** og Discord-statusknappen: et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test; en gemt fil beviser ikke en forbindelse.
 - En valgfri offentlig teststream skal bruge den eksisterende verifikation og testkanal. Notér OS, browser, OBS-version og det faktisk afprøvede; browserillustrationer og automatiske tests dokumenterer ikke native OBS-adfærd.
 
 ## Valgfri isoleret testbot
@@ -98,7 +98,7 @@ child.on('exit', code => { process.exitCode = code || 0 })
 NODE
 ```
 
-Åbn `/streaming/setup` uden login, og kør `/streaming_add_new` på testserveren. **Brug testbottens endpoint i OBS**; Lua-filens standard peger på produktionsbotten. Kopiér testnøglen direkte fra Discord til OBS. En separat website-preview kan også bruges med egen test-Firebase-konfiguration og `STREAMING_PUBLIC_URL` sat til testbotten.
+Åbn `/streaming/setup` uden login, og kør `/streaming_add_new` på testserveren. Til denne isolerede test bruges en lokal testkopi af Lua, hvor den faste callbackadresse i kildekoden peger på testbotten. Den distribuerede fil peger på produktionsbotten og har intet endpointfelt. Lua-transporttesten bruger samme princip med en midlertidig testkopi. Kopiér testnøglen direkte fra Discord til OBS. En separat website-preview kan også bruges med egen test-Firebase-konfiguration og `STREAMING_PUBLIC_URL` sat til testbotten; denne variabel vælger kun downloadserveren.
 
 ## Sammenligning og selvstændige forbedringer
 
@@ -112,4 +112,4 @@ Disse fem forslag til det oprindelige flow er uafhængige af browserguiden og er
 | 2 | Brug permanent filplacering og korte Windows/macOS-trin med billeder. | Høj / lav–middel |
 | 3 | Bevar kanalinput ved fejl, og skeln mellem forkert link, optaget kanal og driftsfejl. | Høj / middel |
 | 4 | Gør testen tydeligt valgfri, og forklar signaltid kontra verificeret offentlig livestream. | Middel–høj / lav |
-| 5 | Undersøg direkte modal inden Discord-fristen. Bevar separate kodefelter til nøgle og endpoint; almindelige Discord-knapper kan ikke kopiere vilkårlig tekst. | Middel / lav–middel |
+| 5 | Undersøg direkte modal inden Discord-fristen. Bevar et separat kodefelt til nøglen; almindelige Discord-knapper kan ikke kopiere vilkårlig tekst. | Middel / lav–middel |

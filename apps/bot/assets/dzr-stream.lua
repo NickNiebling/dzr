@@ -3,6 +3,7 @@
 local obs = obslua
 local ffi = require("ffi")
 local jit = require("jit")
+-- This address is part of the distributed script; persisted OBS settings cannot override it.
 local endpoint = "https://bot-tdnm.onrender.com/streaming/obs"
 local key, platform_setting, video_link = "", "auto", ""
 local session, pending, current, multi, curl, write_callback
@@ -70,9 +71,6 @@ local function platform()
 end
 
 local function valid_settings()
-    if not endpoint:match("^https://[%w%.%-]+:?%d*/streaming/obs$") then
-        log(obs.LOG_ERROR, "Indsæt HTTPS callback-adressen fra /streaming_add i DZR endpoint."); return false
-    end
     local owner, secret = key:match("^dzrs_(%d+)%.([%w_-]+)$")
     if not owner or #owner < 17 or #owner > 20 or #secret ~= 43 then
         log(obs.LOG_ERROR, "Indsæt din personlige nøgle fra /streaming_add i DZR key."); return false
@@ -202,19 +200,14 @@ end
 jit.off(pump, true)
 
 function script_description()
-    return "<b>DZR Streaming</b><br>Brug /streaming_add i Discord for adresse og personlig nøgle. "
+    return "<b>DZR Streaming</b><br>Brug /streaming_add i Discord for din personlige nøgle. "
         .. "Stream keys læses aldrig. Test sender ingen offentlig besked. "
-        .. "DZR finder selv, hvilke af dine tilmeldte kanaler der er live. "
+        .. "Du kan streame til en eller flere af dine tilmeldte platforme på samme tid. "
         .. "Ved YouTube kan et konkret videolink gøre live-verifikationen hurtigere."
-end
-
-function script_defaults(settings)
-    obs.obs_data_set_default_string(settings, "endpoint", endpoint)
 end
 
 function script_properties()
     local props = obs.obs_properties_create()
-    obs.obs_properties_add_text(props, "endpoint", "DZR endpoint", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_text(props, "key", "DZR key", obs.OBS_TEXT_PASSWORD)
     obs.obs_properties_add_text(props, "video_link", "YouTube-videolink (valgfrit, opdatér for hver stream)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_button(props, "test", "Test forbindelse", function()
@@ -226,9 +219,8 @@ end
 
 function script_update(settings)
     local new_key = trim(obs.obs_data_get_string(settings, "key"))
-    local new_endpoint = trim(obs.obs_data_get_string(settings, "endpoint")):gsub("/+$", "")
-    if key ~= new_key or endpoint ~= new_endpoint then queue = {} end
-    key, endpoint = new_key, new_endpoint
+    if key ~= new_key then queue = {} end
+    key = new_key
     platform_setting = obs.obs_data_get_string(settings, "platform")
     if platform_setting == "" then platform_setting = "auto" end
     video_link = trim(obs.obs_data_get_string(settings, "video_link"))

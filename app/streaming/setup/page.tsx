@@ -21,5 +21,5 @@ export default function StreamingSetupPage() {
       </main>
     )
   }
-  return <StreamingSetupWizard callbackUrl={config.callbackUrl} scriptUrl={config.scriptUrl} />
+  return <StreamingSetupWizard scriptUrl={config.scriptUrl} />
 }

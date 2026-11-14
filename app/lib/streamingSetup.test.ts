@@ -5,13 +5,12 @@ import { getStreamingSetupConfig, getStreamingScriptResponse } from './streaming
 const env = { STREAMING_PUBLIC_URL: 'https://bot.example.test/' }
 const script = '-- DZR Streaming v2.\nlocal obs = obslua\n'
 
-test('guide and proxy share the configured origin; malformed origins fail closed', () => {
+test('script downloads use the configured origin; malformed origins fail closed', () => {
   assert.deepEqual(getStreamingSetupConfig(env), {
-    callbackUrl: 'https://bot.example.test/streaming/obs',
     upstreamScriptUrl: 'https://bot.example.test/streaming/dzr-stream.lua',
     scriptUrl: '/api/streaming/script',
   })
-  assert.equal(getStreamingSetupConfig({}).callbackUrl, 'https://bot-tdnm.onrender.com/streaming/obs')
+  assert.equal(getStreamingSetupConfig({}).upstreamScriptUrl, 'https://bot-tdnm.onrender.com/streaming/dzr-stream.lua')
   for (const value of ['', 'http://bot.test', 'https://user:secret@bot.test',
     'https://bot.test/path', 'https://bot.test?key=secret', 'https://bot.test/#secret']) {
     assert.throws(() => getStreamingSetupConfig({ STREAMING_PUBLIC_URL: value }))

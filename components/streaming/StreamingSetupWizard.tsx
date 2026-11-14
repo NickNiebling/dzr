@@ -3,7 +3,7 @@
 import React from 'react'
 import {
   Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel,
-  Alert, AlertIcon, Box, Button, Checkbox, Code, Container, Heading, HStack,
+  Alert, AlertIcon, Box, Button, Checkbox, Container, Heading, HStack,
   Image, Progress, SimpleGrid, Stack, Text,
 } from '@chakra-ui/react'
 import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
@@ -13,7 +13,7 @@ import {
 } from './installScript'
 
 type OperatingSystem = 'windows' | 'macos'
-type Props = { callbackUrl: string; scriptUrl?: string }
+type Props = { scriptUrl?: string }
 type PickerWindow = Window & { showDirectoryPicker?: DirectoryPicker }
 
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
@@ -23,7 +23,7 @@ const obsSteps = [
   { title: 'Vælg DZR-filen', image: 'select-file', text: 'Find den DZR-mappe, du brugte i trin 2. Vælg dzr-stream.lua, og klik Åbn / Open.' },
 ]
 
-export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/streaming/script' }: Props) {
+export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/script' }: Props) {
   const [step, setStep] = React.useState(1)
   const [os, setOs] = React.useState<OperatingSystem | null>(null)
   const [supportsPicker, setSupportsPicker] = React.useState(false)
@@ -40,6 +40,7 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
   const [finished, setFinished] = React.useState(false)
   const heading = React.useRef<HTMLHeadingElement>(null)
   const hasConflict = installation?.status === 'conflict'
+  const fileReceived = !hasConflict && (downloaded || installation?.status === 'saved' || installation?.status === 'identical')
   const fileReady = !hasConflict && ((downloaded && manualFileReady) || installation?.status === 'saved' || installation?.status === 'identical')
 
   React.useEffect(() => {
@@ -151,7 +152,7 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
           <Box bg="orange.900" borderWidth="1px" borderColor="orange.400" borderRadius="xl" p={5}>
             <Stack spacing={3}>
               <Heading size="md">Fortsæt på computeren med OBS</Heading>
-              <Text>Denne guide gemmer en fil til OBS Studio. Åbn guiden på din Windows-computer eller Mac.</Text>
+              <Text>Du har åbnet guiden fra en mobil. Guiden gemmer en fil, som du skal bruge på din computer. Vi anbefaler derfor, at du åbner guiden på den Windows-computer eller Mac, hvor du har OBS installeret.</Text>
               <Button size="lg" colorScheme="orange" onClick={() => copy(new URL('/streaming/setup', window.location.origin).href, 'Guideadressen er kopieret. Send den til din OBS-computer.')}>
                 Kopiér guideadresse
               </Button>
@@ -195,19 +196,23 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                   Filen skal blive liggende i en fast mappe. Vi foreslår Dokumenter / Documents → DZR.
                 </Text>
                 {supportsPicker && (
-                  <Stack spacing={2}>
+                  <Stack spacing={4}>
+                    <Text color="gray.300">Klik på <strong>Installér DZR OBS-script</strong>, og vælg <strong>Dokumenter / Documents</strong> i vinduet, der åbner. Vi opretter selv DZR-mappen i den mappe, du vælger, og gemmer filen dér. Du skal kun vælge Dokumenter og tillade adgang.</Text>
                     <Button colorScheme="red" size="lg" minH="56px" whiteSpace="normal" onClick={install} isLoading={busy} loadingText="Arbejder…">
                       {installation?.status === 'conflict' ? 'Vælg en anden mappe' : 'Installér DZR OBS-script'}
                     </Button>
-                    <Text color="gray.400" fontSize="sm">Vælg Dokumenter eller en anden fast mappe, og tillad adgang. DZR-mappen oprettes for dig.</Text>
                   </Stack>
                 )}
                 {!hasConflict && (
-                  <Button
-                    leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
-                    variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
-                    color="white" size="lg" minH="52px" whiteSpace="normal"
-                  >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
+                  <Stack spacing={3}>
+                    <Heading as="h2" size="sm">{supportsPicker ? 'Problemer med installation herover?' : 'Hent filen til din computer'}</Heading>
+                    <Text color="gray.300">Hent filen, og vælg selv en placering på din computer. Brug en fast mappe, som du ikke sletter senere, da filen skal blive liggende, efter den er tilføjet i OBS.</Text>
+                    <Button
+                      leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
+                      variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
+                      color="white" size="lg" minH="52px" whiteSpace="normal"
+                    >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
+                  </Stack>
                 )}
                 {!supportsPicker && <Text color="gray.400" fontSize="sm">Din browser bruger almindelig download. Du kan følge hele guiden her.</Text>}
 
@@ -225,9 +230,9 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                   </Alert>
                 )}
 
-                {!hasConflict && (downloaded || !supportsPicker) && (
+                {!hasConflict && downloaded && (
                   <Stack spacing={3}>
-                    <Text>{downloaded ? 'Når filen er hentet:' : 'Efter download:'} Åbn Downloads / Overførsler. Opret en DZR-mappe i Dokumenter, og flyt <strong>dzr-stream.lua</strong> dertil.</Text>
+                    <Text>Når filen er hentet: Åbn Downloads / Overførsler. Ved denne manuelle download skal du selv oprette en DZR-mappe i Dokumenter og flytte <strong>dzr-stream.lua</strong> dertil.</Text>
                     {illustration('save-file', 'Flyt dzr-stream.lua fra Downloads til en fast DZR-mappe i Dokumenter.')}
                     <Text color="gray.400" fontSize="sm">Behold filnavnet dzr-stream.lua. Undgå en ekstra endelse som .txt eller et nummer i filnavnet.</Text>
                   </Stack>
@@ -255,26 +260,20 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
 
             {step === 4 && (
               <Stack spacing={5}>
-                <Text>Vælg <strong>dzr-stream.lua</strong> i OBS-listen. Udfyld felterne til højre.</Text>
-                {illustration('configure', 'DZR endpoint og DZR key i OBS-scriptets indstillinger. Ingen platformvælger.')}
+                <Text>Vælg <strong>dzr-stream.lua</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
+                {illustration('configure', 'Indsæt din personlige API-nøgle i DZR key i OBS-scriptets indstillinger.')}
                 <Stack spacing={2}>
-                  <Text fontWeight="bold">DZR endpoint</Text>
-                  <Code display="block" p={3} borderRadius="md" bg="gray.800" color="white" whiteSpace="normal" overflowWrap="anywhere" userSelect="all">{callbackUrl}</Code>
-                  <Button size="lg" colorScheme="red" onClick={() => copy(callbackUrl, 'DZR-adressen er kopieret. Indsæt den i DZR endpoint i OBS.')}>Kopiér adresse</Button>
-                </Stack>
-                <Stack spacing={2}>
-                  <Text fontWeight="bold">DZR key</Text>
-                  <Text color="gray.300">Find den private Discord-besked, hvor din nøgle blev oprettet med <strong>/streaming_add_new</strong> eller <strong>/streaming_add</strong>. Kopiér din personlige DZR-nøgle direkte ind i OBS.</Text>
+                  <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
+                  <Text color="gray.300">Find den private Discord-besked, hvor din nøgle blev oprettet med <strong>/streaming_add</strong>. Kopiér din personlige DZR-nøgle direkte ind i OBS.</Text>
                   <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke. Har du allerede den rigtige nøgle i OBS, beholder du den.</Text>
+                  <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Få en ny via /streaming_add; når du gemmer, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
                 </Stack>
-                <Text color="gray.300">DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler. Du skal ikke vælge platform i OBS.</Text>
+                <Text color="gray.300">Du kan streame til én eller flere platforme på samme tid. DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler, så du behøver ikke begrænse dig til én platform.</Text>
                 <Accordion allowToggle>
                   <AccordionItem borderColor="gray.700">
-                    <h3><AccordionButton px={0} py={3}><Box flex="1" textAlign="left">Mistet nøgle eller spørgsmål om YouTube?</Box><AccordionIcon /></AccordionButton></h3>
+                    <h3><AccordionButton px={0} py={3}><Box flex="1" textAlign="left">YouTube-videolink – valgfrit</Box><AccordionIcon /></AccordionButton></h3>
                     <AccordionPanel px={0} color="gray.300">
                       <Stack spacing={3}>
-                        <Text>Nøglen vises kun, når den oprettes, i den private Discord-besked. Hvis den ikke længere er tilgængelig, kan du få en ny via /streaming_add.</Text>
-                        <Text color="orange.200"><strong>Advarsel:</strong> Når du gemmer formularen i /streaming_add, bliver den gamle nøgle ugyldig. Opdatér derefter nøglen i OBS. Denne guide ændrer aldrig din nøgle.</Text>
                         <Text><strong>YouTube-videolink</strong> er valgfrit. Du kan lade feltet stå tomt. Et link til den aktuelle stream kan gøre live-verifikationen hurtigere; opdatér det, hvis du bruger det.</Text>
                       </Stack>
                     </AccordionPanel>
@@ -303,7 +302,7 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
                     <Text><strong>1.</strong> Klik på <strong>Test forbindelse</strong> i OBS-scriptets indstillinger.</Text>
                     <Text><strong>2.</strong> Gå tilbage til din private Discord-besked, og klik på <strong>Kontrollér OBS-forbindelse</strong>.</Text>
                     <Text><strong>3.</strong> Kontrollér, at tidspunktet for signalet passer med din nye test.</Text>
-                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér DZR endpoint og DZR key, og prøv igen. Du kan åbne statusknappen igen med /streaming_add_new uden at ændre din nøgle.</Text>
+                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i DZR key, og prøv igen. Find statusknappen i din private Discord-besked fra /streaming_add.</Text>
                     <Text color="gray.300" fontSize="sm">Testen sender ingen offentlig besked. En annonce kræver, at din offentlige livestream er verificeret.</Text>
                     {!finished && <Button colorScheme="red" size="lg" onClick={() => setFinished(true)}>Afslut guiden</Button>}
                   </Stack>
@@ -317,10 +316,12 @@ export default function StreamingSetupWizard({ callbackUrl, scriptUrl = '/api/st
             {step < 5 && (
               <Stack direction={{ base: 'column-reverse', sm: 'row' }} spacing={3} pt={2}>
                 {step > 1 && <Button color="white" size="lg" variant="outline" onClick={back} isDisabled={busy}>Tilbage</Button>}
-                <Button
-                  colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
-                  isDisabled={busy || (step === 1 && !os) || (step === 2 && !fileReady)}
-                >{step === 2 ? 'Filen er klar – fortsæt' : step === 4 ? 'Jeg har udfyldt OBS' : 'Fortsæt'}</Button>
+                {(step !== 2 || fileReceived) && (
+                  <Button
+                    colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
+                    isDisabled={busy || (step === 1 && !os) || (step === 2 && !fileReady)}
+                  >{step === 2 ? 'Filen er klar – fortsæt' : step === 4 ? 'Jeg har udfyldt OBS' : 'Fortsæt'}</Button>
+                )}
               </Stack>
             )}
             {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={back}>Tilbage til indstillingerne</Button>}

@@ -30,7 +30,12 @@ test("OBS Lua uses real libcurl multi over TLS; start/heartbeat/stop ordering, r
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const endpoint = `https://127.0.0.1:${server.address().port}/streaming/obs`;
   const token = `dzrs_111111111111111111.${"a".repeat(43)}`;
-  const script = path.resolve(__dirname, "../../assets/dzr-stream.lua");
+  const source = fs.readFileSync(path.resolve(__dirname, "../../assets/dzr-stream.lua"), "utf8");
+  const fixedEndpoint = 'local endpoint = "https://bot-tdnm.onrender.com/streaming/obs"';
+  assert.equal(source.split(fixedEndpoint).length, 2, "the shipped script has one fixed production endpoint");
+  const script = path.join(dir, "dzr-stream.lua");
+  // Change only the local fixture's constant. The distributed script has no runtime override.
+  fs.writeFileSync(script, source.replace(fixedEndpoint, `local endpoint = ${JSON.stringify(endpoint)}`));
   const harness = path.join(dir, "harness.lua");
   // OBS UI/events are mocked; the networking, FFI declarations, TLS validation, status handling
   // and asynchronous retry loop are the shipped Lua code. The test trusts only its local cert.
@@ -56,7 +61,11 @@ obslua = {
   OBS_FRONTEND_EVENT_STREAMING_STARTED=1, OBS_FRONTEND_EVENT_STREAMING_STOPPED=2,
   script_log=function(_, message) print(message) end,
   obs_data_create=function() return {} end,
-  obs_data_get_string=function(data, field) assert(field ~= "key" or data.endpoint, "stream key was read"); return data[field] or "" end,
+  obs_data_get_string=function(data, field)
+    assert(field ~= "endpoint", "saved endpoint must never be read")
+    assert(field ~= "key" or not data.service, "stream key was read")
+    return data[field] or ""
+  end,
   obs_data_set_string=function(data, field, value) data[field]=value end,
   obs_data_set_int=function(data, field, value) data[field]=value end,
   obs_data_release=function() end,
@@ -71,13 +80,19 @@ obslua = {
   obs_frontend_remove_event_callback=function() end,
   obs_frontend_streaming_active=function() return false end,
   timer_add=function(fn) tick=fn end, timer_remove=function() end,
-  obs_properties_create=function() return {} end, obs_properties_add_text=function() end,
+  obs_properties_create=function() return {} end,
+  obs_properties_add_text=function(props, field, label, style)
+    assert(field ~= "endpoint", "endpoint must not be editable")
+    props[field] = { label=label, style=style }
+  end,
   obs_properties_add_list=function() error("platform selection must not be required") end,
   obs_properties_add_button=function(_,_,_,fn) test_button=fn end,
 }
 dofile(${JSON.stringify(script)})
-script_load({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="auto"})
-script_properties()
+script_load({endpoint="https://attacker.example/streaming/obs", key=${JSON.stringify(token)}, platform="auto"})
+local properties = script_properties()
+assert(properties.key.style == obslua.OBS_TEXT_PASSWORD, "DZR key must remain masked")
+assert(properties.video_link and not properties.endpoint, "only key and optional video link are editable")
 local function pump(count) for i=1,count do tick(); ffi.C.usleep(10000) end end
 test_button(); pump(50)
 clock=clock+3; pump(50) -- retry the deliberately failed first request
@@ -86,19 +101,19 @@ event(1); pump(20) -- duplicate OBS event is ignored
 clock=clock+31; pump(50)
 event(2); pump(50)
 service_name="Twitch"
-script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, video_link="https://www.youtube.com/watch?v=abcdefghijk"})
+script_update({endpoint="https://old-bot.example/streaming/obs", key=${JSON.stringify(token)}, video_link="https://www.youtube.com/watch?v=abcdefghijk"})
 test_button(); pump(50)
 event(1); pump(50)
 event(2); pump(50)
 service_name="Custom RTMP"
 event(1); pump(50) -- a custom service is sent as null; DZR discovers registered channels
-script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="twitch"})
+script_update({endpoint="", key=${JSON.stringify(token)}, platform="twitch"})
 pump(50) -- legacy platform settings are optional hints, not new starts
 event(2); pump(50)
 service_available=false
-script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="auto"})
+script_update({key=${JSON.stringify(token)}, platform="auto"})
 test_button(); pump(50) -- a missing OBS service also serializes as null
-script_update({endpoint=${JSON.stringify(endpoint)}, key=${JSON.stringify(token)}, platform="facebook"})
+script_update({key=${JSON.stringify(token)}, platform="facebook"})
 test_button(); pump(50) -- invalid persisted/manual settings cannot become a provider
 script_unload()
 `);
