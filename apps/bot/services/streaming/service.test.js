@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { memoryDb } = require("./test-support");
 const { createStore } = require("./store");
 const { createStreamingService } = require("./service");
+const { createProviders } = require("./providers");
 const { tokenMatches } = require("./model");
 
 const guildId = "1195850595014299669", userId = "111111111111111111", channelId = "1196454773558345768";
@@ -31,6 +32,58 @@ function setup() {
     enroll: () => service.enroll(userId, "Rider", { youtube: "@DZR" }),
     event: (overrides = {}) => ({ event: "started", platform: "youtube", sessionId: "session_1234567890", sequence: 1, startedAt: time, sentAt: time, ...overrides }) };
 }
+
+function youtubeEnrollmentSetup() {
+  const s = setup();
+  const resolved = { id: channel.id, title: "Dybt Godnat Danmark", url: "https://www.youtube.com/@dybtgonatdanmark" };
+  const requests = [];
+  let videoAvailable = true;
+  const providers = createProviders({ youtubeApiKey: "test-key" }, { fetchImpl: async (url) => {
+    assert.equal(url.origin, "https://www.googleapis.com");
+    const resource = url.pathname.split("/").pop();
+    requests.push(resource);
+    let items;
+    if (resource === "videos") {
+      assert.equal(url.searchParams.get("id"), "y_pQmA_dZuE");
+      items = videoAvailable ? [{ id: "y_pQmA_dZuE", snippet: { channelId: resolved.id } }] : [];
+    } else {
+      assert.equal(resource, "channels");
+      assert.ok(url.searchParams.get("id") === resolved.id || url.searchParams.get("forHandle") === "@dybtgonatdanmark");
+      items = [{ id: resolved.id, snippet: { title: resolved.title, customUrl: "@dybtgonatdanmark" } }];
+    }
+    return { ok: true, async json() { return { items }; } };
+  } });
+  return { ...s, resolved, requests, service: createStreamingService({ ...s.options, providers }),
+    hideVideo() { videoAvailable = false; } };
+}
+
+test("shared channel and video links enroll the same YouTube channel and retain its exclusive claim", async () => {
+  const s = youtubeEnrollmentSetup();
+  const first = await s.service.enroll(userId, "Rider", { youtube: "https://youtube.com/@dybtgonatdanmark?si=2zPFIbHT7P1uyOuV" });
+  const second = await s.service.enroll(userId, "Rider", { youtube: "https://youtu.be/y_pQmA_dZuE?si=0lLgbMjLZVMRm9fV" });
+  assert.deepEqual(first.registration.channels, { youtube: s.resolved });
+  assert.deepEqual(second.registration.channels, first.registration.channels);
+  assert.deepEqual(s.requests, ["channels", "videos", "channels"]);
+  const before = structuredClone([...s.db.documents]);
+  await assert.rejects(s.service.enroll("222222222222222222", "Other rider", {
+    youtube: "https://youtu.be/y_pQmA_dZuE?si=0lLgbMjLZVMRm9fV",
+  }), { code: "channel_in_use" });
+  assert.deepEqual([...s.db.documents], before);
+  assert.equal(await s.service.getRegistration("222222222222222222"), null);
+});
+
+test("an unavailable video leaves an existing enrollment and OBS key unchanged", async () => {
+  const s = youtubeEnrollmentSetup();
+  const { token } = await s.service.enroll(userId, "Rider", { youtube: "https://youtube.com/@dybtgonatdanmark?si=2zPFIbHT7P1uyOuV" });
+  const before = structuredClone([...s.db.documents]);
+  s.hideVideo();
+  await assert.rejects(s.service.enroll(userId, "Rider", {
+    youtube: "https://youtu.be/y_pQmA_dZuE?si=0lLgbMjLZVMRm9fV",
+  }), { code: "channel_not_found" });
+  assert.deepEqual([...s.db.documents], before);
+  assert.ok(tokenMatches(token, (await s.service.getRegistration(userId)).tokenHash));
+  assert.deepEqual(s.requests, ["channels", "videos"]);
+});
 
 test("onboarding stores only a hash; testing never announces or sets last-live", async () => {
   const s = setup(); const { token } = await s.enroll();

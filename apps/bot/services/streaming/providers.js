@@ -103,8 +103,22 @@ function createProviders({ youtubeApiKey, twitchClientId, twitchClientSecret }, 
       const user = (await twitch("users", { login: parsed.login }))?.data?.[0];
       if (user && /^\d+$/.test(user.id)) return { id: user.id, title: user.display_name, url: `https://www.twitch.tv/${user.login}` };
     } else {
-      const channel = (await youtube("channels", { part: "snippet", ...(parsed.id ? { id: parsed.id } : { forHandle: parsed.handle }) }))?.items?.[0];
-      if (channel && /^UC[A-Za-z0-9_-]{22}$/.test(channel.id)) return { id: channel.id, title: channel.snippet.title, url: `https://www.youtube.com/channel/${channel.id}` };
+      let channelId = parsed.id;
+      if (parsed.videoId) {
+        const video = items(await youtube("videos", { part: "snippet", id: parsed.videoId }), "items")
+          .find((item) => item?.id === parsed.videoId);
+        if (!video) throw new StreamingError("channel_not_found", "Videoen blev ikke fundet. Brug et offentligt videolink eller et direkte kanallink.");
+        channelId = video.snippet?.channelId;
+        if (!/^UC[A-Za-z0-9_-]{22}$/.test(channelId || "")) throw unavailable();
+      }
+      const channels = items(await youtube("channels", { part: "snippet", ...(channelId ? { id: channelId } : { forHandle: parsed.handle }) }), "items");
+      const channel = channelId ? channels.find((item) => item?.id === channelId) : channels[0];
+      if (channel) {
+        if (!/^UC[A-Za-z0-9_-]{22}$/.test(channel.id) || typeof channel.snippet?.title !== "string") throw unavailable();
+        const handle = channel.snippet.customUrl;
+        const path = /^@[\p{L}\p{N}_.·-]{3,30}$/u.test(handle || "") ? handle : `channel/${channel.id}`;
+        return { id: channel.id, title: channel.snippet.title, url: `https://www.youtube.com/${path}` };
+      }
     }
     throw new StreamingError("channel_not_found", "Kanalen blev ikke fundet. Kontrollér link eller kanalnavn.");
   }

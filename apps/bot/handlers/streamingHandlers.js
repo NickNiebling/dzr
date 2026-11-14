@@ -12,7 +12,7 @@ const row = (...buttons) => new ActionRowBuilder().addComponents(...buttons);
 
 function channelModal(userId, registration, saveAction = "save") {
   const modal = new ModalBuilder().setCustomId(`streaming:${saveAction}:${userId}`).setTitle("Dine streamingkanaler");
-  for (const [platform, label, placeholder] of [["youtube", "YouTube-kanal (valgfri)", "https://www.youtube.com/@din-kanal"], ["twitch", "Twitch-kanal (valgfri)", "https://www.twitch.tv/din-kanal"]]) {
+  for (const [platform, label, placeholder] of [["youtube", "YouTube-kanal eller video (valgfri)", "https://www.youtube.com/@din-kanal eller et videolink"], ["twitch", "Twitch-kanal (valgfri)", "https://www.twitch.tv/din-kanal"]]) {
     const input = new TextInputBuilder().setCustomId(platform).setLabel(label).setStyle(TextInputStyle.Short)
       .setRequired(false).setMaxLength(200).setPlaceholder(placeholder);
     if (registration?.channels[platform]) input.setValue(registration.channels[platform].url);
@@ -111,6 +111,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         if (existing) await showGuide(interaction, existing);
         else await interaction.editReply({ content: "**Tilmeld din streaming til DZR**\n"
           + "Angiv mindst én af dine egne YouTube- eller Twitch-kanaler. Derefter får du din personlige OBS-nøgle og en enkel installationsguide i browseren.\n\n"
+          + "Du kan også indsætte et link til en af dine YouTube-videoer; DZR finder kanalen.\n\n"
           + "Opsætningen er kun synlig for dig. Du behøver ikke forbinde din Google- eller Twitch-konto.",
         components: [row(button("channels_new", userId, "Angiv streamingkanaler"))] });
       } else if (interaction.isModalSubmit() && action === "save_new") {
@@ -167,7 +168,7 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
         const existing = await service.getRegistration(userId);
         await interaction.editReply({ content: "**Tilmeld din streaming til DZR**\n"
           + "Få automatisk en besked i DZR, når din stream går live. Først angiver du din YouTube- eller Twitch-kanal. Derefter hjælper vi dig med at tilføje en lille hjælpefil i **OBS Studio**, programmet du streamer fra.\n\n"
-          + "Klik på knappen nedenfor, og indsæt linket til din egen kanal, fx `https://www.youtube.com/@din-kanal` eller `https://www.twitch.tv/din-kanal`. Udfyld mindst én kanal; den anden må gerne være tom.\n\n"
+          + "Klik på knappen nedenfor, og indsæt linket til din egen kanal, fx `https://www.youtube.com/@din-kanal` eller `https://www.twitch.tv/din-kanal`. Du kan også bruge et link til en af dine YouTube-videoer; DZR finder kanalen. Udfyld mindst én kanal; den anden må gerne være tom.\n\n"
           + "Opsætningen er kun synlig for dig. Du behøver ikke forbinde din Google- eller Twitch-konto.\n\n"
           + (existing ? "**Du er allerede tilmeldt.** Når du gemmer formularen, erstattes kanalerne og din gamle DZR-nøgle. Opdatér derefter nøglen i OBS." : "Når du har gemt formularen, får du en vejledning trin for trin."),
           components: [row(button("channels", userId, existing ? "Redigér kanaler og få ny nøgle" : "Angiv streamingkanaler"))] });

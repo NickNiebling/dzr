@@ -2,13 +2,59 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseChannel, parseEvent, youtubeLive, createToken, tokenOwner, tokenMatches, hash, announcementMessage, broadcastMessage } = require("./model");
 
-test("channel identity parsing rejects watch URLs, spoofed hosts, credentials and arbitrary endpoints", () => {
+test("channel identity parsing rejects spoofed hosts, credentials and arbitrary endpoints", () => {
   assert.deepEqual(parseChannel("youtube", "https://www.youtube.com/@DZR"), { handle: "@DZR" });
   assert.deepEqual(parseChannel("youtube", "https://youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/"), { id: "UCaaaaaaaaaaaaaaaaaaaaaa" });
   assert.deepEqual(parseChannel("twitch", "https://www.twitch.tv/DZR_Racing"), { login: "dzr_racing" });
-  for (const url of ["https://youtube.com.evil.test/@DZR", "https://evil@youtube.com/@DZR", "https://youtube.com/watch?v=abcdefghijk", "http://127.0.0.1/@DZR", "https://youtube.com:8443/@DZR", "https://youtube.com/@DZR#secret"]) {
-    assert.throws(() => parseChannel("youtube", url));
+  for (const url of ["https://youtube.com.evil.test/@DZR", "https://evil@youtube.com/@DZR", "http://127.0.0.1/@DZR", "https://youtube.com:8443/@DZR",
+    "https://youtu.be.evil.test/y_pQmA_dZuE", "https://user:password@youtu.be/y_pQmA_dZuE", "https://youtu.be:8443/y_pQmA_dZuE",
+    "https://youtube.com/redirect?q=https://youtu.be/y_pQmA_dZuE", "https://youtube.com/playlist?list=y_pQmA_dZuE", "ftp://youtube.com/@DZR"]) {
+    assert.throws(() => parseChannel("youtube", url), { code: "invalid_channel" }, url);
   }
+});
+
+test("YouTube channel sharing parameters and fragments are discarded", () => {
+  for (const url of [
+    "https://youtube.com/@dybtgonatdanmark?si=2zPFIbHT7P1uyOuV",
+    "youtube.com/@dybtgonatdanmark?si=shared&feature=shared#about",
+    "https://www.youtube.com/@dybtgonatdanmark/#about",
+    "m.youtube.com/@dybtgonatdanmark?si=shared",
+  ]) assert.deepEqual(parseChannel("youtube", url), { handle: "@dybtgonatdanmark" }, url);
+  assert.deepEqual(parseChannel("youtube", "https://youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa?si=shared#about"), { id: "UCaaaaaaaaaaaaaaaaaaaaaa" });
+  assert.deepEqual(parseChannel("youtube", "https://youtube.com/@%C3%A6%C3%B8%C3%A5?si=shared"), { handle: "@æøå" });
+  assert.deepEqual(parseChannel("youtube", "@DZR"), { handle: "@DZR" });
+  assert.deepEqual(parseChannel("youtube", "UCaaaaaaaaaaaaaaaaaaaaaa"), { id: "UCaaaaaaaaaaaaaaaaaaaaaa" });
+  assert.equal(parseChannel("youtube", "  "), null);
+});
+
+test("YouTube video links retain the video ID while discarding sharing parameters", () => {
+  for (const url of [
+    "https://youtu.be/y_pQmA_dZuE?si=0lLgbMjLZVMRm9fV",
+    "youtu.be/y_pQmA_dZuE?si=shared&t=60",
+    "https://www.youtu.be/y_pQmA_dZuE/#t=60",
+    "https://youtube.com/watch?v=y_pQmA_dZuE&si=shared",
+    "www.youtube.com/watch?si=shared&v=y_pQmA_dZuE#t=60",
+    "m.youtube.com/watch?v=y_pQmA_dZuE",
+    "https://youtube.com/shorts/y_pQmA_dZuE?feature=share",
+    "https://www.youtube.com/live/y_pQmA_dZuE/?si=shared",
+    "https://youtube.com/embed/y_pQmA_dZuE#t=60",
+  ]) assert.deepEqual(parseChannel("youtube", url), { videoId: "y_pQmA_dZuE" }, url);
+});
+
+test("malformed video links are rejected without being treated as channel handles", () => {
+  for (const url of [
+    "https://youtu.be/", "https://youtu.be/@DZR", "https://youtu.be/short", "https://youtu.be/y_pQmA_dZuEx",
+    "https://youtu.be/y_pQmA_dZuE/extra", "https://youtube.com/watch?si=shared", "https://youtube.com/watch?v=",
+    "https://youtube.com/watch?v=bad!videoid", "https://youtube.com/shorts/short", "https://youtube.com/live/y_pQmA_dZuE/extra",
+    "https://youtube.com/@%E0%A4?si=shared", "https://youtube.com/watch?v=y_pQmA_dZuE" + "x".repeat(200),
+  ]) assert.throws(() => parseChannel("youtube", url), { code: "invalid_channel" }, url);
+});
+
+test("Twitch channel validation still rejects query parameters, fragments and YouTube links", () => {
+  for (const url of ["https://twitch.tv/dzr?si=shared", "https://twitch.tv/dzr#about", "https://youtu.be/y_pQmA_dZuE", "https://youtube.com/@DZR"]) {
+    assert.throws(() => parseChannel("twitch", url), { code: "invalid_channel" }, url);
+  }
+  assert.throws(() => parseChannel("youtube", "https://twitch.tv/dzr"), { code: "invalid_channel" });
 });
 
 test("public YouTube video must actually be live, in the registered channel", () => {

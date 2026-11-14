@@ -123,8 +123,115 @@ test("channel resolution uses the handle endpoint, never a quota-expensive searc
     assert.equal(url.searchParams.get("forHandle"), "@DZR");
     return json({ items: [{ id: channel.id, snippet: { title: "DZR" } }] });
   } });
-  assert.equal((await providers.resolveChannel("youtube", "@DZR")).id, channel.id);
+  assert.deepEqual(await providers.resolveChannel("youtube", "@DZR"), { ...channel, title: "DZR" });
   await assert.rejects(providers.resolveChannel("twitch", "dzr"), { code: "provider_not_configured" });
+});
+
+test("YouTube video links resolve through videos and channels to the owning channel handle", async () => {
+  const videoId = "y_pQmA_dZuE";
+  for (const input of [
+    `https://youtu.be/${videoId}?si=0lLgbMjLZVMRm9fV`,
+    `https://www.youtube.com/watch?v=${videoId}&si=share&t=30`,
+    `https://youtube.com/shorts/${videoId}?si=share`,
+    `https://youtube.com/live/${videoId}?si=share`,
+    `https://youtube.com/embed/${videoId}?start=30`,
+  ]) {
+    const calls = [];
+    const providers = createProviders({ youtubeApiKey: "test-key" }, { fetchImpl: async (url) => {
+      calls.push(url.pathname);
+      assert.equal(url.origin, "https://www.googleapis.com");
+      assert.equal(url.searchParams.get("part"), "snippet");
+      assert.equal(url.searchParams.get("si"), null);
+      if (url.pathname.endsWith("/videos")) {
+        assert.equal(url.searchParams.get("id"), videoId);
+        return json({ items: [{ id: videoId, snippet: { channelId: channel.id } }] });
+      }
+      assert.equal(url.pathname, "/youtube/v3/channels");
+      assert.equal(url.searchParams.get("id"), channel.id);
+      assert.equal(url.searchParams.get("forHandle"), null);
+      return json({ items: [{ id: channel.id, snippet: { title: "Dybt Godnat Danmark", customUrl: "@dybtgonatdanmark" } }] });
+    } });
+    assert.deepEqual(await providers.resolveChannel("youtube", input), {
+      id: channel.id, title: "Dybt Godnat Danmark", url: "https://www.youtube.com/@dybtgonatdanmark",
+    });
+    assert.deepEqual(calls, ["/youtube/v3/videos", "/youtube/v3/channels"]);
+  }
+});
+
+test("shared channel links discard tracking parameters and keep the API's canonical handle", async () => {
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+    assert.equal(url.pathname, "/youtube/v3/channels");
+    assert.equal(url.searchParams.get("forHandle"), "@dybtgonatdanmark");
+    assert.equal(url.searchParams.get("si"), null);
+    return json({ items: [{ id: channel.id, snippet: { title: "Dybt Godnat Danmark", customUrl: "@dybtgonatdanmark" } }] });
+  } });
+  const resolved = await providers.resolveChannel("youtube", "https://youtube.com/@dybtgonatdanmark?si=2zPFIbHT7P1uyOuV");
+  assert.equal(resolved.url, "https://www.youtube.com/@dybtgonatdanmark");
+});
+
+test("channels without a valid handle retain a canonical channel-ID URL", async () => {
+  for (const customUrl of [undefined, "legacy-name", "@bad?si=tracking", "https://example.com/@DZR", "@bad/path"]) {
+    const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+      if (url.pathname.endsWith("/videos")) return json({ items: [video] });
+      return json({ items: [{ id: channel.id, snippet: { title: "DZR", customUrl } }] });
+    } });
+    assert.deepEqual(await providers.resolveChannel("youtube", `https://youtu.be/${video.id}`), { ...channel, title: "DZR" });
+  }
+});
+
+test("missing videos and channels cannot register a different or guessed channel", async () => {
+  for (const missingVideo of [true, false]) {
+    let calls = 0;
+    const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+      calls++;
+      if (url.pathname.endsWith("/videos")) return json({ items: missingVideo ? [] : [video] });
+      return json({ items: [] });
+    } });
+    await assert.rejects(providers.resolveChannel("youtube", `https://youtu.be/${video.id}`), { code: "channel_not_found" });
+    assert.equal(calls, missingVideo ? 1 : 2);
+  }
+  const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+    if (url.pathname.endsWith("/videos")) return json({ items: [video] });
+    return json({ items: [{ id: `UC${"b".repeat(22)}`, snippet: { title: "Unrelated", customUrl: "@unrelated" } }] });
+  } });
+  await assert.rejects(providers.resolveChannel("youtube", `https://youtu.be/${video.id}`), { code: "channel_not_found" });
+});
+
+test("malformed YouTube lookup responses fail without making requests with invalid channel IDs", async () => {
+  for (const body of [{}, { items: null }, { items: [{ id: video.id }] },
+    { items: [{ id: video.id, snippet: { channelId: "invalid/channel?key=secret" } }] }]) {
+    let calls = 0;
+    const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async (url) => {
+      calls++;
+      assert.equal(url.pathname, "/youtube/v3/videos");
+      return json(body);
+    } });
+    await assert.rejects(providers.resolveChannel("youtube", `https://youtu.be/${video.id}`), { code: "provider_unavailable" });
+    assert.equal(calls, 1);
+  }
+  for (const body of [{}, { items: [{ id: channel.id }] }, { items: [{ id: "bad", snippet: { title: "DZR" } }] }]) {
+    const providers = createProviders({ youtubeApiKey: "key" }, { fetchImpl: async () => json(body) });
+    await assert.rejects(providers.resolveChannel("youtube", "@DZR"), { code: "provider_unavailable" });
+  }
+});
+
+test("video lookup API failures preserve safe error codes without exposing credentials", async () => {
+  for (const stage of ["videos", "channels"]) {
+    for (const status of [403, 429, 503, "network", "json"]) {
+      const providers = createProviders({ youtubeApiKey: "do-not-leak" }, { fetchImpl: async (url) => {
+        if (!url.pathname.endsWith(`/${stage}`)) return json({ items: [video] });
+        if (status === "network") throw new Error("URL contains do-not-leak");
+        if (status === "json") return { ok: true, async json() { throw new Error("do-not-leak"); } };
+        return json({}, status);
+      } });
+      await assert.rejects(providers.resolveChannel("youtube", `https://youtu.be/${video.id}`), (error) => {
+        assert.equal(error.code, [403, 429].includes(status) ? "provider_quota" : "provider_unavailable");
+        assert.ok(!JSON.stringify(error).includes("do-not-leak"));
+        assert.ok(!error.stack.includes("do-not-leak"));
+        return true;
+      });
+    }
+  }
 });
 
 test("Twitch app tokens are cached, and only the registered live broadcaster is accepted", async () => {

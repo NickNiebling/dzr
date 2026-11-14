@@ -48,14 +48,23 @@ function parseChannel(platform, input) {
   let value = String(input || "").trim();
   if (!value) return null;
   if (value.length > 200) throw new StreamingError("invalid_channel", "Kanallinket er for langt.");
-  if (/^(?:https?:\/\/|www\.|(?:www\.)?(?:youtube\.com|twitch\.tv)\/)/i.test(value)) {
+  if (/^(?:https?:\/\/|www\.|(?:(?:www\.|m\.)?youtube\.com|(?:www\.)?(?:youtu\.be|twitch\.tv))\/)/i.test(value)) {
     let url;
     try { url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`); } catch { /* validated below */ }
-    const hosts = platform === "youtube" ? ["youtube.com", "www.youtube.com"] : ["twitch.tv", "www.twitch.tv"];
-    if (!url || !hosts.includes(url.hostname.toLowerCase()) || url.username || url.password || url.port || url.search || url.hash) {
+    const hosts = platform === "youtube" ? ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"] : ["twitch.tv", "www.twitch.tv"];
+    if (!url || !hosts.includes(url.hostname.toLowerCase()) || url.username || url.password || url.port
+        || (platform === "twitch" && (url.search || url.hash))) {
       throw new StreamingError("invalid_channel", "Brug et direkte kanallink fra youtube.com eller twitch.tv.");
     }
     try { value = decodeURIComponent(url.pathname).replace(/\/$/, "").slice(1); } catch { value = ""; }
+    if (platform === "youtube") {
+      const shortLink = ["youtu.be", "www.youtu.be"].includes(url.hostname.toLowerCase());
+      // Read watch?v= before discarding sharing parameters; only validated IDs leave this parser.
+      const videoId = shortLink ? value : value === "watch" ? url.searchParams.get("v")
+        : /^(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})$/.exec(value)?.[1];
+      if (videoId && VIDEO_ID.test(videoId)) return { videoId };
+      if (shortLink) value = "";
+    }
   }
   if (platform === "twitch" && /^[A-Za-z0-9_]{1,25}$/.test(value)) return { login: value.toLowerCase() };
   if (platform === "youtube") {
@@ -64,7 +73,7 @@ function parseChannel(platform, input) {
     if (/^@[\p{L}\p{N}_.·-]{3,30}$/u.test(value)) return { handle: value };
   }
   throw new StreamingError("invalid_channel", platform === "youtube"
-    ? "YouTube: brug https://www.youtube.com/@kanal eller et /channel/UC…-link."
+    ? "YouTube: brug et kanallink, @kanal eller et videolink fra youtube.com eller youtu.be."
     : "Twitch: brug dit kanalnavn eller https://www.twitch.tv/kanal.");
 }
 
