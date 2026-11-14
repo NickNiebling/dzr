@@ -11,7 +11,8 @@ test('guide and proxy share the configured origin; malformed origins fail closed
     upstreamScriptUrl: 'https://bot.example.test/streaming/dzr-stream.lua',
     scriptUrl: '/api/streaming/script',
   })
-  for (const value of [undefined, '', 'http://bot.test', 'https://user:secret@bot.test',
+  assert.equal(getStreamingSetupConfig({}).callbackUrl, 'https://bot-tdnm.onrender.com/streaming/obs')
+  for (const value of ['', 'http://bot.test', 'https://user:secret@bot.test',
     'https://bot.test/path', 'https://bot.test?key=secret', 'https://bot.test/#secret']) {
     assert.throws(() => getStreamingSetupConfig({ STREAMING_PUBLIC_URL: value }))
   }
@@ -31,7 +32,7 @@ test('proxy returns exactly the generic Lua bytes and sends no browser credentia
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
 })
 
-test('missing config, unavailable, empty, HTML and oversized responses cannot become scripts', async () => {
+test('invalid config, unavailable, empty, HTML and oversized responses cannot become scripts', async () => {
   const cases = [
     async () => new Response('missing', { status: 404 }),
     async () => new Response(''),
@@ -45,7 +46,11 @@ test('missing config, unavailable, empty, HTML and oversized responses cannot be
     assert.equal(response.headers.get('content-disposition'), null)
     assert.equal(response.headers.get('cache-control'), 'no-store')
   }
-  let called = false
-  assert.equal((await getStreamingScriptResponse({}, async () => { called = true; return new Response(script) })).status, 503)
-  assert.equal(called, false)
+  assert.equal((await getStreamingScriptResponse({}, async (url) => {
+    assert.equal(url, 'https://bot-tdnm.onrender.com/streaming/dzr-stream.lua')
+    return new Response(script)
+  })).status, 200)
+  assert.equal((await getStreamingScriptResponse({ STREAMING_PUBLIC_URL: '' }, async () => {
+    assert.fail('invalid configuration must not reach a server')
+  })).status, 503)
 })

@@ -15,13 +15,13 @@ function interaction(overrides = {}) {
     async showModal(value) { calls.push(["modal", value.toJSON()]); }, calls, ...overrides };
   return item;
 }
-function handler(service = {}, setupEnabled = true) { return createStreamingHandlers({ service, setupEnabled, guildId, adminRoleId: "admin-role", publicUrl: "https://bot.example.test", channelId: "1196454773558345768", getClubRoleId: async () => "club-role" }); }
+function handler(service = {}) { return createStreamingHandlers({ service, guildId, adminRoleId: "admin-role", publicUrl: "https://bot.example.test", channelId: "1196454773558345768", getClubRoleId: async () => "club-role" }); }
 const registration = { channels: { youtube: { url: "https://www.youtube.com/@DZR" } }, tokenHash: "never-show-this-hash", registrationId: "keep-registration-id" };
 const reply = (i) => JSON.parse(JSON.stringify(i.calls.find(([method]) => method === "edit")[1]));
 
 test("new command acknowledges privately before role and registration lookups", async () => {
   const i = interaction({ commandName: "streaming_add_new" });
-  const h = createStreamingHandlers({ setupEnabled: true, service: { async getRegistration(id) {
+  const h = createStreamingHandlers({ service: { async getRegistration(id) {
     assert.equal(id, userId);
     assert.equal(i.deferred, true);
     return null;
@@ -50,7 +50,7 @@ test("new enrollment returns a key privately and a generic configured guide link
   const i = interaction({ customId: `streaming:save_new:${userId}`, isModalSubmit: () => true,
     fields: { getTextInputValue: (platform) => platform === "youtube" ? "@DZR" : "" } });
   const setupUrl = "https://preview.example.test/streaming/setup";
-  const h = createStreamingHandlers({ setupEnabled: true, service: {
+  const h = createStreamingHandlers({ service: {
     async getRegistration() { return null; },
     async enroll(id, name, channels, options) {
       assert.equal(id, userId);
@@ -121,7 +121,7 @@ test("new channel errors offer a retry without exposing raw errors", async () =>
 test("a guide URL with credentials or query parameters is rejected before enrollment", async () => {
   for (const setupUrl of ["https://preview.example.test/streaming/setup?key=secret", "https://user:secret@preview.example.test/streaming/setup", "http://preview.example.test/streaming/setup"]) {
     const i = interaction({ commandName: "streaming_add_new" });
-    const h = createStreamingHandlers({ setupEnabled: true, service: { getRegistration() { assert.fail(); }, enroll() { assert.fail(); } },
+    const h = createStreamingHandlers({ service: { getRegistration() { assert.fail(); }, enroll() { assert.fail(); } },
       guildId, publicUrl: "https://bot.example.test", setupUrl, getClubRoleId: async () => "club-role" });
     await h.handle(i);
     assert.match(reply(i).content, /midlertidigt utilgængelig/);
@@ -275,15 +275,15 @@ test("Club Member role is required on command, button and modal for ordinary use
 test("missing Club Member role configuration fails closed", async () => {
   for (const commandName of ["streaming_add", "streaming_add_new"]) {
     const i = interaction({ commandName });
-    const h = createStreamingHandlers({ setupEnabled: true, service: {}, guildId, publicUrl: "https://bot.example.test" });
+    const h = createStreamingHandlers({ service: {}, guildId, publicUrl: "https://bot.example.test" });
     await h.handle(i);
     assert.match((i.calls.find(([method]) => method === "edit") || i.calls[0])[1].content, /Club Members/);
   }
 });
 
-test("legacy member commands remain available by default; overview still requires admin", () => {
+test("both member onboarding commands are available by default; overview still requires admin", () => {
   const commands = require("../../commands/slashCommands");
-  for (const name of ["streaming_add", "streaming_remove"]) {
+  for (const name of ["streaming_add", "streaming_add_new", "streaming_remove"]) {
     const command = commands.find((entry) => entry.name === name);
     assert.equal(command.default_member_permissions, undefined);
     assert.equal(command.dm_permission, false);
@@ -292,50 +292,7 @@ test("legacy member commands remain available by default; overview still require
     String(PermissionsBitField.Flags.Administrator));
 });
 
-test("browser setup defaults off and rejects stale commands, buttons and modals before any I/O", async () => {
-  for (const setupEnabled of [undefined, false, "true", "false", 1]) {
-    const accesses = [];
-    const h = createStreamingHandlers({ setupEnabled, guildId, publicUrl: "https://bot.example.test",
-      service: new Proxy({}, { get(_target, name) { accesses.push(name); throw new Error("unexpected service access"); } }),
-      getClubRoleId: async () => { accesses.push("role"); return "club-role"; },
-    });
-    for (const entry of [{ commandName: "streaming_add_new" },
-      { customId: `streaming:channels_new:${userId}`, isButton: () => true },
-      { customId: `streaming:save_new:${userId}`, isModalSubmit: () => true }]) {
-      const i = interaction(entry);
-      assert.equal(await h.handle(i), true);
-      assert.equal(i.calls.length, 1);
-      assert.equal(i.calls[0][0], "reply");
-      assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
-      assert.match(i.calls[0][1].content, /ikke aktiveret.*\/streaming_add/);
-      assert.equal(i.calls[0][1].components, undefined);
-    }
-    assert.deepEqual(accesses, []);
-  }
-});
-
-test("disabling browser onboarding preserves legacy enrollment, status and removal responses", async () => {
-  const service = {
-    async getRegistration() { return { ...registration, lastCallbackAt: 1000 }; },
-    async enroll(...args) {
-      assert.equal(args.length, 3, "legacy enrollment keeps its original rotation behavior");
-      return { registration, token: "legacy-test-key" };
-    },
-    async remove() { return true; },
-  };
-  for (const entry of [{ commandName: "streaming_add" }, { commandName: "streaming_remove" },
-    { customId: `streaming:channels:${userId}`, isButton: () => true },
-    { customId: `streaming:save:${userId}`, isModalSubmit: () => true, fields: { getTextInputValue: () => "@DZR" } },
-    { customId: `streaming:status:${userId}`, isButton: () => true },
-    { customId: `streaming:remove:${userId}`, isButton: () => true }]) {
-    const enabled = interaction(entry), disabled = interaction(entry);
-    await handler(service, true).handle(enabled);
-    await handler(service, false).handle(disabled);
-    assert.deepEqual(JSON.parse(JSON.stringify(disabled.calls)), JSON.parse(JSON.stringify(enabled.calls)));
-  }
-});
-
-test("pilot registration survives disabling onboarding and authenticates through the real HTTP callback", async (t) => {
+test("browser registration authenticates through the HTTP callback and reopens without key rotation", async (t) => {
   const { memoryDb } = require("./test-support");
   const { createStore } = require("./store");
   const { createStreamingService } = require("./service");
@@ -351,14 +308,14 @@ test("pilot registration survives disabling onboarding and authenticates through
     },
     publisher: { async send() { published++; return "message-id"; }, async reportError() {} },
   });
-  const enabled = handler(service, true);
+  const h = handler(service);
   const command = interaction({ commandName: "streaming_add_new" });
-  await enabled.handle(command);
+  await h.handle(command);
   const channels = interaction({ customId: reply(command).components[0].components[0].custom_id, isButton: () => true });
-  await enabled.handle(channels);
+  await h.handle(channels);
   const save = interaction({ customId: channels.calls[0][1].custom_id, isModalSubmit: () => true,
     fields: { getTextInputValue: p => p === "youtube" ? "@DZR" : "" } });
-  await enabled.handle(save);
+  await h.handle(save);
   const token = reply(save).content.match(/dzrs_\d+\.[A-Za-z0-9_-]{43}/)?.[0];
   assert.ok(token);
   const stored = await service.getRegistration(userId);
@@ -366,11 +323,11 @@ test("pilot registration survives disabling onboarding and authenticates through
   assert.ok(!JSON.stringify([...db.documents]).includes(token));
   assert.ok(!JSON.stringify(reply(save).components).includes(token));
 
-  const disabled = handler(service, false);
   const before = structuredClone([...db.documents]);
   const stale = interaction({ customId: save.customId, isModalSubmit: () => true });
-  await disabled.handle(stale);
-  assert.match(stale.calls[0][1].content, /ikke aktiveret/);
+  await h.handle(stale);
+  assert.match(reply(stale).content, /allerede tilmeldt/);
+  assert.ok(!JSON.stringify(stale.calls).includes(token));
   assert.deepEqual([...db.documents], before);
 
   const listener = createHttpApp({ streaming: service }).listen(0, "127.0.0.1");
@@ -386,12 +343,12 @@ test("pilot registration survives disabling onboarding and authenticates through
   assert.equal(published, 0, "a connection test must not announce publicly");
   assert.equal(verified, 0, "a connection test must not call platform discovery");
   const status = interaction({ customId: `streaming:status:${userId}`, isButton: () => true });
-  await disabled.handle(status);
+  await h.handle(status);
   assert.match(reply(status).content, /DZR har modtaget et signal fra OBS/);
   assert.ok(!JSON.stringify(status.calls).includes(token));
 
   const reopened = interaction({ commandName: "streaming_add_new" });
-  await handler(service, true).handle(reopened);
+  await handler(service).handle(reopened);
   assert.match(reply(reopened).content, /allerede tilmeldt/);
   const after = await service.getRegistration(userId);
   assert.equal(after.tokenHash, stored.tokenHash);

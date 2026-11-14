@@ -4,7 +4,6 @@ const shared = require("../../constants.json");
 const { readTestConfig, testCommands, registerTestCommands } = require("../../scripts/streaming-dev");
 
 const env = {
-  STREAMING_SETUP_ENABLED: "true",
   FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
   STREAMING_TEST_BOT_TOKEN: "test-only-token",
   STREAMING_TEST_CLIENT_ID: "222222222222222222",
@@ -13,7 +12,7 @@ const env = {
   STREAMING_TEST_CHANNEL_ID: "555555555555555555",
   STREAMING_TEST_IT_CHANNEL_ID: "666666666666666666",
   STREAMING_TEST_PUBLIC_URL: "https://test-bot.example.test",
-  STREAMING_SETUP_URL: "https://test-site.example.test/streaming/setup",
+  STREAMING_TEST_SETUP_URL: "https://test-site.example.test/streaming/setup",
 };
 const commands = ["streaming_add", "streaming_add_new", "streaming_remove", "streaming_overview", "coach"]
   .map((name) => ({ name }));
@@ -23,7 +22,7 @@ test("test config requires explicit isolated destinations and fixes the demo pro
   assert.equal(config.projectId, "demo-dzr-streaming");
   assert.equal(config.port, 3001);
   assert.equal(config.publicUrl, env.STREAMING_TEST_PUBLIC_URL);
-  assert.equal(config.setupUrl, env.STREAMING_SETUP_URL);
+  assert.equal(config.setupUrl, env.STREAMING_TEST_SETUP_URL);
   for (const key of Object.keys(env)) assert.throws(() => readTestConfig({ ...env, [key]: "" }));
 });
 
@@ -56,10 +55,10 @@ test("test URLs cannot contain credentials, query keys, fragments or unexpected 
     assert.throws(() => readTestConfig({ ...env, STREAMING_TEST_PUBLIC_URL: url }));
   }
   for (const url of ["https://test.example.test", "https://test.example.test/streaming/setup?key=secret", "https://test.example.test/streaming/setup#secret"]) {
-    assert.throws(() => readTestConfig({ ...env, STREAMING_SETUP_URL: url }));
+    assert.throws(() => readTestConfig({ ...env, STREAMING_TEST_SETUP_URL: url }));
   }
   assert.throws(() => readTestConfig({ ...env, STREAMING_TEST_PUBLIC_URL: "https://bot-tdnm.onrender.com" }));
-  assert.throws(() => readTestConfig({ ...env, STREAMING_SETUP_URL: `${shared.siteOrigin}/streaming/setup` }));
+  assert.throws(() => readTestConfig({ ...env, STREAMING_TEST_SETUP_URL: `${shared.siteOrigin}/streaming/setup` }));
 });
 
 function restFixture(overrides = {}) {
