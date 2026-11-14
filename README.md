@@ -16,46 +16,34 @@ All three already deploy from this repo. Local secrets live in `.env.local` (sit
 
 ## Sentry errors
 
-The existing Sentry project's **public DSN** is configured in
-`packages/shared/constants.json`, synced into the API and bot copies. It grants no
-read/admin access. Production deployments on Vercel, Render and Cloud Run use it
-automatically; merge and deploy this change on all three hosts to activate reporting.
-Local development and Vercel previews do not report by default.
+Production on Vercel, Render and Cloud Run automatically uses the public DSN in
+`packages/shared/constants.json` (synced into the API and bot). Deploy all three
+services to activate reporting. Local development and Vercel previews are off by default.
+Events carry a `service` tag: `website`, `website-browser`, `bot`, or `api`.
 
-Optional overrides: `SENTRY_DSN` and `SENTRY_ENVIRONMENT` on the server runtimes;
-`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` for the browser (set before
-building). An explicitly empty DSN disables that runtime, including production. Use
-both DSN variables to disable website server and browser reporting. Vercel environment
-names are passed through to the browser so preview errors stay distinct when enabled.
-No Sentry auth token is needed to send errors.
+The SDKs capture unhandled errors, React errors, Express/Flask errors, JavaScript
+`console.error` and Python error logs. Flask also reports handled HTTP 5xx responses,
+grouped by method and route, without an exception stack. Swallowed errors, Python
+`print(...)` and other runtimes' responses without an error log are not captured;
+log the error or use `captureException` / `capture_exception` where needed.
 
-Coverage: Next.js server/request and browser errors, React's global error boundary,
-`console.error` on the site and bot, bot uncaught exceptions/unhandled rejections and
-Express errors, Flask exceptions and Python `logging.error`/`logging.exception`.
-Flask also reports handled HTTP 5xx responses, grouped by method and route template;
-these generic events have no original exception stack. Swallowed errors, Python
-`print(...)`, warnings, and Next.js/bot routes that only return an error response are
-not automatically reported. Use the existing error logger or `captureException`
-(`capture_exception` in Python) when handling such errors.
+Only error reporting is enabled: no tracing, profiling, replay or Sentry Logs.
+Automatic user/request data, AI content, local variables, breadcrumbs and raw console
+arguments are excluded. Error messages and stacks still reach Sentry, so keep secrets
+and personal data out of messages and enable application-specific scrubbing in Sentry.
 
-Error sampling stays at 100%; tracing, profiling, replay and Sentry Logs are off.
-Automatic user data, headers, cookies, query parameters, request bodies, AI content,
-local variables, raw console arguments and breadcrumbs are excluded. Keep credentials,
-chat content and personal data out of error messages and configure Sentry's server-side
-data scrubbing for application-specific fields. Set `SENTRY_RELEASE` to the deployed git SHA if the host does not supply a
-release automatically.
+Optional environment overrides:
 
-Optional readable production browser stacks: set `SENTRY_UPLOAD_SOURCEMAPS=true`,
-`SENTRY_ORG`, `SENTRY_PROJECT`, and a **build-only** `SENTRY_AUTH_TOKEN` with source-map
-upload permissions on Vercel. The read-only token used by the Sentry assistant cannot
-upload source maps. Never prefix that token with `NEXT_PUBLIC_`. Source-map upload is
-disabled by default so local builds and builds without upload credentials still work.
+- Servers: `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` (deployed git SHA).
+- Browser, set before building: `NEXT_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_ENVIRONMENT`.
+- An explicitly empty DSN disables that runtime; use both DSN variables to disable
+  the website's server and browser. No auth token is needed to send errors.
+- For readable production browser stacks, set `SENTRY_UPLOAD_SOURCEMAPS=true`,
+  `SENTRY_ORG`, `SENTRY_PROJECT` and a build-only `SENTRY_AUTH_TOKEN` with upload
+  permissions. Never expose that token through `NEXT_PUBLIC_*`. Uploads are off by default.
 
-After deployment, verify an existing error or a controlled error on a staging instance
-in each runtime; check the environment, release and service tags in Sentry. Local
-regression tests use in-memory transports and send nothing to Sentry:
-`node --test apps/bot/services/observability.test.js` and
-`python -m unittest discover -s apps/api/tests -p test_observability.py`.
+CI runs bot and API smoke tests with in-memory transports. After deployment, verify
+an event from each service in Sentry, including its environment, release and service tag.
 
 ## Website (this directory)
 
