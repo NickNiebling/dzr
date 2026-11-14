@@ -1,6 +1,6 @@
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
-const { buildLadderPreviewMessage } = require("../services/ladder/ladderEmbed");
+const { buildLadderPreviewMessage, buildLadderScoutMessage } = require("../services/ladder/ladderEmbed");
 const { buildLadderAnalysisMessage } = require("../services/ladder/ladderAnalysis");
 const { buildLadderAiMessage } = require("../services/ladder/ladderAi");
 const config = require("../config/config");
@@ -126,4 +126,25 @@ async function handleLadderAi(interaction) {
   }
 }
 
-module.exports = { handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi };
+async function handleLadderScout(interaction) {
+  try {
+    const team = interaction.options.getString("team", true);
+    const opponent = interaction.options.getString("opponent", true);
+    const linked = await ladderTeams.getTeam(team);
+    if (!linked) {
+      await interaction.editReply({ content: "Vælg et DZR-hold fra listen i team. Listen kommer fra /ladder_link." });
+      return;
+    }
+    const [homeTeam, awayTeam] = await Promise.all([ladderClient.resolveTeam(linked.name), ladderClient.resolveTeam(opponent)]);
+    if (String(homeTeam.id) === String(awayTeam.id)) {
+      await interaction.editReply({ content: "Vælg to forskellige hold; team og opponent er det samme hold." });
+      return;
+    }
+    const [home, away] = await Promise.all([ladderClient.getRoster(homeTeam), ladderClient.getRoster(awayTeam)]);
+    await interaction.editReply(await buildLadderScoutMessage(home, away));
+  } catch (error) {
+    await replyError(interaction, "ladder_scout", error);
+  }
+}
+
+module.exports = { handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout };

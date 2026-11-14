@@ -13,7 +13,9 @@ import requests
 LADDER_BASE = "https://ladder.cycleracing.club"
 
 # Only these pages can be fetched, so /ladder_page cannot be used as an open proxy.
-ALLOWED_PATH = re.compile(r"/(matchlist/fixtures/[^/?#]+|fixture/\d+|rSignups/\d+)")
+ALLOWED_PATH = re.compile(
+    r"/(summary|team/n/[1-9][0-9]*|profile/[1-9][0-9]*|matchlist/fixtures/[^/?#]+|fixture/\d+|rSignups/\d+)"
+)
 _FIXTURE_PATH = re.compile(r"^/fixture/(\d+)$")
 
 _SIGN_IN_FORM = re.compile(r'<form[^>]+id="signin"', re.I)

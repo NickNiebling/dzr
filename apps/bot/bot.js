@@ -31,6 +31,7 @@ const { createStreamingHandlers, isStreamingInteraction } = require("./handlers/
 const shared = require("./constants.json");
 const { loadZwiftCatalog, startZwiftCatalogRefresh } = require("./services/zwiftCatalog");
 const { getClubRoleId } = require("./services/onboardingStatus");
+const { warmCatalog: warmLadderCatalog } = require("./services/ladder/ladderClient");
 
 // Create Discord Bot Client
 const client = new Client({ 
@@ -199,6 +200,7 @@ client.on("voiceStateUpdate", handleVoiceStateUpdate);
 // Bot ready event
 client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  warmLadderCatalog();
   
   // Set bot status/presence
   client.user.setPresence({

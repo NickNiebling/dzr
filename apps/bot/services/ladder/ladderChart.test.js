@@ -59,3 +59,11 @@ test("renders even when teams have no riders", render, async () => {
   const empty = { ...fixture, home: { name: "Home", riders: [] }, away: { name: "Away", riders: [] } };
   assert.equal(readPng(await buildLadderChart(empty, null)).width, 960);
 });
+
+test("scout renders all 9 versus 11 roster rows without a match or route", render, async () => {
+  const roster = (prefix, count) => Array.from({ length: count }, (_, index) => ({ name: `${prefix} ${index + 1}`, zwiftId: index + 1, wkg: {} }));
+  const comparison = { scout: true, home: { name: "DZR", riders: roster("DZR", 9) }, away: { name: "Opponent", riders: roster("Opponent", 11) } };
+  const png = readPng(await buildLadderChart(comparison, "DZR"));
+  assert.equal(png.width, 960);
+  assert.equal(png.height, 1910);
+});

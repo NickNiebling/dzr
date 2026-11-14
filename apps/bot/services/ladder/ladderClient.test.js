@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { refreshSignups, refreshFixture, describeFailure, getFixtureStart } = require("./ladderClient");
+const { refreshSignups, refreshFixture, describeFailure, getFixtureStart, getRoster, warmCatalog, autocomplete, resolveTeam } = require("./ladderClient");
 
 const MIN = 60 * 1000;
 
@@ -63,4 +63,70 @@ test("describeFailure names the API status, a timeout or a missing connection", 
   assert.equal(describeFailure({ response: { status: 401 } }), "API svarede 401");
   assert.equal(describeFailure({ code: "ECONNABORTED" }), "API svarede ikke i tide");
   assert.equal(describeFailure({ code: "ENOTFOUND" }), "ingen forbindelse til API");
+});
+
+test("scout catalog shares refreshes, caches for 15 minutes and resolves only unambiguous names or valid links", async (t) => {
+  const axios = require("axios");
+  const config = require("../../config/config");
+  const original = config.contentApi;
+  config.contentApi = { baseUrl: "http://localhost", apiKey: "test" };
+  t.after(() => { config.contentApi = original; });
+  let now = 1000, calls = 0, finish;
+  t.mock.method(Date, "now", () => now);
+  const teams = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Team ${i}` }));
+  teams.push({ id: 501, name: "Example Home" });
+  const html = `const playonTeams = ${JSON.stringify([...teams, teams[0]])};`;
+  const roster = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  const unlisted = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-10.html`, "utf8");
+  const teamReads = [];
+  t.mock.method(axios, "get", async (_url, { params }) => {
+    if (params.path !== "/summary") {
+      teamReads.push(params.path);
+      return { data: params.path === "/team/n/502" ? unlisted : roster };
+    }
+    calls += 1;
+    return new Promise((resolve) => { finish = () => resolve({ data: html }); });
+  });
+  warmCatalog();
+  assert.deepEqual(autocomplete("Team"), []);
+  const pending = resolveTeam("Team 0");
+  assert.equal(calls, 1);
+  finish();
+  assert.equal((await pending).id, "1");
+  assert.equal(autocomplete("").length, 25);
+  assert.equal(autocomplete("Team 0").length, 1);
+  await assert.rejects(resolveTeam("Team"), /Flere Ladder-hold/);
+  now += 15 * MIN - 1;
+  autocomplete("");
+  assert.equal(calls, 1);
+  now += 1;
+  autocomplete("");
+  const refreshed = resolveTeam("Team 0");
+  assert.equal(calls, 2);
+  finish();
+  await refreshed;
+  for (const path of ["teamView/Example%20Home", "matchlist/fixtures/Example%20Home"]) {
+    assert.equal((await resolveTeam(`https://ladder.cycleracing.club/${path}`)).id, "501");
+  }
+  assert.deepEqual(teamReads, []);
+  assert.equal((await resolveTeam("https://ladder.cycleracing.club/team/n/502")).id, "502");
+  assert.deepEqual(teamReads, ["/team/n/502"]);
+  await assert.rejects(resolveTeam("https://example.com/team/n/501"), /ladder.cycleracing.club/);
+  await assert.rejects(resolveTeam("/team/n/999"), /forventede/);
+});
+
+test("scout fetches complete rosters each time, deduplicates verified identities and retains unknown members", async () => {
+  const html = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  let teamReads = 0;
+  const fetchPage = async (path) => {
+    if (path.startsWith("/team/")) { teamReads += 1; return html; }
+    return ["/profile/50100", "/profile/50101"].includes(path) ? '<a href="https://zwiftpower.com/profile.php?z=123">ZP</a>' : "";
+  };
+  const roster = await getRoster({ id: "501" }, { fetchPage });
+  assert.equal(roster.riders.length, 10);
+  assert.equal(roster.riders.filter((rider) => rider.zwiftId === 123).length, 1);
+  assert.equal(roster.riders.filter((rider) => !rider.zwiftId).length, 9);
+  await getRoster({ id: "501" }, { fetchPage });
+  assert.equal(teamReads, 2);
+  await assert.rejects(getRoster({ id: "501" }, { fetchPage: async (path) => path.startsWith("/team/") ? html : "" }), /Ingen ryttere.*Zwift-id/);
 });

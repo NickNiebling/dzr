@@ -365,7 +365,7 @@ function drawHeader(ctx, fixture, o, info) {
   else if (fixture.distance) parts.push(`${(fixture.distance / 1000).toFixed(1)} km`);
   ctx.font = `24px ${FONT}`;
   ctx.fillStyle = C.text;
-  ctx.fillText(parts.length ? parts.join("  |  ") : "Rute ikke oplyst", PAD, 108);
+  ctx.fillText(fixture.scout ? `${o.us.riders.length} mod ${o.them.riders.length} ryttere i truppen` : parts.length ? parts.join("  |  ") : "Rute ikke oplyst", PAD, 108);
   ctx.fillStyle = C.muted;
   ctx.fillText(fixture.start ? formatStart(fixture.start) : "", PAD, 142);
 }

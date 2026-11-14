@@ -1,4 +1,4 @@
-const { AttachmentBuilder, EmbedBuilder } = require("discord.js");
+const { AttachmentBuilder, EmbedBuilder, escapeMarkdown } = require("discord.js");
 const { buildLadderChart } = require("./ladderChart");
 const { describeProfile, loadMatchProfile } = require("./routeInfo");
 const { placePowerups } = require("../powerupPlaces");
@@ -124,4 +124,36 @@ async function buildLadderPreviewMessage(fixture, ourTeam = null) {
   }
 }
 
-module.exports = { buildLadderPreviewEmbed, buildLadderPreviewMessage, accentColor };
+// Scout compares full current rosters using the same power cache and chart as the match preview.
+async function buildLadderScoutMessage(home, away, { enrich = enrichRiders, render = buildLadderChart } = {}) {
+  const teams = [home, away];
+  await enrich([...home.riders, ...away.riders]);
+  const counts = (predicate) => teams.map((team) => `${team.name}: ${team.riders.filter(predicate).length}`).join("\n");
+  const embed = new EmbedBuilder()
+    .setTitle(clip(`Ladder scout: ${home.name} mod ${away.name}`, 256))
+    .setURL(home.url)
+    .setDescription(teams.map((team) => `[${escapeMarkdown(team.name)}](${team.url}): **${team.riders.length} ryttere i truppen**`).join("\n"))
+    .setColor(0xff6600)
+    .addFields(
+      { name: "Mangler Zwift-id", value: counts((rider) => !rider.zwiftId) },
+      { name: "Mangler power", value: counts((rider) => !DURATIONS.some((d) => Number.isFinite(rider.wkg[d.seconds]) && rider.wkg[d.seconds] > 0)) }
+    )
+    .setFooter({ text: "Hele aktuelle trupper | Power: ZwiftPower (90 dage), ellers Ladder | ZRS: Zwift" });
+  try {
+    const png = await render({ home, away, scout: true }, home.name);
+    embed.setImage("attachment://scout.png");
+    return { content: "", embeds: [embed], files: [new AttachmentBuilder(png, { name: "scout.png" })], allowedMentions: { parse: [] } };
+  } catch (error) {
+    console.warn("[ladderEmbed] Scout rendering failed, using text:", error.message);
+    // Keep every rider in the fallback even when a full roster exceeds Discord's embed limits.
+    const text = teams.map((team) => `${team.name}: ${team.riders.length} ryttere i truppen\n${team.url}\n${riderLines(team)}`).join("\n\n");
+    return {
+      content: "Grafikken kunne ikke tegnes. Hele sammenligningen er vedhæftet som tekst.",
+      embeds: [embed],
+      files: [new AttachmentBuilder(Buffer.from(text, "utf8"), { name: "scout.txt" })],
+      allowedMentions: { parse: [] },
+    };
+  }
+}
+
+module.exports = { buildLadderPreviewEmbed, buildLadderPreviewMessage, buildLadderScoutMessage, accentColor };

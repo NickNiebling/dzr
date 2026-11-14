@@ -119,4 +119,152 @@ function parseFixture(html) {
   };
 }
 
-module.exports = { parseFixtureList, parseFixture, POWER_SECONDS };
+const LADDER_BASE = "https://ladder.cycleracing.club";
+function parserError(message) {
+  return Object.assign(new Error(message), { userMessage: message });
+}
+
+// Read embedded JSON without running any of the surrounding JavaScript.
+function embeddedArray(html, name) {
+  const escapedName = name.replaceAll(".", "\\.");
+  const assignment = new RegExp(`\\b${escapedName}\\s*=\\s*\\[`).exec(html);
+  if (!assignment) return null;
+  const start = assignment.index + assignment[0].length - 1;
+  let depth = 0, quoted = false, escaped = false;
+  for (let i = start; i < html.length; i++) {
+    const char = html[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "[") depth++;
+    else if (char === "]" && --depth === 0) {
+      try { return JSON.parse(html.slice(start, i + 1)); } catch { break; }
+    }
+  }
+  throw parserError("Ladder-siden har ugyldig eller afkortet indlejret JSON.");
+}
+
+function plainText(value) {
+  return decodeEntities(String(value || "").replace(/<[^>]*>/g, "")).trim();
+}
+
+function attribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return match ? decodeEntities(match[1] ?? match[2] ?? match[3]) : null;
+}
+
+function positiveId(value) {
+  if (!/^\d+$/.test(String(value ?? ""))) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+function rosterError(detail) {
+  return parserError(`Ladder-truppen kunne ikke verificeres: ${detail}`);
+}
+
+function parseRosterPage(input) {
+  const html = String(input || "").replace(/<!--[\s\S]*?-->/g, "");
+  const id = positiveId((html.match(/\b(?:const|let|var)\s+TEAMID\s*=\s*(\d+)\s*;/) || [])[1]);
+  const name = plainText((html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i) || [])[1]);
+  if (!id || !name) throw rosterError("holdets id eller navn mangler (ukendt rosterformat).");
+  const pane = /<div\b[^>]*\bid\s*=\s*["']pane-roster["'][^>]*>/i.exec(html);
+  if (!pane) throw rosterError("den aktuelle roster-sektion mangler (ukendt rosterformat).");
+  const afterPane = html.slice(pane.index + pane[0].length);
+  // Subsequent team tabs contain match history, which must never become members.
+  const nextPane = /<div\b[^>]*\bid\s*=\s*["']pane-(?!roster\b)[^"']+["'][^>]*>/i.exec(afterPane);
+  const section = nextPane ? afterPane.slice(0, nextPane.index) : afterPane;
+  if (/\b(?:pagination|paginator|paginate|paging|loadMore|infiniteScroll|serverSide)\b|\brel\s*=\s*["']next["']|[?&](?:page|offset|cursor)=/i.test(section)) {
+    throw rosterError("medlemslisten er pagineret eller indlæses i flere dele; det komplette format er ikke verificeret.");
+  }
+  // Verified on both complete live rosters: Ladder.roster is the authoritative
+  // current membership; the existing table parser supplies 90-day power only.
+  const members = embeddedArray(html, "Ladder.roster");
+  if (!members) throw rosterError("den indlejrede medlemsliste mangler (ukendt rosterformat).");
+  if (!members.length) throw rosterError("holdet har ingen medlemmer med brugbare id'er.");
+  if (members.some((member) => !member || typeof member !== "object" || Number(member.LadderTeam) !== id)) {
+    throw rosterError("medlemslisten kan ikke afgrænses til holdets nuværende medlemmer.");
+  }
+  if (members.some((member) => typeof member.ZPName !== "string" || !member.ZPName.trim())) {
+    throw rosterError("et medlem mangler navn (ukendt rosterformat).");
+  }
+  const tablePower = new Map(parseSignups(section).riders.map((rider) => [rider.zwiftId, rider.wkg]));
+  const riders = members.map((member) => ({
+    name: member.ZPName.trim(), profileId: positiveId(member.id), zwiftId: null,
+    wkg: tablePower.get(positiveId(member.id)) || {},
+  }));
+  return { id, name, riders };
+}
+
+// A Ladder profile id is not assumed to be a Zwift id. Only explicit external
+// profile links provide identity; Zwift's UUID athlete URLs cannot supply one.
+function parseProfileIdentity(input) {
+  const html = String(input || "").replace(/<!--[\s\S]*?-->/g, "");
+  const ids = new Set();
+  for (const [anchor] of html.matchAll(/<a\b[^>]*>/gi)) {
+    const href = attribute(anchor, "href");
+    if (!href) continue;
+    let url;
+    try { url = new URL(href); } catch { continue; }
+    if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+    const host = url.hostname.toLowerCase();
+    let id = null;
+    if ((host === "zwiftpower.com" || host === "www.zwiftpower.com") && url.pathname === "/profile.php") {
+      id = positiveId(url.searchParams.get("z"));
+    } else if (["zwift.com", "www.zwift.com", "my.zwift.com"].includes(host)) {
+      id = positiveId((url.pathname.match(/^\/(?:athlete|profile)\/(\d+)\/?$/) || [])[1]);
+    }
+    if (id) ids.add(id);
+  }
+  if (ids.size > 1) throw rosterError("profilen har modstridende eksplicitte Zwift-id'er.");
+  return ids.size ? [...ids][0] : null;
+}
+
+function teamReference(id, name) {
+  const path = `/team/n/${Number(id)}`;
+  return { id: String(Number(id)), name, path, url: `${LADDER_BASE}${path}` };
+}
+
+function parseSummaryTeams(html) {
+  const ranked = embeddedArray(html, "defaultLadderData");
+  const all = embeddedArray(html, "playonTeams");
+  if (!ranked && !all) throw parserError("Ladders holdkatalog har et ukendt format: holdlisten mangler i /summary.");
+  const teams = new Map();
+  for (const item of [...(all || []), ...(ranked || [])]) {
+    const team = item?.data || item;
+    if (!team || !positiveId(team.id) || typeof team.name !== "string" || !team.name.trim()) {
+      throw parserError("Ladders holdkatalog indeholder en ugyldig holdidentitet.");
+    }
+    teams.set(String(Number(team.id)), teamReference(team.id, team.name.trim()));
+  }
+  if (!teams.size) throw parserError("Ladders holdkatalog er tomt.");
+  return [...teams.values()].sort((a, b) => a.name.localeCompare(b.name, "da") || Number(a.id) - Number(b.id));
+}
+
+function parseTeamInput(input) {
+  const text = String(input || "").trim();
+  if (!text) throw parserError("Vælg en modstander ved navn eller holdlink.");
+  if (!/^(?:https?:\/\/|\/)/i.test(text)) {
+    if (/^[a-z][\w+.-]*:\/\//i.test(text)) throw parserError("Brug et holdlink på ladder.cycleracing.club.");
+    return { name: text };
+  }
+  let url;
+  try { url = new URL(text, LADDER_BASE); } catch { throw parserError("Holdlinket er ugyldigt."); }
+  if (!["https:", "http:"].includes(url.protocol) || url.host !== "ladder.cycleracing.club" || url.username || url.password) {
+    throw parserError("Brug et holdlink på ladder.cycleracing.club.");
+  }
+  const numeric = /^\/team\/n\/([1-9]\d*)\/?$/.exec(url.pathname);
+  if (numeric && positiveId(numeric[1])) return { id: String(Number(numeric[1])), path: `/team/n/${Number(numeric[1])}` };
+  const named = /^\/(teamView|matchlist\/fixtures)\/([^/]+)\/?$/.exec(url.pathname);
+  if (named) {
+    let name;
+    try { name = decodeURIComponent(named[2]).trim(); } catch { throw parserError("Holdlinket har ugyldig tegnkodning."); }
+    // Named links use the same catalog lookup as typed names; only numeric team pages are fetched.
+    if (name) return { name };
+  }
+  throw parserError("Brug et Ladder-holdlink med /team/n/{id}, /teamView/{navn} eller /matchlist/fixtures/{navn}.");
+}
+
+module.exports = { parseFixtureList, parseFixture, POWER_SECONDS, parseRosterPage, parseProfileIdentity, parseSummaryTeams, parseTeamInput, teamReference };
