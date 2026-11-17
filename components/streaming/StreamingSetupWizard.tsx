@@ -3,7 +3,7 @@
 import React from 'react'
 import {
   Alert, AlertIcon, Box, Button, Checkbox, Container, Heading, HStack,
-  Image, Progress, SimpleGrid, Stack, Text, type ButtonProps,
+  Image, Progress, SimpleGrid, Stack, Text,
 } from '@chakra-ui/react'
 import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
 import {
@@ -21,37 +21,6 @@ const obsSteps = [
   { title: 'Klik på plusset', image: 'add-script', text: 'Klik på + nederst til venstre i Scripts-vinduet.' },
   { title: 'Vælg DZR-filen', image: 'select-file', text: 'Find den DZR-mappe, du brugte i trin 2. Vælg dzr-stream.lua, og klik Åbn / Open.' },
 ]
-
-const buttonFocus = { outline: '2px solid', outlineColor: 'white', outlineOffset: '2px', boxShadow: 'none' }
-const buttonDisabled = { color: 'gray.400', bg: 'gray.800', opacity: 1, cursor: 'not-allowed' }
-const primaryButton = {
-  color: 'white',
-  bg: 'red.600',
-  _hover: { bg: 'red.700' },
-  _active: { bg: 'red.800' },
-  _focusVisible: buttonFocus,
-  _disabled: buttonDisabled,
-  _loading: { color: 'white', bg: 'red.600', cursor: 'wait' },
-} satisfies ButtonProps
-const outlineButton = {
-  variant: 'outline',
-  color: 'white',
-  bg: 'transparent',
-  borderColor: 'gray.500',
-  _hover: { bg: 'gray.700' },
-  _active: { bg: 'gray.600' },
-  _focusVisible: buttonFocus,
-  _disabled: { ...buttonDisabled, borderColor: 'gray.600' },
-} satisfies ButtonProps
-const linkButton = {
-  variant: 'link',
-  color: 'gray.300',
-  bg: 'transparent',
-  _hover: { color: 'white', textDecoration: 'underline' },
-  _active: { color: 'white' },
-  _focusVisible: buttonFocus,
-  _disabled: { color: 'gray.500', opacity: 1, cursor: 'not-allowed', textDecoration: 'none' },
-} satisfies ButtonProps
 
 export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/script' }: Props) {
   const [step, setStep] = React.useState(1)
@@ -183,14 +152,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             <Stack spacing={3}>
               <Heading size="md">Fortsæt på computeren med OBS</Heading>
               <Text>Du har åbnet guiden fra en mobil. Guiden gemmer en fil, som du skal bruge på din computer. Vi anbefaler derfor, at du åbner guiden på den Windows-computer eller Mac, hvor du har OBS installeret.</Text>
-              <Button
-                size="lg" color="white" bg="orange.600" _hover={{ bg: 'orange.700' }}
-                _active={{ bg: 'orange.800' }} _focusVisible={buttonFocus}
-                onClick={() => copy(new URL('/streaming/setup', window.location.origin).href, 'Guideadressen er kopieret. Send den til din OBS-computer.')}
-              >
+              <Button size="lg" colorScheme="orange" onClick={() => copy(new URL('/streaming/setup', window.location.origin).href, 'Guideadressen er kopieret. Send den til din OBS-computer.')}>
                 Kopiér guideadresse
               </Button>
-              <Button {...linkButton} color="white" whiteSpace="normal" onClick={() => setMobileDismissed(true)}>Vis guiden alligevel</Button>
+              <Button variant="link" color="white" whiteSpace="normal" onClick={() => setMobileDismissed(true)}>Vis guiden alligevel</Button>
             </Stack>
           </Box>
         )}
@@ -216,9 +181,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                       key={value} onClick={() => setOs(value)} aria-pressed={os === value}
                       height="120px" fontSize="xl" color="white" borderWidth="2px"
                       borderColor={os === value ? 'red.400' : 'gray.600'}
-                      bg={os === value ? 'red.900' : 'gray.800'}
-                      _hover={{ bg: os === value ? 'red.800' : 'gray.700' }}
-                      _active={{ bg: os === value ? 'red.700' : 'gray.600' }} _focusVisible={buttonFocus}
+                      bg={os === value ? 'red.900' : 'gray.800'} _hover={{ bg: 'gray.700' }}
                       leftIcon={value === 'windows' ? <FaWindows size={32} /> : <FaApple size={36} />}
                     >{value === 'windows' ? 'Windows' : 'macOS'}</Button>
                   ))}
@@ -234,7 +197,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 {supportsPicker && (
                   <Stack spacing={4}>
                     <Text color="gray.300">Klik på <strong>Installér DZR OBS-script</strong>, og vælg <strong>Dokumenter / Documents</strong> i vinduet, der åbner. Vi opretter selv DZR-mappen i den mappe, du vælger, og gemmer filen dér. Du skal kun vælge Dokumenter og tillade adgang.</Text>
-                    <Button {...primaryButton} size="lg" minH="56px" whiteSpace="normal" onClick={install} isLoading={busy} loadingText="Arbejder…">
+                    <Button colorScheme="red" size="lg" minH="56px" whiteSpace="normal" onClick={install} isLoading={busy} loadingText="Arbejder…">
                       {installation?.status === 'conflict' ? 'Vælg en anden mappe' : 'Installér DZR OBS-script'}
                     </Button>
                   </Stack>
@@ -244,9 +207,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                     <Heading as="h2" size="sm">{supportsPicker ? 'Problemer med installation herover?' : 'Hent filen til din computer'}</Heading>
                     <Text color="gray.300">Hent filen, og vælg selv en placering på din computer. Brug en fast mappe, som du ikke sletter senere, da filen skal blive liggende, efter den er tilføjet i OBS.</Text>
                     <Button
-                      {...(supportsPicker ? outlineButton : primaryButton)}
                       leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
-                      size="lg" minH="52px" whiteSpace="normal"
+                      variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
+                      _hover={supportsPicker ? { bg: 'gray.700' } : undefined}
+                      color="white" size="lg" minH="52px" whiteSpace="normal"
                     >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
                   </Stack>
                 )}
@@ -318,9 +282,9 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 {finished ? (
                   <Text color="green.300" fontWeight="bold" role="status">Guiden er afsluttet. Du kan lukke denne side.</Text>
                 ) : (
-                  <Button {...primaryButton} size="lg" minH="56px" onClick={() => setFinished(true)}>Afslut uden test</Button>
+                  <Button colorScheme="red" size="lg" minH="56px" onClick={() => setFinished(true)}>Afslut uden test</Button>
                 )}
-                <Button {...outlineButton} size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
+                <Button color="white" variant="outline" _hover={{ bg: 'gray.700' }} size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
                   {showTest ? 'Skjul forbindelsestest' : 'Vis forbindelsestest – valgfrit'}
                 </Button>
                 {showTest && (
@@ -330,7 +294,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                     <Text><strong>3.</strong> Kontrollér, at tidspunktet for signalet passer med din nye test.</Text>
                     <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i DZR key, og prøv igen. Find statusknappen i din private Discord-besked fra /streaming_add.</Text>
                     <Text color="gray.300" fontSize="sm">Testen sender ingen offentlig besked. En annonce kræver, at din offentlige livestream er verificeret.</Text>
-                    {!finished && <Button {...primaryButton} size="lg" onClick={() => setFinished(true)}>Afslut guiden</Button>}
+                    {!finished && <Button colorScheme="red" size="lg" onClick={() => setFinished(true)}>Afslut guiden</Button>}
                   </Stack>
                 )}
               </Stack>
@@ -341,19 +305,19 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step < 5 && (
               <Stack direction={{ base: 'column-reverse', sm: 'row' }} spacing={3} pt={2}>
-                {step > 1 && <Button {...outlineButton} size="lg" onClick={back} isDisabled={busy}>Tilbage</Button>}
+                {step > 1 && <Button color="white" size="lg" variant="outline" _hover={{ bg: 'gray.700' }} onClick={back} isDisabled={busy}>Tilbage</Button>}
                 {(step !== 2 || fileReceived) && (
                   <Button
-                    {...primaryButton} size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
+                    colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
                     isDisabled={busy || (step === 1 && !os) || (step === 2 && !fileReady)}
                   >{step === 2 ? 'Filen er klar – fortsæt' : step === 4 ? 'Jeg har udfyldt OBS' : 'Fortsæt'}</Button>
                 )}
               </Stack>
             )}
-            {step === 5 && <Button {...linkButton} alignSelf="start" onClick={back}>Tilbage til indstillingerne</Button>}
+            {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={back}>Tilbage til indstillingerne</Button>}
           </Stack>
         </Box>
-        {os && <Button {...linkButton} color="gray.400" alignSelf="start" isDisabled={busy} onClick={() => goTo(1)}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
+        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={() => goTo(1)}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
       </Stack>
     </Container>
   )
