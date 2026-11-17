@@ -55,6 +55,31 @@ test("handler rejects teams outside ladder_link and the same resolved team befor
   assert.equal(load.mock.callCount(), 0);
 });
 
+test("scout resolves Chonky Complainers and Bredden offline and reports rejected API login", async (t) => {
+  const axios = require("axios");
+  const config = require("../../config/config");
+  const original = config.contentApi;
+  config.contentApi = { baseUrl: "https://api.example.invalid", apiKey: "test" };
+  t.after(() => { config.contentApi = original; });
+  t.mock.method(ladderTeams, "getTeam", async () => ({ name: "Chonky Complainers" }));
+  t.mock.method(console, "error", () => {});
+  const paths = [];
+  t.mock.method(axios, "get", async (_url, { params }) => {
+    paths.push(params.path);
+    throw Object.assign(new Error("Request failed"), {
+      response: { status: 502, data: JSON.stringify({ code: "ladder_login_failed", error: "Ladder login failed" }) },
+    });
+  });
+  let reply;
+  await handleLadderScout({
+    options: { getString: (name) => name === "team" ? "Chonky Complainers" : "https://ladder.cycleracing.club/team/n/655" },
+    editReply: async (message) => { reply = message; },
+  });
+  assert.deepEqual(paths.sort(), ["/team/n/655", "/team/n/91"]);
+  assert.match(reply.content, /Ladder afviste login.*administrator/);
+  assert.doesNotMatch(reply.content, /502|Prøv igen senere/);
+});
+
 test("rendering failure keeps every roster member and power value in the text attachment", async () => {
   const home = team(82, "DZR", 35);
   const away = team(102, "Opponent", 40);

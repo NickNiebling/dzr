@@ -90,7 +90,7 @@ jobs:
         run: npm run eval:dry
 
   api-observability:
-    name: API (Sentry smoke tests)
+    name: API (Sentry + Ladder tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +102,7 @@ jobs:
       - run: python -m pip install -r apps/api/requirements.txt
       # In-memory transport: no Firebase credentials or external Sentry delivery.
       - run: python -m unittest discover -s apps/api/tests -p test_observability.py
+      - run: python -m unittest discover -s apps/api/tests -p test_ladder.py
 
   shared-sync:
     name: Shared copies are in sync

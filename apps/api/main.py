@@ -4,7 +4,8 @@ import inspect
 import logging
 import json
 from pathlib import Path
-from flask import Flask, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, request, jsonify, session, redirect, url_for, flash, g
+import sentry_sdk
 from dotenv import load_dotenv
 from functools import wraps
 import requests
@@ -1195,8 +1196,17 @@ def ladder_page():
         body, content_type = ladder.get_client().get_page(path)
         return app.response_class(body, mimetype=content_type.split(';')[0].strip())
     except Exception as e:
-        logging.error(f"Ladder page {path} failed: {e}")
-        return jsonify({"error": str(e)}), 502
+        failure = e if isinstance(e, ladder.LadderError) else ladder.LadderError("ladder_error", phase="page")
+        context = {"requested_path": ladder.diagnostic_path(path), **failure.context}
+        if not isinstance(e, ladder.LadderError):
+            context["exception_type"] = type(e).__name__
+        with sentry_sdk.new_scope() as scope:
+            scope.set_context("ladder", context)
+            scope.set_tag("ladder.error_code", failure.code)
+            logging.error("Ladder page failed: %s", failure.code, extra={"ladder": context})
+        # The structured error log already reports this handled failure to Sentry.
+        g.sentry_exception_captured = True
+        return jsonify(failure.payload()), 502
 
 @app.route('/generate_and_post_commentary/<int:club_id>', methods=['POST'])
 def generate_and_post_commentary(club_id):

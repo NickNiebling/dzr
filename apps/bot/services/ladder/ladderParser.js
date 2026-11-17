@@ -10,7 +10,12 @@ function decodeEntities(text) {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, code) => {
+      const point = code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
+    });
 }
 
 // Returns [{ id, home, away, route }] from /matchlist/fixtures/{team}.
@@ -228,16 +233,37 @@ function teamReference(id, name) {
 }
 
 function parseSummaryTeams(html) {
-  const ranked = embeddedArray(html, "defaultLadderData");
-  const all = embeddedArray(html, "playonTeams");
-  if (!ranked && !all) throw parserError("Ladders holdkatalog har et ukendt format: holdlisten mangler i /summary.");
+  const source = String(html || "").replace(/<!--[\s\S]*?-->/g, "");
   const teams = new Map();
-  for (const item of [...(all || []), ...(ranked || [])]) {
-    const team = item?.data || item;
-    if (!team || !positiveId(team.id) || typeof team.name !== "string" || !team.name.trim()) {
+  const hasClass = (tag, name) => (attribute(tag, "class") || "").split(/\s+/).includes(name);
+  const add = (rawId, rawName) => {
+    const id = positiveId(rawId);
+    const name = plainText(rawName);
+    if (!id || !name) {
       throw parserError("Ladders holdkatalog indeholder en ugyldig holdidentitet.");
     }
-    teams.set(String(Number(team.id)), teamReference(team.id, team.name.trim()));
+    const previous = teams.get(String(id));
+    if (previous && previous.name !== name) {
+      throw parserError("Ladders holdkatalog indeholder modstridende navne for samme hold-id.");
+    }
+    teams.set(String(id), teamReference(id, name));
+  };
+  // The public summary renders regional and global rankings as HTML, often listing each team twice.
+  let rankedRows = 0;
+  for (const [, tag, row] of source.matchAll(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi)) {
+    if (!hasClass(tag, "ladderRow")) continue;
+    rankedRows += 1;
+    const cell = [...row.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/gi)]
+      .find(([, attributes]) => hasClass(attributes, "highlightBold"));
+    add(attribute(tag, "data-team-global-id") || attribute(tag, "data-team-id"), cell?.[2]);
+  }
+  if (!rankedRows) throw parserError("Ladders holdkatalog har et ukendt format: holdlisten mangler i /summary.");
+  // Fixtures also expose current teams that have not yet appeared in the rankings.
+  for (const [, tag, name] of source.matchAll(/<span\b([^>]*)>([\s\S]*?)<\/span>/gi)) {
+    if (!hasClass(tag, "teamOpener")) continue;
+    const id = attribute(tag, "data-team-id");
+    // Historic public result rows have teamOpener names without an id; they are not identities.
+    if (id !== null) add(id, name);
   }
   if (!teams.size) throw parserError("Ladders holdkatalog er tomt.");
   return [...teams.values()].sort((a, b) => a.name.localeCompare(b.name, "da") || Number(a.id) - Number(b.id));
