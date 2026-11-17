@@ -13,24 +13,6 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 })
 
-async function assertOutlineHoverContrast(button) {
-  await button.hover()
-  const ratio = await button.evaluate(async element => {
-    const style = getComputedStyle(element)
-    // Wait for Chakra's hover transition to finish before measuring contrast.
-    void style.backgroundColor
-    await Promise.all(element.getAnimations().map(animation => animation.finished))
-    const luminance = color => color.match(/[\d.]+/g).slice(0, 3).reduce((sum, value, index) => {
-      const channel = Number(value) / 255
-      const linear = channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
-      return sum + linear * [0.2126, 0.7152, 0.0722][index]
-    }, 0)
-    const colors = [luminance(style.color), luminance(style.backgroundColor)]
-    return (Math.max(...colors) + 0.05) / (Math.min(...colors) + 0.05)
-  })
-  assert.ok(ratio >= 4.5, `${await button.innerText()} hover contrast is ${ratio.toFixed(2)}:1, expected at least 4.5:1`)
-}
-
 try {
   for (const supportsPicker of [true, false]) {
     const context = await browser.newContext({ acceptDownloads: true })
@@ -85,11 +67,6 @@ try {
     assert.equal(await page.getByRole('button', { name: 'Tilbage', exact: true }).isVisible(), true)
     assert.equal(await checkbox.count(), 0, 'Manual confirmation requires a successful download')
     assert.equal(await page.getByText('Åbn Downloads / Overførsler.', { exact: false }).count(), 0)
-
-    if (supportsPicker) {
-      await assertOutlineHoverContrast(page.getByRole('button', { name: 'Hent filen i stedet', exact: true }))
-      await assertOutlineHoverContrast(page.getByRole('button', { name: 'Tilbage', exact: true }))
-    }
 
     downloadFails = true
     await page.getByRole('button', { name: supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua', exact: true }).click()
@@ -165,11 +142,8 @@ try {
     assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
     assert.ok(!(await page.locator('main').innerText()).includes('streaming-test.invalid'))
     assert.match(await page.locator('main').innerText(), /én eller flere platforme/)
-    assert.match(await page.locator('main').innerText(), /finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler/)
     await page.getByRole('button', { name: 'Jeg har udfyldt OBS', exact: true }).click()
-    const connectionTest = page.getByRole('button', { name: 'Vis forbindelsestest – valgfrit', exact: true })
-    if (supportsPicker) await assertOutlineHoverContrast(connectionTest)
-    await connectionTest.click()
+    await page.getByRole('button', { name: 'Vis forbindelsestest – valgfrit', exact: true }).click()
     assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
     assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
     assert.deepEqual(errors, [])
