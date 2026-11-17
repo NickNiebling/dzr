@@ -65,6 +65,7 @@ test("new enrollment returns a key privately and a generic configured guide link
   const result = reply(i);
   assert.match(result.content, /one-time-personal-key/);
   assert.match(result.content, /valgfri/);
+  assert.ok(result.content.endsWith(`Din YouTube kanal: ${registration.channels.youtube.url}`));
   assert.equal(result.components[0].components[0].url, setupUrl);
   assert.equal(result.components[0].components[0].custom_id, undefined);
   assert.equal(result.components[0].components[1].custom_id, `streaming:status:${userId}`);
@@ -84,7 +85,7 @@ test("existing registration and stale new components only show the guide without
     assert.equal(i.calls[0][1].flags, MessageFlags.Ephemeral);
     assert.match(result.content, /allerede tilmeldt/);
     assert.match(result.content, /nøgle og dine kanaler er uændrede/);
-    assert.match(result.content, /gamle nøgle ugyldig/);
+    assert.ok(result.content.endsWith(`Din YouTube kanal: ${registration.channels.youtube.url}`));
     assert.ok(!JSON.stringify(result).includes(registration.tokenHash));
     const url = new URL(result.components[0].components[0].url);
     assert.equal(url.pathname, "/streaming/setup");

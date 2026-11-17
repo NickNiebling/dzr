@@ -36,15 +36,14 @@ function createStreamingHandlers({ service, guildId, adminRoleId, publicUrl, cha
 
   async function showGuide(interaction, registration, token) {
     const url = guideUrl();
-    const channels = Object.entries(registration.channels).map(([platform, channel]) => `${platform === "youtube" ? "YouTube" : "Twitch"}: ${channel.url}`).join("\n");
+    const channels = Object.entries(registration.channels).map(([platform, channel]) => `Din ${platform === "youtube" ? "YouTube" : "Twitch"} kanal: ${channel.url}`).join("\n");
     await interaction.editReply({ content: (token
-      ? "✅ **Dine kanaler er tilmeldt**\n"
-      : "✅ **Du er allerede tilmeldt**\n") + channels + "\n\n"
+      ? "✅ **Dine kanaler er tilmeldt**\n\n"
+      : "✅ **Du er allerede tilmeldt**\n\n")
       + (token ? `**Din personlige OBS-nøgle:**\n\`${token}\`\nNøglen vises kun i denne private besked. Del den ikke.\n\n`
         : "Din nøgle og dine kanaler er uændrede. Behold nøglen i OBS, hvis den allerede er indsat.\n\n")
       + `Åbn [guiden](<${url}>) på den computer, hvor du bruger OBS. Forbindelsestesten er valgfri.\n\n`
-      + "**Mistet nøglen?** Se din tidligere private Discord-besked. Du kan få en ny med /streaming_add, "
-      + "men når du gemmer dér, bliver den gamle nøgle ugyldig, og du skal opdatere OBS.",
+      + channels,
     components: [row(new ButtonBuilder().setLabel("Åbn installationsguiden").setEmoji("🔴").setStyle(ButtonStyle.Link).setURL(url),
       button("status", interaction.user.id, "Kontrollér OBS-forbindelse", ButtonStyle.Secondary))],
     allowedMentions: { parse: [] } });

@@ -22,9 +22,9 @@ Each operating-system directory contains:
 | `select-file.webp` | Selecting `dzr-stream.lua` and clicking Open |
 | `configure.webp` | The real DZR property names; example key shown only as masking dots |
 
-All served assets are 1280 × 760 pixels with a landscape aspect ratio and DZR's dark background/red action accent. The Windows `save-file` illustration and both `configure` illustrations were regenerated with image generation on 2026-11-14. Their lossless PNG originals are stored in `sources/`; the older, superseded SVGs were removed. The remaining seven illustrations retain their SVG originals and DejaVu Sans text. No third-party screenshot pixels are distributed.
+All served assets are 1280 × 760 pixels with a landscape aspect ratio and DZR's dark background/red action accent. The Windows `save-file` illustration and both `configure` illustrations were regenerated with image generation on 2026-11-14. The Windows `select-file` illustration was regenerated on 2026-11-15 using the `save-file` image as its visual reference. Their lossless PNG originals are stored in `sources/`; the older, superseded SVGs were removed. The remaining six illustrations retain their SVG originals and DejaVu Sans text. No third-party screenshot pixels are distributed.
 
-The Windows file-placement image shows a normal File Explorer window at `Documents → DZR`, a selected `dzr-stream.lua`, and no expanded menu. Both configuration images show only the masked key, optional YouTube link and connection-test button. These generated illustrations support the guide; they do not document an actual Windows/macOS installation or connection test.
+The Windows file-placement image shows a normal File Explorer window at `Documents → DZR`, a selected `dzr-stream.lua`, and no expanded menu. The matching file-selection image shows the same folder and file in a Windows-style Open dialog, with the filename field, Lua file filter and highlighted **Åbn** button. Both configuration images show only the masked key, optional YouTube link and connection-test button. These generated illustrations support the guide; they do not document an actual Windows/macOS installation or connection test.
 
 To regenerate a WebP after editing its SVG, use the root project's existing `sharp` dependency (no new package):
 
@@ -32,7 +32,7 @@ To regenerate a WebP after editing its SVG, use the root project's existing `sha
 node -e 'const sharp = require("sharp"); sharp("public/streaming/setup/sources/windows-add-script.svg").webp({ quality: 90, effort: 6 }).toFile("public/streaming/setup/windows/add-script.webp")'
 ```
 
-The same filename pattern applies to the other SVG-based illustrations. For the three PNG originals, resize during WebP encoding:
+The same filename pattern applies to the other SVG-based illustrations. For the four PNG originals, resize during WebP encoding:
 
 ```sh
 node -e 'const sharp = require("sharp"); sharp("public/streaming/setup/sources/windows-save-file.png").resize(1280, 760).webp({ quality: 90, effort: 6 }).toFile("public/streaming/setup/windows/save-file.webp")'
