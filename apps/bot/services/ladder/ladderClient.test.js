@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { refreshSignups, refreshFixture, describeFailure, getFixtureStart, getRoster, warmCatalog, autocomplete, resolveTeam } = require("./ladderClient");
+const { refreshSignups, refreshFixture, describeFailure, getFixtureStart, getRoster, autocomplete, resolveTeam } = require("./ladderClient");
 
 const MIN = 60 * 1000;
 
@@ -65,53 +65,61 @@ test("describeFailure names the API status, a timeout or a missing connection", 
   assert.equal(describeFailure({ code: "ENOTFOUND" }), "ingen forbindelse til API");
 });
 
-test("scout catalog shares refreshes, caches for 15 minutes and resolves only unambiguous names or valid links", async (t) => {
+test("scout suggestions and known names work immediately without a content API call", async (t) => {
+  const axios = require("axios");
+  const request = t.mock.method(axios, "get", async () => { throw new Error("Content API unavailable"); });
+  const suggestions = autocomplete("");
+  assert.equal(suggestions.length, 25);
+  assert.deepEqual(suggestions.map((team) => team.name), [...suggestions.map((team) => team.name)].sort((a, b) => a.localeCompare(b, "da")));
+  assert.deepEqual(autocomplete("  Ｂｒｅｄｄｅｎ  "), [{
+    name: "Bredden (#655)", value: "https://ladder.cycleracing.club/team/n/655",
+  }]);
+  assert.equal((await resolveTeam("bredden")).id, "655");
+  assert.equal((await resolveTeam("Complainers")).id, "91");
+  assert.equal((await resolveTeam("  Chonky Complainers  ")).id, "91");
+  for (const path of ["teamView/Chonky%20Complainers", "matchlist/fixtures/Chonky%20Complainers", "team/n/91"]) {
+    assert.equal((await resolveTeam(`https://ladder.cycleracing.club/${path}`)).id, "91");
+  }
+  assert.deepEqual(autocomplete("https://ladder.cycleracing.club/team/n/655"), autocomplete("Bredden"));
+  await assert.rejects(resolveTeam("Chonky"), /Flere Ladder-hold/);
+  await assert.rejects(resolveTeam("No such Ladder team"), /Intet Ladder-hold/);
+  await assert.rejects(resolveTeam("https://example.com/team/n/91"), /ladder.cycleracing.club/);
+  assert.deepEqual(autocomplete("https://example.com/team/n/91"), []);
+  assert.equal(request.mock.callCount(), 0);
+});
+
+test("the checked-in catalog includes ranked and fixture-only teams with verified identities", () => {
+  const snapshot = require("./knownTeams.json");
+  assert.equal(snapshot.source, "https://ladder.cycleracing.club/summary");
+  assert.ok(Number.isFinite(Date.parse(snapshot.updatedAt)));
+  assert.ok(snapshot.teams.length > 200);
+  assert.equal(new Set(snapshot.teams.map((team) => team.id)).size, snapshot.teams.length);
+  for (const team of snapshot.teams) {
+    assert.match(team.id, /^[1-9]\d*$/);
+    assert.ok(Number.isSafeInteger(Number(team.id)));
+    assert.ok(team.name && team.name === team.name.trim());
+  }
+  for (const [name, id] of [["Bredden", "655"], ["Chonky Complainers", "91"], ["PTA2", "746"], ["SISU Kilpikonna", "695"], ["5W4T-Rocket", "602"], ["Pacific Draft", "745"]]) {
+    assert.ok(snapshot.teams.some((team) => team.name === name && team.id === id));
+  }
+});
+
+test("unlisted numeric links still validate the live roster identity", async (t) => {
   const axios = require("axios");
   const config = require("../../config/config");
   const original = config.contentApi;
   config.contentApi = { baseUrl: "http://localhost", apiKey: "test" };
   t.after(() => { config.contentApi = original; });
-  let now = 1000, calls = 0, finish;
-  t.mock.method(Date, "now", () => now);
-  const teams = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Team ${i}` }));
-  teams.push({ id: 501, name: "Example Home" });
-  const html = `const playonTeams = ${JSON.stringify([...teams, teams[0]])};`;
-  const roster = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
-  const unlisted = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-10.html`, "utf8");
+  const unlisted = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-10.html`, "utf8")
+    .replace("const TEAMID = 502;", "const TEAMID = 999998;")
+    .replaceAll('"LadderTeam":502', '"LadderTeam":999998');
   const teamReads = [];
   t.mock.method(axios, "get", async (_url, { params }) => {
-    if (params.path !== "/summary") {
-      teamReads.push(params.path);
-      return { data: params.path === "/team/n/502" ? unlisted : roster };
-    }
-    calls += 1;
-    return new Promise((resolve) => { finish = () => resolve({ data: html }); });
+    teamReads.push(params.path);
+    return { data: unlisted };
   });
-  warmCatalog();
-  assert.deepEqual(autocomplete("Team"), []);
-  const pending = resolveTeam("Team 0");
-  assert.equal(calls, 1);
-  finish();
-  assert.equal((await pending).id, "1");
-  assert.equal(autocomplete("").length, 25);
-  assert.equal(autocomplete("Team 0").length, 1);
-  await assert.rejects(resolveTeam("Team"), /Flere Ladder-hold/);
-  now += 15 * MIN - 1;
-  autocomplete("");
-  assert.equal(calls, 1);
-  now += 1;
-  autocomplete("");
-  const refreshed = resolveTeam("Team 0");
-  assert.equal(calls, 2);
-  finish();
-  await refreshed;
-  for (const path of ["teamView/Example%20Home", "matchlist/fixtures/Example%20Home"]) {
-    assert.equal((await resolveTeam(`https://ladder.cycleracing.club/${path}`)).id, "501");
-  }
-  assert.deepEqual(teamReads, []);
-  assert.equal((await resolveTeam("https://ladder.cycleracing.club/team/n/502")).id, "502");
-  assert.deepEqual(teamReads, ["/team/n/502"]);
-  await assert.rejects(resolveTeam("https://example.com/team/n/501"), /ladder.cycleracing.club/);
+  assert.equal((await resolveTeam("https://ladder.cycleracing.club/team/n/999998")).id, "999998");
+  assert.deepEqual(teamReads, ["/team/n/999998"]);
   await assert.rejects(resolveTeam("/team/n/999"), /forventede/);
 });
 

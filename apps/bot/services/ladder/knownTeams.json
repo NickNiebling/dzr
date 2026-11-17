@@ -1,0 +1,1094 @@
+{
+  "source": "https://ladder.cycleracing.club/summary",
+  "updatedAt": "2026-11-17T13:04:50.978Z",
+  "teams": [
+    {
+      "id": "453",
+      "name": "[DBR] Underdogs"
+    },
+    {
+      "id": "368",
+      "name": "4STAR Apollo"
+    },
+    {
+      "id": "377",
+      "name": "4STAR CENTAURUS"
+    },
+    {
+      "id": "371",
+      "name": "4Star Icarus"
+    },
+    {
+      "id": "260",
+      "name": "5.W.4.T - Fiery"
+    },
+    {
+      "id": "602",
+      "name": "5W4T-Rocket"
+    },
+    {
+      "id": "476",
+      "name": "Aeonian Storm"
+    },
+    {
+      "id": "524",
+      "name": "Aeonian Vortex"
+    },
+    {
+      "id": "348",
+      "name": "AERO"
+    },
+    {
+      "id": "355",
+      "name": "ART Actinides"
+    },
+    {
+      "id": "448",
+      "name": "ART Hadrons"
+    },
+    {
+      "id": "511",
+      "name": "ART Osmium"
+    },
+    {
+      "id": "702",
+      "name": "ASTURES"
+    },
+    {
+      "id": "631",
+      "name": "AT-R2"
+    },
+    {
+      "id": "306",
+      "name": "ATGNI Carbon"
+    },
+    {
+      "id": "215",
+      "name": "ATGNI Titanium"
+    },
+    {
+      "id": "374",
+      "name": "ATP Adventure"
+    },
+    {
+      "id": "391",
+      "name": "ATP Alpha"
+    },
+    {
+      "id": "648",
+      "name": "ATP Atoms"
+    },
+    {
+      "id": "296",
+      "name": "ATP Avalanche"
+    },
+    {
+      "id": "726",
+      "name": "ATP Avengers"
+    },
+    {
+      "id": "141",
+      "name": "BAKPDL B"
+    },
+    {
+      "id": "289",
+      "name": "BAKPDL C"
+    },
+    {
+      "id": "699",
+      "name": "BAKPDL D"
+    },
+    {
+      "id": "655",
+      "name": "Bredden"
+    },
+    {
+      "id": "283",
+      "name": "Chocolate Teapots"
+    },
+    {
+      "id": "82",
+      "name": "Chonky Chaser"
+    },
+    {
+      "id": "91",
+      "name": "Chonky Complainers"
+    },
+    {
+      "id": "740",
+      "name": "Chonky Leg Breakers"
+    },
+    {
+      "id": "606",
+      "name": "CLS Chasers"
+    },
+    {
+      "id": "318",
+      "name": "Coalition Akkadium"
+    },
+    {
+      "id": "322",
+      "name": "Coalition Brutalum"
+    },
+    {
+      "id": "389",
+      "name": "Coalition Cynoxum"
+    },
+    {
+      "id": "446",
+      "name": "Coalition Galaxium"
+    },
+    {
+      "id": "498",
+      "name": "Coalition Lucium"
+    },
+    {
+      "id": "450",
+      "name": "Coalition Merclonia"
+    },
+    {
+      "id": "72",
+      "name": "Coalition Nezerium"
+    },
+    {
+      "id": "596",
+      "name": "Coalition Ostaryn"
+    },
+    {
+      "id": "542",
+      "name": "COALITION Qyron"
+    },
+    {
+      "id": "510",
+      "name": "Coalition Rhozak"
+    },
+    {
+      "id": "247",
+      "name": "Coalition Sythene"
+    },
+    {
+      "id": "387",
+      "name": "Coalition Taraxyl"
+    },
+    {
+      "id": "308",
+      "name": "Coalition Unarium"
+    },
+    {
+      "id": "409",
+      "name": "Coalition Vexus"
+    },
+    {
+      "id": "275",
+      "name": "Coalition Xipher"
+    },
+    {
+      "id": "15",
+      "name": "Coalition Yedex"
+    },
+    {
+      "id": "594",
+      "name": "Coalition Zeon"
+    },
+    {
+      "id": "603",
+      "name": "Crank Addicts"
+    },
+    {
+      "id": "300",
+      "name": "Cryo-Gen Derailleur Dynasty"
+    },
+    {
+      "id": "239",
+      "name": "Cryo-Gen Handlebar Heroes"
+    },
+    {
+      "id": "420",
+      "name": "Cyclone Surge"
+    },
+    {
+      "id": "449",
+      "name": "CYE RACING"
+    },
+    {
+      "id": "707",
+      "name": "CYE-U"
+    },
+    {
+      "id": "697",
+      "name": "CZ Eh Team"
+    },
+    {
+      "id": "723",
+      "name": "DBR Crazy Dogs"
+    },
+    {
+      "id": "384",
+      "name": "Devil Dogs [DBR]"
+    },
+    {
+      "id": "571",
+      "name": "DIRTy Acez"
+    },
+    {
+      "id": "87",
+      "name": "DIRTy Beasts"
+    },
+    {
+      "id": "379",
+      "name": "DIRTy Crabz"
+    },
+    {
+      "id": "144",
+      "name": "DIRTy Cycos"
+    },
+    {
+      "id": "650",
+      "name": "DIRTy Dealerz"
+    },
+    {
+      "id": "509",
+      "name": "DIRTy Deucez"
+    },
+    {
+      "id": "659",
+      "name": "DIRTy Double Down"
+    },
+    {
+      "id": "573",
+      "name": "DIRTy Frenzy"
+    },
+    {
+      "id": "248",
+      "name": "DIRTy Pyrites"
+    },
+    {
+      "id": "175",
+      "name": "DiRTy Saboteurs"
+    },
+    {
+      "id": "172",
+      "name": "DIRTy Spellbound"
+    },
+    {
+      "id": "645",
+      "name": "DIRTy Strangers"
+    },
+    {
+      "id": "179",
+      "name": "DIRTy Vertigos"
+    },
+    {
+      "id": "585",
+      "name": "DNSTY"
+    },
+    {
+      "id": "160",
+      "name": "Down n DIRTy Buteos"
+    },
+    {
+      "id": "245",
+      "name": "Down n DIRTy Condors"
+    },
+    {
+      "id": "506",
+      "name": "Down n DIRTy Falcons"
+    },
+    {
+      "id": "131",
+      "name": "Down n DIRTy Vultures"
+    },
+    {
+      "id": "543",
+      "name": "Ducked Legs"
+    },
+    {
+      "id": "372",
+      "name": "Dunking Teabags"
+    },
+    {
+      "id": "102",
+      "name": "Eagle Fang Rhinos"
+    },
+    {
+      "id": "19",
+      "name": "Electric Spirit Co Fiendtini"
+    },
+    {
+      "id": "12",
+      "name": "Electric Spirit Co. Bohemian"
+    },
+    {
+      "id": "25",
+      "name": "Electric Spirit Co. First Post"
+    },
+    {
+      "id": "665",
+      "name": "eSRT CLOUD CHASERS"
+    },
+    {
+      "id": "319",
+      "name": "EVO Borealis"
+    },
+    {
+      "id": "334",
+      "name": "EVO Interstellar"
+    },
+    {
+      "id": "473",
+      "name": "Evolve Mighty Ducks"
+    },
+    {
+      "id": "686",
+      "name": "Extraordinary GentleWaTTs"
+    },
+    {
+      "id": "710",
+      "name": "Fellowship Berserker Rage"
+    },
+    {
+      "id": "725",
+      "name": "Fellowship Chain Lightning"
+    },
+    {
+      "id": "709",
+      "name": "Fellowship Mana Surge"
+    },
+    {
+      "id": "720",
+      "name": "Fellowship Shadowstep"
+    },
+    {
+      "id": "185",
+      "name": "Foudre Camembert"
+    },
+    {
+      "id": "214",
+      "name": "Foudre Comté"
+    },
+    {
+      "id": "272",
+      "name": "Foudre Merzer"
+    },
+    {
+      "id": "234",
+      "name": "Foudre Picodon"
+    },
+    {
+      "id": "140",
+      "name": "Foudre Reblochon"
+    },
+    {
+      "id": "422",
+      "name": "Fury Rhinos"
+    },
+    {
+      "id": "646",
+      "name": "Galaxy Astra"
+    },
+    {
+      "id": "567",
+      "name": "Galaxy Avengers"
+    },
+    {
+      "id": "649",
+      "name": "Galaxy Hyperion"
+    },
+    {
+      "id": "489",
+      "name": "Galaxy Interstellar"
+    },
+    {
+      "id": "59",
+      "name": "Galaxy Invaders"
+    },
+    {
+      "id": "590",
+      "name": "Galaxy Star Velocity"
+    },
+    {
+      "id": "486",
+      "name": "Galaxy Stardust"
+    },
+    {
+      "id": "605",
+      "name": "Galaxy Stargaze"
+    },
+    {
+      "id": "717",
+      "name": "Galaxy Supersonic"
+    },
+    {
+      "id": "715",
+      "name": "Galaxy Velorum"
+    },
+    {
+      "id": "494",
+      "name": "Galaxy Voyagers"
+    },
+    {
+      "id": "732",
+      "name": "GTE Rhinos"
+    },
+    {
+      "id": "478",
+      "name": "GTR Griffins"
+    },
+    {
+      "id": "401",
+      "name": "GTR Krakens"
+    },
+    {
+      "id": "227",
+      "name": "GTR Minotaurs"
+    },
+    {
+      "id": "88",
+      "name": "GTR Skeleton Wheelers"
+    },
+    {
+      "id": "354",
+      "name": "HCT Comets"
+    },
+    {
+      "id": "337",
+      "name": "HCT Tracers"
+    },
+    {
+      "id": "679",
+      "name": "Herd of Ferrets"
+    },
+    {
+      "id": "107",
+      "name": "Herd of Flying Chupacabras"
+    },
+    {
+      "id": "256",
+      "name": "Herd of Hammerheads"
+    },
+    {
+      "id": "624",
+      "name": "Herd of Honey Badgers"
+    },
+    {
+      "id": "128",
+      "name": "Herd Of MAMILs"
+    },
+    {
+      "id": "84",
+      "name": "Herd of Randos"
+    },
+    {
+      "id": "708",
+      "name": "Herd of Sea Wolves"
+    },
+    {
+      "id": "35",
+      "name": "Herd of Seataurs"
+    },
+    {
+      "id": "353",
+      "name": "Herd of Sleepy Sloths"
+    },
+    {
+      "id": "100",
+      "name": "Herd of Speedy Squirrels"
+    },
+    {
+      "id": "149",
+      "name": "Herd of Tasmanian Devils"
+    },
+    {
+      "id": "680",
+      "name": "Herd of Weasels"
+    },
+    {
+      "id": "701",
+      "name": "HISP Talayoticos"
+    },
+    {
+      "id": "576",
+      "name": "Hispacks"
+    },
+    {
+      "id": "202",
+      "name": "KLUB Bazookas"
+    },
+    {
+      "id": "157",
+      "name": "KLUB Crackers"
+    },
+    {
+      "id": "349",
+      "name": "KLUB Oreos"
+    },
+    {
+      "id": "475",
+      "name": "KLUB Smarties"
+    },
+    {
+      "id": "259",
+      "name": "LAMONT-AMATORI"
+    },
+    {
+      "id": "747",
+      "name": "Lanterne Rouge Rockets"
+    },
+    {
+      "id": "688",
+      "name": "Leap&Destroy"
+    },
+    {
+      "id": "685",
+      "name": "LEQP Aubisque"
+    },
+    {
+      "id": "683",
+      "name": "LEQP Colombiere"
+    },
+    {
+      "id": "346",
+      "name": "LEQP Hautacam"
+    },
+    {
+      "id": "429",
+      "name": "LEQP Madeleine"
+    },
+    {
+      "id": "508",
+      "name": "LEQP Tourmalet"
+    },
+    {
+      "id": "385",
+      "name": "LEQP Ventoux"
+    },
+    {
+      "id": "438",
+      "name": "LEVEL Krakens"
+    },
+    {
+      "id": "529",
+      "name": "LEVEL Valkyries"
+    },
+    {
+      "id": "672",
+      "name": "Mad Dogs (DBR)"
+    },
+    {
+      "id": "728",
+      "name": "Masaka Kobs"
+    },
+    {
+      "id": "106",
+      "name": "Masaka Mountain Gorillas"
+    },
+    {
+      "id": "551",
+      "name": "On the Rivet Grit"
+    },
+    {
+      "id": "194",
+      "name": "On the Rivet Swagger"
+    },
+    {
+      "id": "316",
+      "name": "OTE Gutter Rats"
+    },
+    {
+      "id": "121",
+      "name": "OTR Cutting Edge"
+    },
+    {
+      "id": "451",
+      "name": "OTR Hooligals"
+    },
+    {
+      "id": "263",
+      "name": "OTR Hooligans"
+    },
+    {
+      "id": "251",
+      "name": "OTR Morning Crew"
+    },
+    {
+      "id": "110",
+      "name": "OTR Party Crew"
+    },
+    {
+      "id": "636",
+      "name": "OTR RED"
+    },
+    {
+      "id": "745",
+      "name": "Pacific Draft"
+    },
+    {
+      "id": "713",
+      "name": "Pampilho"
+    },
+    {
+      "id": "731",
+      "name": "Pont l'Eveque"
+    },
+    {
+      "id": "746",
+      "name": "PTA2"
+    },
+    {
+      "id": "477",
+      "name": "QDW Stormtrooper Squad"
+    },
+    {
+      "id": "23",
+      "name": "Rampaging Rhinos"
+    },
+    {
+      "id": "367",
+      "name": "Rave Party"
+    },
+    {
+      "id": "721",
+      "name": "RAVE Phoenix"
+    },
+    {
+      "id": "643",
+      "name": "Reckless Rhinos"
+    },
+    {
+      "id": "295",
+      "name": "Roaring Rhinos"
+    },
+    {
+      "id": "431",
+      "name": "ROC RACE TEAM"
+    },
+    {
+      "id": "705",
+      "name": "ROC Thundercats"
+    },
+    {
+      "id": "531",
+      "name": "Rocksteady Rhinos"
+    },
+    {
+      "id": "664",
+      "name": "RollCo Ciabatta"
+    },
+    {
+      "id": "663",
+      "name": "RollCo Galette"
+    },
+    {
+      "id": "668",
+      "name": "RollCo Pumpernickel"
+    },
+    {
+      "id": "693",
+      "name": "Rooftop Ravens"
+    },
+    {
+      "id": "129",
+      "name": "Rowdy Rhinos"
+    },
+    {
+      "id": "381",
+      "name": "SISU Kiivetä"
+    },
+    {
+      "id": "695",
+      "name": "SISU Kilpikonna"
+    },
+    {
+      "id": "396",
+      "name": "SISU Kohota"
+    },
+    {
+      "id": "597",
+      "name": "SISU Meno"
+    },
+    {
+      "id": "647",
+      "name": "SISU Nokisorsa"
+    },
+    {
+      "id": "742",
+      "name": "SISU Valkosorsa"
+    },
+    {
+      "id": "126",
+      "name": "Smashing Rhinos"
+    },
+    {
+      "id": "519",
+      "name": "SNOW Limit"
+    },
+    {
+      "id": "598",
+      "name": "SNOW Storm"
+    },
+    {
+      "id": "741",
+      "name": "Speedmachines"
+    },
+    {
+      "id": "17",
+      "name": "SRT Elakingar"
+    },
+    {
+      "id": "512",
+      "name": "SRT Gladiators"
+    },
+    {
+      "id": "270",
+      "name": "SRT Gold Diggers"
+    },
+    {
+      "id": "335",
+      "name": "SRT Kräftskivor"
+    },
+    {
+      "id": "193",
+      "name": "SRT Plonkers"
+    },
+    {
+      "id": "13",
+      "name": "SRT Storboskap"
+    },
+    {
+      "id": "419",
+      "name": "SRT Surfers"
+    },
+    {
+      "id": "570",
+      "name": "SRT Thundercats Hoo!"
+    },
+    {
+      "id": "421",
+      "name": "Steel Rhinos"
+    },
+    {
+      "id": "436",
+      "name": "SZ Aska"
+    },
+    {
+      "id": "44",
+      "name": "SZ Bifrost"
+    },
+    {
+      "id": "115",
+      "name": "SZ Eld"
+    },
+    {
+      "id": "39",
+      "name": "SZ Loki"
+    },
+    {
+      "id": "435",
+      "name": "SZ Måne"
+    },
+    {
+      "id": "165",
+      "name": "SZ Snö"
+    },
+    {
+      "id": "405",
+      "name": "SZR Brute Force"
+    },
+    {
+      "id": "454",
+      "name": "SZR Cyclone Force"
+    },
+    {
+      "id": "105",
+      "name": "SZR Delta Force"
+    },
+    {
+      "id": "641",
+      "name": "SZR G-force"
+    },
+    {
+      "id": "85",
+      "name": "SZR Phantom Force"
+    },
+    {
+      "id": "513",
+      "name": "SZR Rapid Force"
+    },
+    {
+      "id": "657",
+      "name": "TBR Outcasts"
+    },
+    {
+      "id": "63",
+      "name": "Team CLS Casuals"
+    },
+    {
+      "id": "113",
+      "name": "Team CLS Chill"
+    },
+    {
+      "id": "670",
+      "name": "Team Italy Eat&Watt"
+    },
+    {
+      "id": "135",
+      "name": "Team Italy Ghost"
+    },
+    {
+      "id": "574",
+      "name": "Team Not Pogi Amstel"
+    },
+    {
+      "id": "586",
+      "name": "Team Not Pogi Flanders"
+    },
+    {
+      "id": "472",
+      "name": "Team Not Pogi Giro"
+    },
+    {
+      "id": "544",
+      "name": "Team Not Pogi Le Tour"
+    },
+    {
+      "id": "532",
+      "name": "Team Not Pogi Vuelta"
+    },
+    {
+      "id": "444",
+      "name": "TeamNL Cloud9 Lightning"
+    },
+    {
+      "id": "593",
+      "name": "TeamNL Cloud9 Spark"
+    },
+    {
+      "id": "290",
+      "name": "TeamNL Cloud9 Thunder"
+    },
+    {
+      "id": "727",
+      "name": "TeamNL Storm"
+    },
+    {
+      "id": "712",
+      "name": "TeamNL VacMasters"
+    },
+    {
+      "id": "357",
+      "name": "TFC Firebirds"
+    },
+    {
+      "id": "360",
+      "name": "TFC Hulk"
+    },
+    {
+      "id": "373",
+      "name": "TFC Mutants"
+    },
+    {
+      "id": "361",
+      "name": "TFC Omega"
+    },
+    {
+      "id": "359",
+      "name": "TFC Phoenix"
+    },
+    {
+      "id": "522",
+      "name": "TFC X-Force"
+    },
+    {
+      "id": "516",
+      "name": "The Watt Squad 2"
+    },
+    {
+      "id": "467",
+      "name": "The Watt Squad 3"
+    },
+    {
+      "id": "535",
+      "name": "The Watt Squad 4"
+    },
+    {
+      "id": "739",
+      "name": "TOP CATS"
+    },
+    {
+      "id": "738",
+      "name": "TOP Dogs"
+    },
+    {
+      "id": "614",
+      "name": "Total TT - MCR (Chainsaws)"
+    },
+    {
+      "id": "642",
+      "name": "Total TT - MCR (Drillers)"
+    },
+    {
+      "id": "60",
+      "name": "TT1 Gold Glucose Rush"
+    },
+    {
+      "id": "152",
+      "name": "TT1 SweetPees"
+    },
+    {
+      "id": "737",
+      "name": "TugaZ Purgatório"
+    },
+    {
+      "id": "719",
+      "name": "TugaZ Tsunami"
+    },
+    {
+      "id": "564",
+      "name": "Turbo Rhinos"
+    },
+    {
+      "id": "298",
+      "name": "Valhalla Garmr"
+    },
+    {
+      "id": "42",
+      "name": "Valhalla Hoors"
+    },
+    {
+      "id": "117",
+      "name": "Valhalla Thorir"
+    },
+    {
+      "id": "644",
+      "name": "Vegan Blackbirds"
+    },
+    {
+      "id": "580",
+      "name": "Vegan Outlaws"
+    },
+    {
+      "id": "457",
+      "name": "Vikings Berserker"
+    },
+    {
+      "id": "211",
+      "name": "Vikings Fimbulvetr"
+    },
+    {
+      "id": "722",
+      "name": "Vikings Rygjafylki"
+    },
+    {
+      "id": "205",
+      "name": "Vikings Valgrind"
+    },
+    {
+      "id": "154",
+      "name": "Vikings Yme"
+    },
+    {
+      "id": "581",
+      "name": "VirtuSlo 4Endurance"
+    },
+    {
+      "id": "748",
+      "name": "WATTack"
+    },
+    {
+      "id": "689",
+      "name": "wattthehell"
+    },
+    {
+      "id": "395",
+      "name": "WCC Axle Grinders"
+    },
+    {
+      "id": "684",
+      "name": "WCC Cadence Crew"
+    },
+    {
+      "id": "188",
+      "name": "WCC Falcons"
+    },
+    {
+      "id": "118",
+      "name": "WCC The Spinning Discs"
+    },
+    {
+      "id": "575",
+      "name": "WCC The Sprocket Rockets"
+    },
+    {
+      "id": "22",
+      "name": "White Rhinos"
+    },
+    {
+      "id": "90",
+      "name": "WMZ YOWIES"
+    },
+    {
+      "id": "589",
+      "name": "WSRL"
+    },
+    {
+      "id": "145",
+      "name": "ZABI Cobalto"
+    },
+    {
+      "id": "148",
+      "name": "ZABI Ónix"
+    },
+    {
+      "id": "561",
+      "name": "ZRG-R Chi"
+    },
+    {
+      "id": "208",
+      "name": "ZSUNR Arrows"
+    },
+    {
+      "id": "666",
+      "name": "ZSUNR Blackbird"
+    },
+    {
+      "id": "588",
+      "name": "ZSUNR Comets"
+    },
+    {
+      "id": "622",
+      "name": "ZSUNR Harriers"
+    },
+    {
+      "id": "213",
+      "name": "ZSUNR Lightning"
+    },
+    {
+      "id": "301",
+      "name": "ZSUNR Tomcat"
+    },
+    {
+      "id": "595",
+      "name": "ZSUNR Typhoons"
+    },
+    {
+      "id": "559",
+      "name": "ZSUNR Wildcats"
+    },
+    {
+      "id": "619",
+      "name": "ZWBandits"
+    },
+    {
+      "id": "164",
+      "name": "ZWBeasts"
+    },
+    {
+      "id": "206",
+      "name": "ZWBeauties"
+    },
+    {
+      "id": "147",
+      "name": "ZWBullets"
+    }
+  ]
+}

@@ -1,8 +1,33 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity } = require("./ladderParser");
+const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity, parseSummaryTeams } = require("./ladderParser");
 const fs = require("node:fs");
 const path = require("node:path");
+
+const summaryExample = () => fs.readFileSync(path.join(__dirname, "fixtures", "summary-teams.html"), "utf8");
+
+test("public summary catalog merges ranking and fixture identities and deduplicates both rankings", () => {
+  const teams = parseSummaryTeams(summaryExample());
+  assert.deepEqual(teams.map(({ id, name }) => ({ id, name })), [
+    { id: "655", name: "Bredden" },
+    { id: "91", name: "Chonky Complainers" },
+    { id: "746", name: "PTA2" },
+  ]);
+  assert.equal(teams[0].url, "https://ladder.cycleracing.club/team/n/655");
+  const entities = '<span class="teamOpener" data-team-id="999999">A &amp; B&#39;s &#x1f6b4; &lt;Club&gt;</span>';
+  const decoded = parseSummaryTeams(`${summaryExample()}${entities}`).find((team) => team.id === "999999");
+  assert.equal(decoded.name, "A & B's 🚴 <Club>");
+  assert.equal(parseSummaryTeams(`${summaryExample()}<span class="teamOpener">Historic Team</span>`).length, 3);
+});
+
+test("summary catalog rejects unknown, malformed and conflicting identities", () => {
+  assert.throws(() => parseSummaryTeams('<form id="signin"></form>'), /holdlisten mangler/);
+  assert.throws(() => parseSummaryTeams('<span class="teamOpener" data-team-id="746">PTA2</span>'), /holdlisten mangler/);
+  assert.throws(() => parseSummaryTeams(summaryExample().replace('data-team-id="91"', 'data-team-id="0"')), /ugyldig holdidentitet/);
+  assert.throws(() => parseSummaryTeams(summaryExample().replace('class="highlightBold"', 'class="unknown"')), /ugyldig holdidentitet/);
+  assert.throws(() => parseSummaryTeams(summaryExample().replace('data-team-id="746">PTA2', 'data-team-id="91">Other name')), /modstridende/);
+  assert.throws(() => parseSummaryTeams(summaryExample().replace('data-team-id="746"', 'data-team-id="invalid"')), /ugyldig holdidentitet/);
+});
 
 test("parseFixtureList reads id, teams and route from a fixture row", () => {
   const html = `<table><tr class="x" data-id="17200"><td>

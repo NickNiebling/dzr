@@ -1,13 +1,32 @@
 // Reads ladder.cycleracing.club through the Flask API (/ladder_page), which holds the club's ladder login.
 const axios = require("axios");
 const config = require("../../config/config");
-const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity, parseSummaryTeams, parseTeamInput, teamReference } = require("./ladderParser");
+const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity, parseTeamInput, teamReference } = require("./ladderParser");
+const knownTeams = require("./knownTeams.json");
 
 // Short reason shown to the user, so a failing API can be told apart without looking in the logs.
 function describeFailure(err) {
   if (err.response) return `API svarede ${err.response.status}`;
   if (err.code === "ECONNABORTED") return "API svarede ikke i tide";
   return "ingen forbindelse til API";
+}
+
+const LADDER_FAILURES = {
+  ladder_credentials_missing: "Ladder-login er ikke konfigureret korrekt på API’et. Kontakt en administrator.",
+  ladder_login_failed: "Ladder-login kunne ikke gennemføres. Kontakt en administrator, så Ladder-forbindelsen kan kontrolleres.",
+  ladder_session_rejected: "Der kunne ikke oprettes en fungerende Ladder-session efter nyt login. Kontakt en administrator.",
+  ladder_upstream_timeout: "Ladder-siden svarede ikke i tide. Prøv igen senere.",
+  ladder_upstream_unavailable: "Ladder-siden kunne ikke hentes lige nu. Prøv igen senere.",
+  ladder_error: "Ladder-siden kunne ikke hentes lige nu. Prøv igen senere.",
+};
+
+function apiFailure(err) {
+  let body = err.response?.data;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); } catch { return null; }
+  }
+  if (!body || typeof body.code !== "string" || !Object.hasOwn(LADDER_FAILURES, body.code)) return null;
+  return { code: body.code, userMessage: LADDER_FAILURES[body.code] };
 }
 
 async function getPage(path) {
@@ -24,8 +43,10 @@ async function getPage(path) {
     return res.data;
   } catch (err) {
     const status = err.response ? err.response.status : "no response";
-    const wrapped = new Error(`Ladder page ${path} failed: ${status} ${err.message}`);
-    wrapped.userMessage = `Ladder-siden kunne ikke hentes lige nu (${describeFailure(err)}). Prøv igen senere.`;
+    const failure = apiFailure(err);
+    const wrapped = new Error(`Ladder page ${path} failed: ${status} ${failure?.code || describeFailure(err)}`);
+    wrapped.code = failure?.code || "ladder_request_failed";
+    wrapped.userMessage = failure?.userMessage || `Ladder-siden kunne ikke hentes lige nu (${describeFailure(err)}). Prøv igen senere.`;
     throw wrapped;
   }
 }
@@ -94,37 +115,14 @@ async function getNextFixture(team) {
   return null;
 }
 
-// Scout searches share one in-memory catalog; complete rosters are fetched on every command.
-const CATALOG_TTL_MS = 15 * 60 * 1000;
-let catalog = [];
-let catalogExpires = 0;
-let catalogRefresh = null;
-let retryAfter = 0;
+// Suggestions and name lookup work immediately, including when the content API is unavailable.
+// Update the checked-in snapshot explicitly with npm run update:ladder-teams in apps/bot.
+const catalog = knownTeams.teams.map((team) => teamReference(team.id, team.name))
+  .sort((a, b) => a.name.localeCompare(b.name, "da") || Number(a.id) - Number(b.id));
 const normalize = (name) => name.trim().normalize("NFKC").toLocaleLowerCase("da");
 const scoutError = (message) => Object.assign(new Error(message), { userMessage: message });
 
-function refreshCatalog() {
-  if (!catalogRefresh) {
-    catalogRefresh = getPage("/summary").then((html) => {
-      catalog = parseSummaryTeams(html);
-      catalogExpires = Date.now() + CATALOG_TTL_MS;
-      retryAfter = 0;
-    }).catch((error) => {
-      retryAfter = Date.now() + 30000;
-      throw error;
-    }).finally(() => { catalogRefresh = null; });
-  }
-  return catalogRefresh;
-}
-
-function warmCatalog() {
-  if (Date.now() >= catalogExpires && Date.now() >= retryAfter && !catalogRefresh) {
-    refreshCatalog().catch(() => console.warn("[ladder scout] Holdkataloget kunne ikke opdateres."));
-  }
-}
-
 function autocomplete(input) {
-  warmCatalog();
   let parsed;
   try { parsed = input.trim() ? parseTeamInput(input) : { name: "" }; } catch { return []; }
   return catalog.filter((team) => parsed.id ? team.id === parsed.id : normalize(team.name).includes(normalize(parsed.name)))
@@ -133,14 +131,14 @@ function autocomplete(input) {
 
 async function resolveTeam(input) {
   const parsed = parseTeamInput(input);
-  // Links validate the actual team page, even when the team is absent from /summary.
+  // Known links are verified when getRoster fetches the current team page; do not fetch it twice.
   if (parsed.path) {
+    const known = catalog.find((team) => team.id === parsed.id);
+    if (known) return known;
+    // An unlisted team can still be selected using a numeric link.
     const team = parseRosterPage(await getPage(parsed.path));
     if (parsed.id && String(team.id) !== parsed.id) throw scoutError("Holdlinket førte ikke til det forventede Ladder-hold.");
     return teamReference(team.id, team.name);
-  }
-  if (Date.now() >= catalogExpires) {
-    try { await refreshCatalog(); } catch (error) { if (!catalog.length) throw error; }
   }
   const name = normalize(parsed.name);
   const exact = catalog.filter((team) => normalize(team.name) === name);
@@ -161,7 +159,10 @@ async function getRoster(team, { fetchPage = getPage } = {}) {
   const worker = async () => {
     for (let profileId = profiles.shift(); profileId !== undefined; profileId = profiles.shift()) {
       let html;
-      try { html = await fetchPage(`/profile/${profileId}`); } catch { continue; }
+      try { html = await fetchPage(`/profile/${profileId}`); } catch (error) {
+        if (["ladder_credentials_missing", "ladder_login_failed", "ladder_session_rejected"].includes(error.code)) throw error;
+        continue;
+      }
       identities.set(profileId, parseProfileIdentity(html));
     }
   };
@@ -183,4 +184,4 @@ async function getRoster(team, { fetchPage = getPage } = {}) {
   return { ...teamReference(id, roster.name), riders };
 }
 
-module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, warmCatalog, autocomplete, resolveTeam, getRoster };
+module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, autocomplete, resolveTeam, getRoster };

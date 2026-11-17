@@ -5,6 +5,7 @@
   "main": "bot.js",
   "scripts": {
     "dev:streaming": "node --env-file-if-exists=.env.streaming.local scripts/streaming-dev.js",
+    "update:ladder-teams": "node scripts/update-ladder-teams.js",
     "test": "node --test \"services/**/*.test.js\"",
     "eval": "node evals/run.js",
     "eval:dry": "node evals/run.js --dry-run"
