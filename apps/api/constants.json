@@ -53,5 +53,8 @@
     "announcementIndex": "announcement_index",
     "knowledgeGapDrafts": "knowledge_gap_drafts",
     "announcerDrafts": "announcer_drafts"
+  },
+  "sentry": {
+    "dsn": "https://1855deb81e725feefab5aee9b803612e@o4512324169564160.ingest.de.sentry.io/4512324393238608"
   }
 }

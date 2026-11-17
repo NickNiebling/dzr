@@ -1,3 +1,4 @@
+import { withSentryConfig } from '@sentry/nextjs/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -7,6 +8,11 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url))
 const sauceFiles = ['./data/sauce/**/*']
 
 const nextConfig = {
+  env: {
+    // Keep Vercel previews distinct from production in the browser too.
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      || process.env.VERCEL_ENV || process.env.NODE_ENV,
+  },
   // A package-lock.json in a parent folder would otherwise become the Turbopack root.
   turbopack: {
     root: projectRoot,
@@ -28,4 +34,14 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+const uploadSourcemaps = process.env.SENTRY_UPLOAD_SOURCEMAPS === 'true'
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: true,
+  telemetry: false,
+  release: { create: uploadSourcemaps, finalize: uploadSourcemaps },
+  // Upload requires a build token with write access, separate from read-only tooling.
+  sourcemaps: { disable: !uploadSourcemaps },
+})

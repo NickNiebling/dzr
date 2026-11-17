@@ -10,6 +10,11 @@ from functools import wraps
 import requests
 from datetime import datetime, timedelta, date, timezone
 from collections import Counter
+# Initialize before application imports so startup failures are captured too.
+from observability import init_sentry, monitor_responses
+load_dotenv()
+init_sentry()
+
 import firebase
 from discord_api import DiscordAPI
 from zwift import ZwiftAPI, ZwiftError
@@ -19,9 +24,6 @@ from typing import Optional
 from zwiftpower import ZwiftPower, prime_points
 import ladder
 from zwiftcommentator import ZwiftCommentator
-
-# Load environment variables from .env file
-load_dotenv()
 
 _CONST_PATH = Path(__file__).with_name("constants.json")
 try:
@@ -33,6 +35,7 @@ _SHARED_ROLES = _SHARED_DISCORD.get("roles") or {}
 _SHARED_GUILD = _SHARED_DISCORD.get("guildId") or "your_discord_guild_id"
 
 app = Flask(__name__)
+monitor_responses(app)
 
 # Configure session
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-secret-key-change-this-in-production")
