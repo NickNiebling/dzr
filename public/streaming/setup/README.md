@@ -10,16 +10,18 @@ The ten WebP assets are original DZR **click illustrations**, not screenshots. E
 
 Authentic current Windows/macOS screenshots were not available in this Linux execution environment. These illustrations are the approved MVP fallback; they must not be described as native screenshots or evidence of a successful installation. Native acceptance testing remains required on Windows and macOS with official OBS Studio. Check Tools/Scripts, **+**, file navigation and the DZR properties against the installed OBS version. Prefer replacement native screenshots captured during that test, with dummy/masked credentials and capture-version details added here.
 
+On both Windows and macOS, check **Gem DZR-script** in Chrome or Edge with a new browser profile. Confirm that Save As suggests Documents and `dzr-stream.lua`, that cancelling keeps the guide on step 2, and that saving lets you continue. Check **Download DZR-script** in Firefox or Safari where available. Move the file from the browser's download folder to a permanent location and confirm it in the guide. In both flows, open the folder you used in step 2 from OBS and select the saved file.
+
 ## Assets
 
 Each operating-system directory contains:
 
 | File | Shows |
 | --- | --- |
-| `save-file.webp` | The permanent `Documents → DZR` folder and script; manual-download users must move the file here themselves |
+| `save-file.webp` | An example permanent location in `Documents → DZR`, shown after a browser download |
 | `tools-scripts.webp` | The OBS Tools menu with Scripts highlighted |
 | `add-script.webp` | The **+** button below the scripts list |
-| `select-file.webp` | Selecting `dzr-stream.lua` and clicking Open |
+| `select-file.webp` | An example of selecting `dzr-stream.lua` and clicking Open. Use the folder and filename from step 2 |
 | `configure.webp` | The real DZR property names; example key shown only as masking dots |
 
 All served assets are 1280 × 760 pixels with a landscape aspect ratio and DZR's dark background/red action accent. The Windows `save-file` illustration and both `configure` illustrations were regenerated with image generation on 2026-11-14. The Windows `select-file` illustration was regenerated on 2026-11-15 using the `save-file` image as its visual reference. Their lossless PNG originals are stored in `sources/`; the older, superseded SVGs were removed. The remaining six illustrations retain their SVG originals and DejaVu Sans text. No third-party screenshot pixels are distributed.
