@@ -13,8 +13,8 @@ function describeFailure(err) {
 
 const LADDER_FAILURES = {
   ladder_credentials_missing: "Ladder-login er ikke konfigureret korrekt på API’et. Kontakt en administrator.",
-  ladder_login_failed: "Ladder afviste login. Kontakt en administrator, så Ladder-kontoen kan kontrolleres.",
-  ladder_session_rejected: "Ladder afviste sessionen efter nyt login. Kontakt en administrator.",
+  ladder_login_failed: "Ladder-login kunne ikke gennemføres. Kontakt en administrator, så Ladder-forbindelsen kan kontrolleres.",
+  ladder_session_rejected: "Der kunne ikke oprettes en fungerende Ladder-session efter nyt login. Kontakt en administrator.",
   ladder_upstream_timeout: "Ladder-siden svarede ikke i tide. Prøv igen senere.",
   ladder_upstream_unavailable: "Ladder-siden kunne ikke hentes lige nu. Prøv igen senere.",
   ladder_error: "Ladder-siden kunne ikke hentes lige nu. Prøv igen senere.",

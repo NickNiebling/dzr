@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -32,10 +32,10 @@ _ERROR_MESSAGES = {
 }
 
 
-def diagnostic_path(url: str):
+def diagnostic_path(url: str, *, base=None):
     """Keep known page paths, never arbitrary redirect paths, queries or URL credentials."""
     try:
-        path = urlsplit(url or "").path
+        path = urlsplit(urljoin(base, url or "") if base else url or "").path
     except ValueError:
         return None
     if path in ("/signin", "/summary", "/detect", "/dashboard", "/discord/skip", "/set-viewport"):
@@ -53,10 +53,19 @@ class LadderError(Exception):
         super().__init__(_ERROR_MESSAGES[self.code])
         self.context = {"code": self.code, "phase": phase}
         if response is not None:
+            # Keep the start of the redirect flow and always include the final response.
+            # Requests normally caps redirects too; this separately bounds telemetry size.
+            chain = [*response.history[:7], response]
             self.context.update({
                 "upstream_status": response.status_code,
                 "final_path": diagnostic_path(response.url),
                 "signin_detected": _is_sign_in_page(response.text),
+                "redirect_chain": [{
+                    "status": hop.status_code,
+                    "path": diagnostic_path(hop.url),
+                    "location_path": diagnostic_path(hop.headers["Location"], base=hop.url) if hop.headers.get("Location") else None,
+                } for hop in chain],
+                "redirect_chain_truncated": len(response.history) > 7,
             })
 
     def payload(self):

@@ -10,8 +10,8 @@ test("Ladder API error codes produce actionable Danish messages without leaking 
   t.after(() => { config.contentApi = original; });
   for (const [code, expected] of [
     ["ladder_credentials_missing", /ikke konfigureret korrekt.*administrator/],
-    ["ladder_login_failed", /afviste login.*administrator/],
-    ["ladder_session_rejected", /afviste sessionen.*administrator/],
+    ["ladder_login_failed", /login kunne ikke gennemføres.*administrator/],
+    ["ladder_session_rejected", /fungerende Ladder-session.*administrator/],
     ["ladder_upstream_timeout", /svarede ikke i tide/],
     ["ladder_upstream_unavailable", /kunne ikke hentes/],
     ["ladder_error", /kunne ikke hentes/],
@@ -37,7 +37,7 @@ test("Ladder client accepts decoded errors and retains status, timeout and conne
   config.contentApi = { baseUrl: "https://api.example.invalid", apiKey: "test" };
   t.after(() => { config.contentApi = original; });
   for (const [failure, expected] of [
-    [{ response: { status: 502, data: { code: "ladder_login_failed" } } }, /afviste login/],
+    [{ response: { status: 502, data: { code: "ladder_login_failed" } } }, /login kunne ikke gennemføres/],
     [{ response: { status: 502, data: '{"error":"Legacy API error"}' } }, /API svarede 502/],
     [{ response: { status: 502, data: "<html>Bad gateway</html>" } }, /API svarede 502/],
     [{ response: { status: 502, data: '{"code":"constructor"}' } }, /API svarede 502/],
@@ -57,9 +57,9 @@ test("Ladder client accepts decoded errors and retains status, timeout and conne
   }
 });
 
-test("authentication failures during profile reads are reported as login failures, not missing rider identities", async () => {
+test("authentication failures during profile reads retain the login error instead of losing rider identities", async () => {
   const html = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
-  const failure = Object.assign(new Error("Ladder afviste login"), { code: "ladder_login_failed" });
+  const failure = Object.assign(new Error("Ladder-login kunne ikke gennemføres"), { code: "ladder_login_failed" });
   await assert.rejects(getRoster({ id: "501" }, {
     fetchPage: async (path) => {
       if (path === "/team/n/501") return html;

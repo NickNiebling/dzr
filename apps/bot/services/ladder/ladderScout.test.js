@@ -55,7 +55,7 @@ test("handler rejects teams outside ladder_link and the same resolved team befor
   assert.equal(load.mock.callCount(), 0);
 });
 
-test("scout resolves Chonky Complainers and Bredden offline and reports rejected API login", async (t) => {
+test("scout resolves Chonky Complainers and Bredden offline and reports API login failure", async (t) => {
   const axios = require("axios");
   const config = require("../../config/config");
   const original = config.contentApi;
@@ -76,7 +76,7 @@ test("scout resolves Chonky Complainers and Bredden offline and reports rejected
     editReply: async (message) => { reply = message; },
   });
   assert.deepEqual(paths.sort(), ["/team/n/655", "/team/n/91"]);
-  assert.match(reply.content, /Ladder afviste login.*administrator/);
+  assert.match(reply.content, /Ladder-login kunne ikke gennemføres.*administrator/);
   assert.doesNotMatch(reply.content, /502|Prøv igen senere/);
 });
 

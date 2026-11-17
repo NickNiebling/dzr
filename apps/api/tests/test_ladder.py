@@ -108,6 +108,65 @@ class LadderClientTest(unittest.TestCase):
                 self.assertNotIn("private", str(error.context))
                 self.assertFalse(self.client.logged_in)
 
+    def test_login_history_distinguishes_landing_session_failure_from_immediate_signin_return(self):
+        for hops, expected in (
+            (
+                [("/signin", "/summary"), ("/summary", "/dashboard"), ("/dashboard", "/signin")],
+                [
+                    {"status": 302, "path": "/signin", "location_path": "/summary"},
+                    {"status": 302, "path": "/summary", "location_path": "/dashboard"},
+                    {"status": 302, "path": "/dashboard", "location_path": "/signin"},
+                    {"status": 200, "path": "/signin", "location_path": None},
+                ],
+            ),
+            (
+                [("/signin", "/signin")],
+                [
+                    {"status": 302, "path": "/signin", "location_path": "/signin"},
+                    {"status": 200, "path": "/signin", "location_path": None},
+                ],
+            ),
+        ):
+            with self.subTest(hops=hops):
+                rejected = response(SIGNIN, path="/signin")
+                for path, location in hops:
+                    hop = response(status=302, path=path)
+                    hop.headers["Location"] = location
+                    rejected.history.append(hop)
+                self.session.get.return_value = response(SIGNIN, path="/signin")
+                self.session.post.return_value = rejected
+                with self.assertRaises(ladder.LadderError) as caught:
+                    self.client.login()
+                self.assertEqual(caught.exception.code, "ladder_login_failed")
+                self.assertEqual(caught.exception.context["redirect_chain"], expected)
+                self.assertFalse(caught.exception.context["redirect_chain_truncated"])
+                self.assertFalse(self.client.logged_in)
+
+    def test_redirect_history_is_bounded_and_never_includes_private_url_or_response_data(self):
+        rejected = response(SIGNIN + "private response body", path="/signin?password=private#secret")
+        for _ in range(10):
+            hop = response("private body", 302, "/signin?email=private#secret")
+            hop.url = "https://private:secret@private.example/signin?token=private#secret"
+            hop.headers["Location"] = "https://private:secret@private.example/summary?token=private#secret"
+            hop.headers["Set-Cookie"] = "private=secret"
+            rejected.history.append(hop)
+        rejected.history[1].url = "https://private.example/reset/private-token?email=secret"
+        rejected.history[1].headers["Location"] = "/reset/private-token?token=secret"
+        # Relative Location paths are resolved before the allow-listed path sanitizer.
+        rejected.history[2].headers["Location"] = "dashboard?token=private#secret"
+        rejected.history[3].headers["Location"] = "https://[private"
+        error = ladder.LadderError("ladder_login_failed", phase="login_submit", response=rejected)
+        chain = error.context["redirect_chain"]
+        self.assertEqual(len(chain), 8)
+        self.assertEqual(chain[0], {"status": 302, "path": "/signin", "location_path": "/summary"})
+        self.assertEqual(chain[1], {"status": 302, "path": None, "location_path": None})
+        self.assertEqual(chain[2]["location_path"], "/dashboard")
+        self.assertIsNone(chain[3]["location_path"])
+        self.assertEqual(chain[-1], {"status": 200, "path": "/signin", "location_path": None})
+        self.assertTrue(error.context["redirect_chain_truncated"])
+        self.assertNotIn("private", str(error.context))
+        self.assertNotIn("secret", str(error.context))
+
     def test_missing_credentials_fail_without_a_network_request(self):
         self.client.email = None
         with self.assertRaises(ladder.LadderError) as caught:
@@ -248,6 +307,11 @@ class LadderEndpointTest(unittest.TestCase):
 
     def test_authentication_failure_keeps_502_and_adds_safe_error_code_and_sentry_context(self):
         rejected = response(SIGNIN + "private response body", path="/signin?password=private-password")
+        for path, location in (("/signin", "/summary"), ("/summary", "/dashboard"), ("/dashboard", "/signin")):
+            hop = response("private response body", 302, f"{path}?email=private#secret")
+            hop.headers["Location"] = f"{location}?password=private#secret"
+            hop.headers["Set-Cookie"] = "private=secret"
+            rejected.history.append(hop)
         self.upstream.get_page.side_effect = ladder.LadderError("ladder_login_failed", phase="login_submit", response=rejected)
         with self.assertLogs(level="ERROR") as logs:
             result = self.client.get("/ladder_page?path=/team/n/91", headers={"Authorization": "Bearer private-token"})
@@ -260,6 +324,12 @@ class LadderEndpointTest(unittest.TestCase):
         self.assertEqual(context["requested_path"], "/team/n/91")
         self.assertEqual(context["final_path"], "/signin")
         self.assertTrue(context["signin_detected"])
+        self.assertEqual(context["redirect_chain"], [
+            {"status": 302, "path": "/signin", "location_path": "/summary"},
+            {"status": 302, "path": "/summary", "location_path": "/dashboard"},
+            {"status": 302, "path": "/dashboard", "location_path": "/signin"},
+            {"status": 200, "path": "/signin", "location_path": None},
+        ])
         self.assertNotIn("private", str(self.events))
         self.assertNotIn("private", str(logs.records[0].__dict__))
 
