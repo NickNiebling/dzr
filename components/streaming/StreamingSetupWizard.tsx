@@ -8,19 +8,19 @@ import {
 } from '@chakra-ui/react'
 import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
 import {
-  fetchScriptFile, getInstallationErrorMessage, installScript, SCRIPT_FILENAME,
-  type DirectoryPicker, type InstallationResult,
+  fetchScriptFile, getInstallationErrorMessage, installScript, SCRIPT_FILENAME, supportsSavePicker,
+  type SaveFilePicker,
 } from './installScript'
 
 type OperatingSystem = 'windows' | 'macos'
 type Props = { scriptUrl?: string }
-type PickerWindow = Window & { showDirectoryPicker?: DirectoryPicker }
+type PickerWindow = Window & { showSaveFilePicker?: SaveFilePicker }
 
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
 const obsSteps = [
   { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg Værktøjer / Tools → Scripts i menuen øverst.' },
   { title: 'Klik på plusset', image: 'add-script', text: 'Klik på + nederst til venstre i Scripts-vinduet.' },
-  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Find den DZR-mappe, du brugte i trin 2. Vælg dzr-stream.lua, og klik Åbn / Open.' },
+  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik Åbn / Open.' },
 ]
 
 export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/script' }: Props) {
@@ -32,23 +32,22 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [copyMessage, setCopyMessage] = React.useState('')
-  const [installation, setInstallation] = React.useState<InstallationResult | null>(null)
+  const [savedFilename, setSavedFilename] = React.useState<string | null>(null)
   const [downloaded, setDownloaded] = React.useState(false)
   const [manualFileReady, setManualFileReady] = React.useState(false)
   const [obsStep, setObsStep] = React.useState(0)
   const [showTest, setShowTest] = React.useState(false)
   const [finished, setFinished] = React.useState(false)
   const heading = React.useRef<HTMLHeadingElement>(null)
-  const hasConflict = installation?.status === 'conflict'
-  const fileReceived = !hasConflict && (downloaded || installation?.status === 'saved' || installation?.status === 'identical')
-  const fileReady = !hasConflict && ((downloaded && manualFileReady) || installation?.status === 'saved' || installation?.status === 'identical')
+  const fileReceived = Boolean(savedFilename) || downloaded
+  const fileReady = Boolean(savedFilename) || (downloaded && manualFileReady)
 
   React.useEffect(() => {
     const platform = navigator.platform || navigator.userAgent
     if (/Win/i.test(platform)) setOs('windows')
     else if (/Mac/i.test(platform)) setOs('macos')
     setMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1))
-    setSupportsPicker(window.isSecureContext && typeof (window as PickerWindow).showDirectoryPicker === 'function')
+    setSupportsPicker(supportsSavePicker(window as PickerWindow))
   }, [])
 
   function goTo(next: number) {
@@ -69,24 +68,19 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
   async function install() {
     if (busy) return
-    const pick = (window as PickerWindow).showDirectoryPicker
+    const pick = (window as PickerWindow).showSaveFilePicker
     if (!pick) return
     setBusy(true)
     setError('')
     try {
       // installScript invokes the picker immediately, while this click is active.
-      const result = await installScript({
-        pickDirectory: (options) => pick.call(window, options),
+      const filename = await installScript({
+        pickFile: (options) => pick.call(window, options),
         fetchScript: () => fetchScriptFile(scriptUrl),
       })
-      setInstallation(result)
-      if (result.status === 'conflict') {
-        setManualFileReady(false)
-      }
+      setSavedFilename(filename)
     } catch (cause) {
-      setError(hasConflict
-        ? 'Filen kunne ikke gemmes i en ny mappe. Den eksisterende fil er ikke ændret. Vælg en anden mappe, og tillad adgang.'
-        : getInstallationErrorMessage(cause))
+      setError(getInstallationErrorMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -107,6 +101,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       setDownloaded(true)
+      setManualFileReady(false)
     } catch (cause) {
       setError(getInstallationErrorMessage(cause))
     } finally {
@@ -138,6 +133,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     )
   }
 
+  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', savedFilename ?? SCRIPT_FILENAME)
   const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', obsSteps[obsStep].title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
 
   return (
@@ -193,65 +189,45 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 2 && (
               <Stack spacing={5}>
                 <Text color="gray.300">
-                  Filen skal blive liggende i en fast mappe. Vi foreslår Dokumenter / Documents → DZR.
+                  Gem filen et sted, hvor du ikke kommer til at slette den, fx Dokumenter/DZR.
                 </Text>
-                {supportsPicker && (
-                  <Stack spacing={4}>
-                    <Text color="gray.300">Klik på <strong>Installér DZR OBS-script</strong>, og vælg <strong>Dokumenter / Documents</strong> i vinduet, der åbner. Vi opretter selv DZR-mappen i den mappe, du vælger, og gemmer filen dér. Du skal kun vælge Dokumenter og tillade adgang.</Text>
-                    <Button colorScheme="red" size="lg" minH="56px" whiteSpace="normal" onClick={install} isLoading={busy} loadingText="Arbejder…">
-                      {installation?.status === 'conflict' ? 'Vælg en anden mappe' : 'Installér DZR OBS-script'}
-                    </Button>
-                  </Stack>
-                )}
-                {!hasConflict && (
-                  <Stack spacing={3}>
-                    <Heading as="h2" size="sm">{supportsPicker ? 'Problemer med installation herover?' : 'Hent filen til din computer'}</Heading>
-                    <Text color="gray.300">Hent filen, og vælg selv en placering på din computer. Brug en fast mappe, som du ikke sletter senere, da filen skal blive liggende, efter den er tilføjet i OBS.</Text>
-                    <Button
-                      leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
-                      variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
-                      color="white" size="lg" minH="52px" whiteSpace="normal"
-                    >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
-                  </Stack>
-                )}
-                {!supportsPicker && <Text color="gray.400" fontSize="sm">Din browser bruger almindelig download. Du kan følge hele guiden her.</Text>}
+                <Text color="gray.300">
+                  {supportsPicker
+                    ? 'Gem som foreslår dzr-stream.lua som filnavn og Dokumenter som startmappe. Vælg eller opret en DZR-mappe dér, hvis du vil bruge den placering.'
+                    : 'Hent dzr-stream.lua, og flyt den fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.'}
+                </Text>
+                <Button
+                  colorScheme="red" size="lg" minH="56px" whiteSpace="normal"
+                  leftIcon={supportsPicker ? undefined : <FaDownload />}
+                  onClick={supportsPicker ? install : download} isLoading={busy} loadingText="Arbejder…"
+                >
+                  {supportsPicker ? 'Gem DZR-script' : 'Download DZR-script'}
+                </Button>
 
-                {hasConflict && (
-                  <Alert status="warning" bg="orange.900" borderRadius="lg" role="alert">
-                    <AlertIcon />
-                    <Text>Der ligger allerede en anden eller tom dzr-stream.lua i <strong>{installation.directoryName}</strong>. Den er ikke ændret. Klik på <strong>Vælg en anden mappe</strong> for at gemme filen et nyt sted. Du kan først fortsætte, når filen er gemt eller matcher DZR-filen. En download alene løser ikke konflikten.</Text>
-                  </Alert>
-                )}
-
-                {installation && installation.status !== 'conflict' && (
+                {savedFilename && (
                   <Alert status="success" bg="green.900" borderRadius="lg">
                     <AlertIcon />
-                    <Text>{installation.status === 'saved' ? 'Filen er gemt i' : 'Den samme fil ligger allerede i'} <strong>{installation.directoryName}</strong>. Nu skal den tilføjes i OBS.</Text>
+                    <Text><strong>{savedFilename}</strong> er gemt. Nu skal filen tilføjes i OBS.</Text>
                   </Alert>
                 )}
 
-                {!hasConflict && downloaded && (
+                {downloaded && (
                   <Stack spacing={3}>
-                    <Text>Når filen er hentet: Åbn Downloads / Overførsler. Ved denne manuelle download skal du selv oprette en DZR-mappe i Dokumenter og flytte <strong>dzr-stream.lua</strong> dertil.</Text>
-                    {illustration('save-file', 'Flyt dzr-stream.lua fra Downloads til en fast DZR-mappe i Dokumenter.')}
+                    {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
                     <Text color="gray.400" fontSize="sm">Behold filnavnet dzr-stream.lua. Undgå en ekstra endelse som .txt eller et nummer i filnavnet.</Text>
+                    <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy} alignItems="start">
+                      Jeg har flyttet dzr-stream.lua til en fast placering.
+                    </Checkbox>
                   </Stack>
                 )}
-
-                {downloaded && !hasConflict && (
-                  <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy || hasConflict} alignItems="start">
-                    Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.
-                  </Checkbox>
-                )}
-                {downloaded && manualFileReady && !hasConflict && <Text color="green.300" fontSize="sm">Du har bekræftet filens placering. Browseren har ikke kontrolleret den.</Text>}
               </Stack>
             )}
 
             {step === 3 && (
               <Stack spacing={4}>
                 <Text color="red.300" fontSize="sm">OBS · {obsStep + 1} af {obsSteps.length}</Text>
-                <Text fontSize="lg">{obsSteps[obsStep].text}</Text>
-                {illustration(obsSteps[obsStep].image, obsSteps[obsStep].text)}
+                <Text fontSize="lg">{obsInstruction}</Text>
+                {illustration(obsSteps[obsStep].image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
                 {obsStep === 2 && (
                   <Text color="gray.400" fontSize="sm">Er filen allerede tilføjet? Vælg den i listen. Hvis den er flyttet eller slettet, skal du gendanne den på den gamle placering og genindlæse scriptet i OBS.</Text>
                 )}
@@ -286,7 +262,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
               <Stack spacing={5}>
                 <HStack align="start" spacing={3}>
                   <Box color="green.300" pt={1}><FaCheckCircle size={24} /></Box>
-                  <Text>Du har gennemgået installationen og indstillingerne. Behold filen i DZR-mappen.</Text>
+                  <Text>Du har gennemgået installationen og indstillingerne. Lad scriptfilen blive liggende dér, hvor OBS bruger den.</Text>
                 </HStack>
                 <Alert status="info" bg="blue.900" borderRadius="lg"><AlertIcon /><Text>OBS-forbindelsen er ikke kontrolleret her. Kun et nyt signal i Discord bekræfter forbindelsen.</Text></Alert>
                 {finished ? (
