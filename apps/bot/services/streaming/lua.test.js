@@ -56,7 +56,7 @@ local service_name, service_available = "YouTube - RTMPS", true
 local clock = os.time()
 os.time = function() return clock end
 obslua = {
-  LOG_INFO=1, LOG_WARNING=2, LOG_ERROR=3, OBS_TEXT_DEFAULT=0, OBS_TEXT_PASSWORD=1,
+  LOG_INFO=1, LOG_WARNING=2, LOG_ERROR=3, OBS_TEXT_PASSWORD=1,
   OBS_COMBO_TYPE_LIST=0, OBS_COMBO_FORMAT_STRING=0,
   OBS_FRONTEND_EVENT_STREAMING_STARTED=1, OBS_FRONTEND_EVENT_STREAMING_STOPPED=2,
   script_log=function(_, message) print(message) end,
@@ -92,7 +92,7 @@ dofile(${JSON.stringify(script)})
 script_load({endpoint="https://attacker.example/streaming/obs", key=${JSON.stringify(token)}, platform="auto"})
 local properties = script_properties()
 assert(properties.key.style == obslua.OBS_TEXT_PASSWORD, "DZR key must remain masked")
-assert(properties.video_link and not properties.endpoint, "only key and optional video link are editable")
+assert(not properties.endpoint, "endpoint must not be editable")
 local function pump(count) for i=1,count do tick(); ffi.C.usleep(10000) end end
 test_button(); pump(50)
 clock=clock+3; pump(50) -- retry the deliberately failed first request
@@ -101,7 +101,7 @@ event(1); pump(20) -- duplicate OBS event is ignored
 clock=clock+31; pump(50)
 event(2); pump(50)
 service_name="Twitch"
-script_update({endpoint="https://old-bot.example/streaming/obs", key=${JSON.stringify(token)}, video_link="https://www.youtube.com/watch?v=abcdefghijk"})
+script_update({endpoint="https://old-bot.example/streaming/obs", key=${JSON.stringify(token)}})
 test_button(); pump(50)
 event(1); pump(50)
 event(2); pump(50)
@@ -132,9 +132,6 @@ script_unload()
   assert.equal(requests[2].body.sessionId, requests[4].body.sessionId);
   assert.equal(requests[8].body.sessionId, requests[9].body.sessionId);
   assert.equal(requests[8].body.startedAt, requests[9].body.startedAt);
-  assert.equal(requests[5].body.videoId, "abcdefghijk");
-  assert.equal(requests[6].body.videoId, "abcdefghijk");
-  assert.equal(requests[8].body.videoId, "abcdefghijk");
   assert.ok(!output.includes("Ukendt streamingplatform"), output);
   assert.ok(requests.every((r) => r.authorization === `Bearer ${token}` && r.url === "/streaming/obs"));
   assert.ok(!output.includes(token));
