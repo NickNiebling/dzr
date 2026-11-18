@@ -1,16 +1,20 @@
 """Read-only access to ladder.cycleracing.club for the Discord bot.
 
-The ladder has no API, so the club account signs in with the normal sign-in form and the bot asks this
-service for individual pages. The password therefore stays here and never reaches the bot.
+The ladder has no API, so the club account's browser session (LADDER_SESSION) is used, with the normal sign-in
+form as fallback, and the bot asks this service for individual pages. The credentials therefore stay here and never
+reach the bot.
 """
 import logging
 import os
 import re
 import threading
+from typing import Optional
 
 import requests
 
 LADDER_BASE = "https://ladder.cycleracing.club"
+LADDER_HOST = "ladder.cycleracing.club"
+SESSION_COOKIE = "connect.sid"
 
 # Only these pages can be fetched, so /ladder_page cannot be used as an open proxy.
 ALLOWED_PATH = re.compile(
@@ -40,13 +44,19 @@ def _is_refreshing_page(body: str) -> bool:
 
 
 class LadderClient:
-    def __init__(self, email: str, password: str):
+    def __init__(self, email: str, password: str, session_cookie: Optional[str] = None):
         self.email = email
         self.password = password
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; DZRBot/1.0)"})
         self.logged_in = False
+        self.using_session_cookie = False
         self._lock = threading.Lock()
+        if session_cookie:
+            # A browser session works even when the site refuses the password sign-in for scripts.
+            self.session.cookies.set(SESSION_COOKIE, session_cookie, domain=LADDER_HOST, path="/")
+            self.logged_in = True
+            self.using_session_cookie = True
 
     def login(self):
         if not self.email or not self.password:
@@ -82,6 +92,9 @@ class LadderClient:
                 self.login()
             res = self._get(path)
             if _is_sign_in_page(res.text):
+                if self.using_session_cookie:
+                    logging.warning("LADDER_SESSION was rejected and must be renewed; trying the password sign-in")
+                    self.using_session_cookie = False
                 self.login()
                 res = self._get(path)
                 if _is_sign_in_page(res.text):
@@ -106,5 +119,6 @@ def get_client() -> LadderClient:
         # The club's Zwift account is the one registered on the ladder; LADDER_* overrides it when needed.
         email = os.getenv("LADDER_EMAIL") or os.getenv("ZWIFT_USERNAME")
         password = os.getenv("LADDER_PASSWORD") or os.getenv("ZWIFT_PASSWORD")
-        _client = LadderClient(email, password)
+        session_cookie = (os.getenv("LADDER_SESSION") or "").strip().removeprefix(f"{SESSION_COOKIE}=")
+        _client = LadderClient(email, password, session_cookie or None)
     return _client
