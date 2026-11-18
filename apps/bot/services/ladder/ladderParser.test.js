@@ -12,6 +12,14 @@ test("parseFixtureList reads id, teams and route from a fixture row", () => {
   assert.deepEqual(parseFixtureList(html), [{ id: "17200", home: "Mad Dogs (DBR)", away: "Chonky Chaser", route: "Croissant" }]);
 });
 
+test("parseFixtureList returns null for a route that is not set yet", () => {
+  const html = `<table><tr data-id="1"><td>
+    <span class="teamOpener" data-team-id="1">A</span><span class="teamOpener" data-team-id="2">B</span>
+    <span class="route-detail">
+    </span></td></tr></table>`;
+  assert.equal(parseFixtureList(html)[0].route, null);
+});
+
 test("parseFixture reads start, laps, fixed distance and signups with Zwift ids", () => {
   const html = `<script>let forTime = '2026-10-05T17:30:00Z'; let routeId = 99; let laps = 2; let distance = 15000;</script>
     <section class="homeTeamSignins"><h2 class="px-2">Home</h2><table><tr>

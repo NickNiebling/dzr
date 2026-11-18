@@ -23,7 +23,7 @@ function parseFixtureList(html) {
       decodeEntities(m[1].trim())
     );
     if (teams.length < 2) continue;
-    const route = row[2].match(/<span class="route-detail">\s*([^<]+?)\s*(?:<|$)/);
+    const route = row[2].match(/<span class="route-detail">\s*([^<\s][^<]*?)\s*(?:<|$)/);
     fixtures.push({ id: row[1], home: teams[0], away: teams[1], route: route ? decodeEntities(route[1]) : null });
   }
   return fixtures;
