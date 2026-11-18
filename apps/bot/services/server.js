@@ -1,3 +1,4 @@
+const Sentry = require("@sentry/node");
 const express = require("express");
 const axios = require("axios");
 const config = require("../config/config");
@@ -9,6 +10,7 @@ function createHttpApp({ streaming } = {}) {
   app.set("trust proxy", 1);
   app.get("/", (req, res) => res.send("Bot is running!"));
   if (streaming) app.use("/streaming", createStreamingRouter(streaming));
+  Sentry.setupExpressErrorHandler(app);
   return app;
 }
 

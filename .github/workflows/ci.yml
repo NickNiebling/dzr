@@ -89,6 +89,20 @@ jobs:
       - name: Coach prompt structure
         run: npm run eval:dry
 
+  api-observability:
+    name: API (Sentry smoke tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - run: python -m pip install -r apps/api/requirements.txt
+      # In-memory transport: no Firebase credentials or external Sentry delivery.
+      - run: python -m unittest discover -s apps/api/tests -p test_observability.py
+
   shared-sync:
     name: Shared copies are in sync
     runs-on: ubuntu-latest
