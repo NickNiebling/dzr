@@ -6,7 +6,16 @@ import backoff
 import requests
 from requests.exceptions import RequestException
 
-from zwift_inspect import event_dump, flag_tag, number_or_none, physics_from_tags, steering_from_tags, tag_value, world_label
+from zwift_inspect import (
+    event_dump,
+    flag_tag,
+    number_or_none,
+    physics_from_tags,
+    place_completion_prizes,
+    steering_from_tags,
+    tag_value,
+    world_label,
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -42,11 +51,11 @@ UNLOCK_PREFIXES = (
     "running_shirts=",
 )
 
-# completionprize1=<id> grants the kit on finish. jerseyHash is separate and
-# is not set by these presets.
+# completionprize=<id> has no slot yet. place_completion_prizes gives it the
+# lowest free completionprizeN. jerseyHash is the leader jersey and is not set here.
 DZR_KITS = (
-    {"id": "2025", "label": "DZR 2025 kit", "tag": "completionprize1=1381648520"},
-    {"id": "old", "label": "Older DZR kit", "tag": "completionprize1=3709517096"},
+    {"id": "2025", "label": "DZR 2025 kit", "tag": "completionprize=1381648520"},
+    {"id": "old", "label": "Older DZR kit", "tag": "completionprize=3709517096"},
 )
 
 
@@ -597,9 +606,11 @@ class ZwiftAPI:
             raise ValueError("At least one tag is required")
 
         def mutate(event: dict) -> None:
-            event["tags"] = merge_tags(event.get("tags"), clean)
+            # Prize tags are numbered here. A second kit left on completionprize1
+            # is saved and then omitted from the event page.
+            event["tags"] = place_completion_prizes(merge_tags(event.get("tags"), clean))
             for subgroup in event.get("eventSubgroups") or []:
-                subgroup["tags"] = merge_tags(subgroup.get("tags"), clean)
+                subgroup["tags"] = place_completion_prizes(merge_tags(subgroup.get("tags"), clean))
 
         return self._update_event(event_id, mutate)
 
