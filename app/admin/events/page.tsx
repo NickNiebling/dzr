@@ -858,6 +858,17 @@ export default function AdminEventsPage() {
                     </Detail>
                   </SimpleGrid>
                   <Text fontSize="xs" color="gray.500" mt={3} mb={1}>
+                    Unlocks
+                  </Text>
+                  <Box mb={3}>
+                    <TagList
+                      tags={(subgroup.unlocks || []).map((unlock) =>
+                        unlock.name ? `${unlock.name} · ${unlock.tag}` : unlock.tag,
+                      )}
+                      scheme="green"
+                    />
+                  </Box>
+                  <Text fontSize="xs" color="gray.500" mb={1}>
                     Tags
                   </Text>
                   <TagList tags={subgroup.tags || []} scheme="gray" />
