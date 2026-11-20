@@ -28,7 +28,7 @@ npm run test:streaming-setup:browser
 ## Kort manuel smoke test
 
 - Opret en registrering på testserveren, og genåbn guiden: privat nøgle ved oprettelse, ingen rotation ved genåbning eller dobbelt indsendelse. Kontrollér også afvisning uden Club Member-rollen og det uændrede `/streaming_add`-flow.
-- Følg Windows/macOS-guiden på OBS-computeren. Prøv mappevalg og almindelig download; en anderledes eksisterende fil skal bevares, og annullering eller fejl må ikke ligne succes. Kontrollér også mobilvisningen.
+- Følg Windows/macOS-guiden på OBS-computeren. Prøv Gem som, og kontrollér det foreslåede filnavn, browserens overskrivningsbekræftelse og guidens feedback ved annullering eller fejl. Prøv også almindelig download og bekræftelse efter flytning til en fast placering. Kontrollér også mobilvisningen.
 - Indlæs Lua i OBS, og kopiér din personlige nøgle fra Discord til **DZR key**. Der skal ikke være et endpointfelt; en tidligere gemt endpointindstilling skal ignoreres. Prøv eventuelt **Test forbindelse** og Discord-statusknappen: et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test; en gemt fil beviser ikke en forbindelse.
 - En valgfri offentlig teststream skal bruge den eksisterende verifikation og testkanal. Notér OS, browser, OBS-version og det faktisk afprøvede; browserillustrationer og automatiske tests dokumenterer ikke native OBS-adfærd.
 

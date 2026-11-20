@@ -118,7 +118,7 @@ flowchart TB
 
 </details>
 
-The public [setup page](../../app/streaming/setup/page.tsx) requires no browser login. It offers Windows/macOS instructions, explicit directory access where supported and a normal download elsewhere. The File System Access API uses the directory selected by the member; Documents is only a picker hint. It writes only the generic `dzr-stream.lua` in the selected DZR folder, preserves different existing files and keeps directory handles in memory. The browser never executes the script or changes OBS settings.
+The public [setup page](../../app/streaming/setup/page.tsx) requires no browser login. It gives Windows and macOS instructions. In browsers with save picker support, Save As suggests Documents and `dzr-stream.lua`. The browser handles any overwrite confirmation. Other browsers download the file and ask the member to confirm that they moved it to a permanent folder. The browser never executes the script or changes OBS settings.
 
 The [website download route](../../app/api/streaming/script/route.ts) requests the bot's existing Lua download server-side. The download origin defaults to `https://bot-tdnm.onrender.com`; optional `STREAMING_PUBLIC_URL` overrides this origin, and invalid overrides fail closed. This does not change the callback address embedded in Lua. The route does not forward browser credentials or accept a destination from the request. It rejects failed, empty, oversized or invalid script downloads. This avoids browser CORS restrictions without a second script copy or extra backend service.
 

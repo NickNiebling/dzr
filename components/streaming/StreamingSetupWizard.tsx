@@ -133,7 +133,8 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     )
   }
 
-  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', savedFilename ?? SCRIPT_FILENAME)
+  const obsFilename = savedFilename ?? SCRIPT_FILENAME
+  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', () => obsFilename)
   const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', obsSteps[obsStep].title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
 
   return (
@@ -236,7 +237,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step === 4 && (
               <Stack spacing={5}>
-                <Text>Vælg <strong>dzr-stream.lua</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
+                <Text>Vælg <strong>{obsFilename}</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
                 {illustration('configure', 'Indsæt din personlige API-nøgle i DZR key i OBS-scriptets indstillinger.')}
                 <Stack spacing={2}>
                   <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
