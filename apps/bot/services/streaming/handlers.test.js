@@ -173,8 +173,9 @@ test("modal returns download and personal key privately without endpoint configu
   assert.equal(i.calls[1][1].embeds.length, 3);
   assert.ok(reply.includes("Downloads / Overførsler"));
   assert.ok(reply.includes("Test forbindelse"));
-  assert.ok(reply.includes("DZR finder automatisk"));
-  assert.ok(reply.includes("en eller flere platforme på samme tid"));
+  const platforms = i.calls[1][1].embeds[1].toJSON().fields.find((field) => field.name === "Dine streamingplatforme");
+  assert.match(platforms.value, /DZR finder automatisk ud af, hvilke af dine tilmeldte YouTube- og Twitch-kanaler der er live/);
+  assert.match(platforms.value, /en eller flere platforme på samme tid/);
   assert.ok(reply.includes("inden for fem minutter"));
   assert.ok(!reply.includes("Vælg **YouTube** eller **Twitch**"));
   assert.equal(i.calls[1][1].components[0].toJSON().components[0].custom_id, `streaming:status:${userId}`);

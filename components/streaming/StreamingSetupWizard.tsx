@@ -2,7 +2,6 @@
 
 import React from 'react'
 import {
-  Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel,
   Alert, AlertIcon, Box, Button, Checkbox, Container, Heading, HStack,
   Image, Progress, SimpleGrid, Stack, Text,
 } from '@chakra-ui/react'
@@ -133,7 +132,8 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     )
   }
 
-  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', savedFilename ?? SCRIPT_FILENAME)
+  const obsFilename = savedFilename ?? SCRIPT_FILENAME
+  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', () => obsFilename)
   const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', obsSteps[obsStep].title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
 
   return (
@@ -236,7 +236,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step === 4 && (
               <Stack spacing={5}>
-                <Text>Vælg <strong>dzr-stream.lua</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
+                <Text>Vælg <strong>{obsFilename}</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
                 {illustration('configure', 'Indsæt din personlige API-nøgle i DZR key i OBS-scriptets indstillinger.')}
                 <Stack spacing={2}>
                   <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
@@ -245,16 +245,6 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                   <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Få en ny via /streaming_add; når du gemmer, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
                 </Stack>
                 <Text color="gray.300">Du kan streame til én eller flere platforme på samme tid. DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler, så du behøver ikke begrænse dig til én platform.</Text>
-                <Accordion allowToggle>
-                  <AccordionItem borderColor="gray.700">
-                    <h3><AccordionButton px={0} py={3}><Box flex="1" textAlign="left">YouTube-videolink – valgfrit</Box><AccordionIcon /></AccordionButton></h3>
-                    <AccordionPanel px={0} color="gray.300">
-                      <Stack spacing={3}>
-                        <Text><strong>YouTube-videolink</strong> er valgfrit. Du kan lade feltet stå tomt. Et link til den aktuelle stream kan gøre live-verifikationen hurtigere; opdatér det, hvis du bruger det.</Text>
-                      </Stack>
-                    </AccordionPanel>
-                  </AccordionItem>
-                </Accordion>
               </Stack>
             )}
 
@@ -270,7 +260,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 ) : (
                   <Button colorScheme="red" size="lg" minH="56px" onClick={() => setFinished(true)}>Afslut uden test</Button>
                 )}
-                <Button color="white" variant="outline" size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
+                <Button color="white" variant="outline" _hover={{ bg: 'gray.700' }} size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
                   {showTest ? 'Skjul forbindelsestest' : 'Vis forbindelsestest – valgfrit'}
                 </Button>
                 {showTest && (
@@ -291,7 +281,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step < 5 && (
               <Stack direction={{ base: 'column-reverse', sm: 'row' }} spacing={3} pt={2}>
-                {step > 1 && <Button color="white" size="lg" variant="outline" onClick={back} isDisabled={busy}>Tilbage</Button>}
+                {step > 1 && <Button color="white" size="lg" variant="outline" _hover={{ bg: 'gray.700' }} onClick={back} isDisabled={busy}>Tilbage</Button>}
                 {(step !== 2 || fileReceived) && (
                   <Button
                     colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}

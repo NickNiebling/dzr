@@ -42,7 +42,7 @@ try {
         state.active = navigator.userActivation.isActive
         if (state.error) throw new DOMException('Picker stopped', state.error)
         return {
-          name: 'custom.lua',
+          name: 'custom$&.lua',
           createWritable: async () => ({
             write: async data => { state.written = Array.from(new Uint8Array(data)) },
             close: async () => { state.closed = true },
@@ -85,7 +85,7 @@ try {
 
     if (supportsPicker) {
       await transfer.click()
-      await page.getByText(/custom\.lua er gemt/).waitFor()
+      await page.getByText('custom$&.lua er gemt').waitFor()
       const { options, active, written, closed } = await page.evaluate(() => window.streamingTest)
       assert.deepEqual(options, {
         suggestedName: 'dzr-stream.lua',
@@ -110,11 +110,12 @@ try {
     await next.click()
     await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
     for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
-    const filename = supportsPicker ? 'custom.lua' : 'dzr-stream.lua'
+    const filename = supportsPicker ? 'custom$&.lua' : 'dzr-stream.lua'
     assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik Åbn / Open.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('img', { name: `${os}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)
     await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
     await page.getByRole('heading', { name: 'Forbind OBS med DZR', exact: true }).waitFor()
+    assert.equal(await page.getByText(`Vælg ${filename} i OBS-listen. Indsæt din personlige API-nøgle i DZR key til højre.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('button', { name: 'Kopiér adresse', exact: true }).count(), 0)
     assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
     assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
