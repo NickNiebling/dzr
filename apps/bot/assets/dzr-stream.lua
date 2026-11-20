@@ -5,7 +5,7 @@ local ffi = require("ffi")
 local jit = require("jit")
 -- This address is part of the distributed script; persisted OBS settings cannot override it.
 local endpoint = "https://bot-tdnm.onrender.com/streaming/obs"
-local key, platform_setting, video_link = "", "auto", ""
+local key, platform_setting = "", "auto"
 local session, pending, current, multi, curl, write_callback
 local queue, retained = {}, {}
 local last_heartbeat, stopped = 0, false
@@ -78,13 +78,6 @@ local function valid_settings()
     return true
 end
 
-local function video_id()
-    if video_link == "" then return nil end
-    local value = video_link:match("[?&]v=([%w_-]+)") or video_link:match("youtu%.be/([%w_-]+)") or video_link
-    if #value == 11 and value:match("^[%w_-]+$") then return value end
-    return nil
-end
-
 local function new_session()
     last_session_start = math.max(millis(), last_session_start + 1)
     return { id = string.format("%d_%08x%08x", os.time(), math.random(0, 0x7fffffff), math.random(0, 0x7fffffff)),
@@ -96,7 +89,7 @@ local function enqueue(event, target)
     if #queue >= 6 then log(obs.LOG_WARNING, "DZR-køen er fuld; kontrollér netværksforbindelsen."); return end
     target.sequence = target.sequence + 1
     queue[#queue + 1] = { event = event, session_id = target.id, started_at = target.started_at,
-        sequence = target.sequence, platform = target.platform, attempts = 0, retry_at = 0, video_id = video_id() }
+        sequence = target.sequence, platform = target.platform, attempts = 0, retry_at = 0 }
 end
 
 local function start_stream()
@@ -122,8 +115,6 @@ local function body_for(job)
     obs.obs_data_set_int(data, "sequence", job.sequence)
     obs.obs_data_set_int(data, "startedAt", job.started_at)
     obs.obs_data_set_int(data, "sentAt", math.max(millis(), job.started_at))
-    -- The server checks every registered channel, including YouTube when OBS uses another service.
-    if job.video_id then obs.obs_data_set_string(data, "videoId", job.video_id) end
     local body = obs.obs_data_get_json(data)
     -- OBS string setters cannot represent nil; serialize the absent platform as JSON null.
     if job.platform == nil then body = body:gsub("}%s*$", ',"platform":null}') end
@@ -186,7 +177,7 @@ local function pump()
         log(obs.LOG_ERROR, "DZR-nøglen blev afvist. Kør /streaming_add, og kontrollér opsætningen.")
         queue = {}
     elseif code == 400 then
-        log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur og det valgfrie YouTube-link.")
+        log(obs.LOG_ERROR, "Signal afvist. Kontrollér computerens ur.")
     elseif pending.attempts < 5 then
         pending.retry_at = os.time() + math.min(30, 2 ^ pending.attempts)
         table.insert(queue, 1, pending)
@@ -202,14 +193,12 @@ jit.off(pump, true)
 function script_description()
     return "<b>DZR Streaming</b><br>Brug /streaming_add i Discord for din personlige nøgle. "
         .. "Stream keys læses aldrig. Test sender ingen offentlig besked. "
-        .. "Du kan streame til en eller flere af dine tilmeldte platforme på samme tid. "
-        .. "Ved YouTube kan et konkret videolink gøre live-verifikationen hurtigere."
+        .. "Du kan streame til en eller flere af dine tilmeldte platforme på samme tid."
 end
 
 function script_properties()
     local props = obs.obs_properties_create()
     obs.obs_properties_add_text(props, "key", "DZR key", obs.OBS_TEXT_PASSWORD)
-    obs.obs_properties_add_text(props, "video_link", "YouTube-videolink (valgfrit, opdatér for hver stream)", obs.OBS_TEXT_DEFAULT)
     obs.obs_properties_add_button(props, "test", "Test forbindelse", function()
         if valid_settings() then enqueue("test", new_session()) end
         return false
@@ -223,7 +212,6 @@ function script_update(settings)
     key = new_key
     platform_setting = obs.obs_data_get_string(settings, "platform")
     if platform_setting == "" then platform_setting = "auto" end
-    video_link = trim(obs.obs_data_get_string(settings, "video_link"))
 end
 
 function script_load(settings)

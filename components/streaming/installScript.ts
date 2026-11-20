@@ -1,36 +1,26 @@
 export const SCRIPT_FILENAME = 'dzr-stream.lua'
 
-export type ScriptFileHandle = {
-  getFile(): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }>
+export type SaveFilePicker = (options: {
+  suggestedName: string
+  startIn: 'documents'
+  types: { description: string; accept: { 'text/plain': string[] } }[]
+  excludeAcceptAllOption: boolean
+}) => Promise<{
+  name: string
   createWritable(): Promise<{
     write(data: ArrayBuffer): Promise<void>
     close(): Promise<void>
-    abort?(): Promise<void>
+    abort(): Promise<void>
   }>
+}>
+
+type SavePickerContext = {
+  isSecureContext: boolean
+  showSaveFilePicker?: SaveFilePicker
 }
 
-export type ScriptDirectoryHandle = {
-  name: string
-  removeEntry?(name: string): Promise<void>
-  getDirectoryHandle(name: string, options: { create: boolean }): Promise<ScriptDirectoryHandle>
-  getFileHandle(name: string, options: { create: boolean }): Promise<ScriptFileHandle>
-}
-
-export type DirectoryPicker = (options: {
-  mode: 'readwrite'
-  startIn: 'documents'
-}) => Promise<ScriptDirectoryHandle>
-
-export type InstallationResult = {
-  status: 'saved' | 'identical' | 'conflict'
-  directoryName: string
-}
-
-function sameBytes(first: ArrayBuffer, second: ArrayBuffer) {
-  if (first.byteLength !== second.byteLength) return false
-  const left = new Uint8Array(first)
-  const right = new Uint8Array(second)
-  return left.every((value, index) => value === right[index])
+export function supportsSavePicker(context: SavePickerContext) {
+  return context.isSecureContext && typeof context.showSaveFilePicker === 'function'
 }
 
 function errorName(error: unknown) {
@@ -51,63 +41,40 @@ export async function fetchScriptFile(url: string, fetcher: typeof fetch = fetch
   }
 }
 
-export async function installScript({ pickDirectory, fetchScript }: {
-  pickDirectory: DirectoryPicker
+export async function installScript({ pickFile, fetchScript }: {
+  pickFile: SaveFilePicker
   fetchScript: () => Promise<ArrayBuffer>
-}): Promise<InstallationResult> {
-  // The picker must be the first async action: browsers require the original click.
-  const selected = await pickDirectory({ mode: 'readwrite', startIn: 'documents' })
+}): Promise<string> {
+  // Open the native dialog during the click. It handles confirmation if a file already exists.
+  const handle = await pickFile({
+    suggestedName: SCRIPT_FILENAME,
+    startIn: 'documents',
+    types: [{ description: 'Lua-script', accept: { 'text/plain': ['.lua'] } }],
+    excludeAcceptAllOption: true,
+  })
   const bytes = await fetchScript()
   if (!bytes.byteLength) throw new Error('script_download_failed')
-  const directory = selected.name === 'DZR' ? selected : await selected.getDirectoryHandle('DZR', { create: true })
-  const directoryName = selected.name === 'DZR' ? 'DZR' : `${selected.name}/DZR`
 
-  let existing: ScriptFileHandle | undefined
+  const writer = await handle.createWritable()
   try {
-    existing = await directory.getFileHandle(SCRIPT_FILENAME, { create: false })
-  } catch (error) {
-    if (errorName(error) !== 'NotFoundError') throw error
-  }
-  if (existing) {
-    const previous = await (await existing.getFile()).arrayBuffer()
-    return { status: sameBytes(previous, bytes) ? 'identical' : 'conflict', directoryName }
-  }
-
-  const handle = await directory.getFileHandle(SCRIPT_FILENAME, { create: true })
-  // Recheck after creation in case another installation created the file meanwhile.
-  const current = await (await handle.getFile()).arrayBuffer()
-  if (current.byteLength) {
-    return { status: sameBytes(current, bytes) ? 'identical' : 'conflict', directoryName }
-  }
-  let writer: Awaited<ReturnType<ScriptFileHandle['createWritable']>> | undefined
-  try {
-    writer = await handle.createWritable()
     await writer.write(bytes)
     await writer.close()
   } catch (error) {
-    try { await writer?.abort?.() } catch { /* Keep the original write failure. */ }
-    // Only the newly created, still-empty artifact can be removed. Existing files
-    // returned above, or any file another writer filled meanwhile, stay untouched.
-    try {
-      const latest = await directory.getFileHandle(SCRIPT_FILENAME, { create: false })
-      if (!(await (await latest.getFile()).arrayBuffer()).byteLength) {
-        await directory.removeEntry?.(SCRIPT_FILENAME)
-      }
-    } catch { /* If permission was revoked, the UI offers another folder/download. */ }
+    try { await writer.abort() } catch { /* Keep the original write failure. */ }
     throw error
   }
-  return { status: 'saved', directoryName }
+  return handle.name
 }
 
 export function getInstallationErrorMessage(error: unknown) {
   switch (errorName(error)) {
-    case 'AbortError': return 'Mappevalget blev ikke gennemført. Prøv igen, eller hent filen i stedet.'
-    case 'NotAllowedError': return 'Browseren fik ikke lov til at gemme filen. Vælg mappen igen og tillad adgang, eller hent filen i stedet.'
-    case 'SecurityError': return 'Åbn guiden i en almindelig browserfane med sikker forbindelse, eller hent filen i stedet.'
-    case 'NotFoundError': return 'Mappen eller filen blev flyttet eller slettet. Vælg mappen igen.'
+    case 'AbortError': return 'Gem som blev annulleret. Klik på Gem DZR-script for at prøve igen.'
+    case 'NotAllowedError': return 'Browseren fik ikke lov til at gemme filen. Prøv igen, og tillad adgang.'
+    case 'SecurityError': return 'Åbn guiden i en almindelig browserfane med sikker forbindelse, og prøv igen.'
+    case 'NotFoundError': return 'Mappen eller filen blev flyttet eller slettet. Vælg en placering igen.'
     case 'TimeoutError': return 'Det tog for lang tid at hente filen. Kontrollér forbindelsen, og prøv igen.'
     default: return error instanceof Error && error.message === 'script_download_failed'
       ? 'Filen kunne ikke hentes fra DZR. Prøv igen om lidt.'
-      : 'Filen kunne ikke gemmes færdigt. Der kan ligge en tom fil i mappen. Vælg en anden mappe, eller kontrollér filen, før du prøver igen. Du kan også hente filen i stedet.'
+      : 'Filen kunne ikke gemmes færdigt. Der kan ligge en tom fil i mappen. Kontrollér filen, eller vælg en anden placering, og prøv igen.'
   }
 }

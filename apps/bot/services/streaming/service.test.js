@@ -299,16 +299,16 @@ test("persistent YouTube search budget is shared by concurrent callers and reset
   assert.equal(await s.store.reserveSearch(), true);
 });
 
-test("legacy callback platform is only a hint; verification stays on registered channels and keys remain owner-bound", async () => {
+test("legacy callbacks pass the video ID to the registered YouTube channel even with a Twitch hint", async () => {
   const s = setup(); const { token } = await s.enroll();
   const checked = [];
   s.providers.verify = async (registeredChannel, session) => {
-    checked.push({ channelId: registeredChannel.id, platform: session.platform });
+    checked.push({ channelId: registeredChannel.id, platform: session.platform, videoId: session.videoId });
     return { streams: [stream] };
   };
-  await s.service.callback(token, s.event({ platform: "twitch" }));
+  await s.service.callback(token, s.event({ platform: "twitch", videoId: stream.id }));
   await s.service.tick();
-  assert.deepEqual(checked, [{ channelId: channel.id, platform: "youtube" }]);
+  assert.deepEqual(checked, [{ channelId: channel.id, platform: "youtube", videoId: stream.id }]);
   assert.equal(s.published.length, 1);
   await assert.rejects(s.service.callback(token.replace(userId, "222222222222222222"), s.event()), { code: "invalid_key" });
 });
