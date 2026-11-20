@@ -70,6 +70,52 @@ def physics_from_tags(tags) -> Dict[str, Optional[str]]:
     }
 
 
+_COMPLETION_PRIZE = re.compile(r"^completionprize(\d*)=(\d+)$", re.IGNORECASE)
+
+
+def place_completion_prizes(tags) -> list:
+    """Give each completion prize its own slot number.
+
+    The event page shows completionprize1, then completionprize2, and so on.
+    A second tag that reuses a number is kept by the API and left off the event.
+    completionprize=<id>, with no number, takes the lowest free slot.
+    """
+    other = []
+    slotted = {}
+    pending = []
+    seen = set()
+
+    for tag in tags or []:
+        text = str(tag).strip()
+        if not text:
+            continue
+        match = _COMPLETION_PRIZE.match(text)
+        if not match:
+            other.append(text)
+            continue
+        number, item_id = match.group(1), match.group(2)
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        slot = int(number) if number else None
+        if slot is not None and slot >= 1 and slot not in slotted:
+            slotted[slot] = item_id
+        else:
+            pending.append(item_id)
+
+    used = set(slotted)
+    nxt = 1
+    for item_id in pending:
+        while nxt in used:
+            nxt += 1
+        slotted[nxt] = item_id
+        used.add(nxt)
+        nxt += 1
+
+    prizes = [f"completionprize{slot}={slotted[slot]}" for slot in sorted(slotted)]
+    return other + prizes
+
+
 def number_or_none(value):
     if value is None or value == "":
         return None
