@@ -29,7 +29,7 @@ npm run test:streaming-setup:browser
 
 - Opret en registrering på testserveren, og genåbn guiden: privat nøgle ved oprettelse, ingen rotation ved genåbning eller dobbelt indsendelse. Kontrollér også afvisning uden Club Member-rollen og det uændrede `/streaming_add`-flow.
 - Følg Windows/macOS-guiden på OBS-computeren. Prøv mappevalg og almindelig download; en anderledes eksisterende fil skal bevares, og annullering eller fejl må ikke ligne succes. Kontrollér også mobilvisningen.
-- Indlæs Lua i OBS, og kopiér din personlige nøgle fra Discord til **DZR key**. Der skal ikke være et endpointfelt; en tidligere gemt endpointindstilling skal ignoreres. Prøv eventuelt **Test forbindelse** og Discord-statusknappen: et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test; en gemt fil beviser ikke en forbindelse.
+- Indlæs Lua i OBS, og kopiér din personlige nøgle fra Discord til **DZR key**. Kontrollér, at OBS kun viser DZR key og Test forbindelse, og at scriptet ignorerer en tidligere gemt endpointindstilling. Prøv eventuelt **Test forbindelse** og Discord-statusknappen: et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test; en gemt fil beviser ikke en forbindelse.
 - En valgfri offentlig teststream skal bruge den eksisterende verifikation og testkanal. Notér OS, browser, OBS-version og det faktisk afprøvede; browserillustrationer og automatiske tests dokumenterer ikke native OBS-adfærd.
 
 ## Valgfri isoleret testbot
