@@ -18,7 +18,7 @@ Each operating-system directory contains:
 
 | File | Shows |
 | --- | --- |
-| `save-file.webp` | An example permanent location in `Documents → DZR`, shown after a browser download |
+| `save-file.webp` | An example permanent location in `Documents → DZR`, shown before saving or downloading the script |
 | `tools-scripts.webp` | The OBS Tools menu with Scripts highlighted |
 | `add-script.webp` | The **+** button below the scripts list |
 | `select-file.webp` | An example of selecting `dzr-stream.lua` and clicking Open. Use the folder and filename from step 2 |

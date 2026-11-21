@@ -53,18 +53,29 @@ try {
     await page.goto(new URL('/streaming/setup', baseUrl).href, { waitUntil: 'networkidle', timeout: 180_000 })
     // OS detection runs after hydration; do not click the inert server HTML.
     const selectedOs = page.getByRole('button', { name: os, exact: true })
+    const continueButton = page.getByRole('button', { name: 'Fortsæt', exact: true })
     await selectedOs.and(page.locator('[aria-pressed="true"]')).waitFor()
-    await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+    await continueButton.click()
     const next = page.getByRole('button', { name: 'Filen er klar – fortsæt', exact: true })
     const checkbox = page.getByRole('checkbox')
+    const savedMessage = page.getByText('custom$&.lua er gemt')
     const transfer = page.getByRole('button', { name: supportsPicker ? 'Gem DZR-script' : 'Download DZR-script', exact: true })
     const otherTransfer = page.getByRole('button', { name: supportsPicker ? 'Download DZR-script' : 'Gem DZR-script', exact: true })
-    assert.equal(await transfer.isVisible(), true)
+    async function assertFreshSaveStep(currentOs) {
+      assert.equal(await transfer.isVisible(), true)
+      assert.equal(await next.count(), 0)
+      assert.equal(await checkbox.count(), 0)
+      assert.equal(await savedMessage.count(), 0)
+      const image = page.getByRole('img', { name: new RegExp(`^${currentOs}: .*Dokumenter/DZR`) })
+      assert.equal(await image.isVisible(), true)
+      assert.equal(await image.getAttribute('src'), `/streaming/setup/${currentOs.toLowerCase()}/save-file.webp`)
+      await image.scrollIntoViewIfNeeded()
+      await image.evaluate(element => element.decode())
+    }
+    await assertFreshSaveStep(os)
     assert.equal(await otherTransfer.count(), 0)
     assert.equal(await page.getByText('Gem filen et sted, hvor du ikke kommer til at slette den, fx Dokumenter/DZR.', { exact: true }).isVisible(), true)
     assert.equal(await page.getByText(/flyt den fra Downloads/).count(), supportsPicker ? 0 : 1)
-    assert.equal(await next.count(), 0)
-    assert.equal(await checkbox.count(), 0)
 
     if (supportsPicker) {
       for (const pickerError of ['AbortError', 'NotAllowedError']) {
@@ -83,37 +94,50 @@ try {
     assert.equal(await checkbox.count(), 0)
     downloadFails = false
 
-    if (supportsPicker) {
-      await transfer.click()
-      await page.getByText('custom$&.lua er gemt').waitFor()
-      const { options, active, written, closed } = await page.evaluate(() => window.streamingTest)
-      assert.deepEqual(options, {
-        suggestedName: 'dzr-stream.lua',
-        startIn: 'documents',
-        types: [{ description: 'Lua-script', accept: { 'text/plain': ['.lua'] } }],
-        excludeAcceptAllOption: true,
-      })
-      assert.equal(active, true)
-      assert.deepEqual(Buffer.from(written), script)
-      assert.equal(closed, true)
-      assert.equal(await checkbox.count(), 0)
-    } else {
-      const [file] = await Promise.all([page.waitForEvent('download'), transfer.click()])
-      assert.equal(file.suggestedFilename(), 'dzr-stream.lua')
-      assert.deepEqual(await readFile(await file.path()), script)
-      await next.waitFor()
-      assert.equal(await next.isDisabled(), true)
-      await page.getByText('Jeg har flyttet dzr-stream.lua til en fast placering.', { exact: true }).click()
-      assert.equal(await checkbox.isChecked(), true)
+    async function receiveFile() {
+      if (supportsPicker) {
+        await transfer.click()
+        await savedMessage.waitFor()
+        const { options, active, written, closed } = await page.evaluate(() => window.streamingTest)
+        assert.deepEqual(options, {
+          suggestedName: 'dzr-stream.lua',
+          startIn: 'documents',
+          types: [{ description: 'Lua-script', accept: { 'text/plain': ['.lua'] } }],
+          excludeAcceptAllOption: true,
+        })
+        assert.equal(active, true)
+        assert.deepEqual(Buffer.from(written), script)
+        assert.equal(closed, true)
+        assert.equal(await checkbox.count(), 0)
+      } else {
+        const [file] = await Promise.all([page.waitForEvent('download'), transfer.click()])
+        assert.equal(file.suggestedFilename(), 'dzr-stream.lua')
+        assert.deepEqual(await readFile(await file.path()), script)
+        await next.waitFor()
+        assert.equal(await next.isDisabled(), true)
+        await page.getByText('Jeg har flyttet dzr-stream.lua til en fast placering.', { exact: true }).click()
+        assert.equal(await checkbox.isChecked(), true)
+      }
+      assert.equal(await next.isEnabled(), true)
     }
-    assert.equal(await next.isEnabled(), true)
+    await receiveFile()
+    await page.getByRole('button', { name: 'Tilbage', exact: true }).click()
+    await selectedOs.and(page.locator('[aria-pressed="true"]')).waitFor()
+    await continueButton.click()
+    await assertFreshSaveStep(os)
+    await receiveFile()
+
     await next.click()
     await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
-    for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+    await continueButton.click()
+    const removeHint = page.getByText('Står DZR-scriptet allerede på listen?', { exact: true })
+    assert.equal(await removeHint.isVisible(), true)
+    await continueButton.click()
+    assert.equal(await removeHint.count(), 0)
     const filename = supportsPicker ? 'custom$&.lua' : 'dzr-stream.lua'
     assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik Åbn / Open.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('img', { name: `${os}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)
-    await page.getByRole('button', { name: 'Fortsæt', exact: true }).click()
+    await continueButton.click()
     await page.getByRole('heading', { name: 'Forbind OBS med DZR', exact: true }).waitFor()
     assert.equal(await page.getByText(`Vælg ${filename} i OBS-listen. Indsæt din personlige API-nøgle i DZR key til højre.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('button', { name: 'Kopiér adresse', exact: true }).count(), 0)
@@ -125,6 +149,17 @@ try {
     await page.getByRole('button', { name: 'Vis forbindelsestest – valgfrit', exact: true }).click()
     assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
     assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
+    await page.getByRole('button', { name: 'Afslut guiden', exact: true }).click()
+
+    await page.getByRole('button', { name: `Computer: ${os} · Skift`, exact: true }).click()
+    const otherOs = os === 'Windows' ? 'macOS' : 'Windows'
+    await page.getByRole('button', { name: otherOs, exact: true }).click()
+    await continueButton.click()
+    await assertFreshSaveStep(otherOs)
+    await receiveFile()
+    await next.click()
+    await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
+
     assert.deepEqual(errors, [])
     console.log(`PASS ${os} guide: ${supportsPicker ? 'Save As' : 'download and manual placement'}`)
     await context.close()
