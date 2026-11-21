@@ -5,7 +5,6 @@ const { generateSingleRiderStatsImage, generateTeamStatsImage, generateEventResu
 const { phenotypeLabel } = require("../utils/phenotype");
 const { getUserZwiftId, linkUserZwiftId, searchRidersByName, getTodaysClubStats } = require("../services/firebase");
 const { ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
-const { generatePowerGraph } = require("../utils/powerGraph");
 const { refreshClubRoster, refreshZwiftPowerRoster } = require("../services/contentApi");
 const config = require("../config/config");
 const { syncZpRolesForGuild } = require("../services/zpRoleSync");
@@ -268,7 +267,7 @@ async function handleTeamStats(interaction) {
     }
 
     const ridersFound = [];
-    for (const [discordId, zID] of Object.entries(discordToZwiftMap)) {
+    for (const zID of Object.values(discordToZwiftMap)) {
       const found = allRiders.find(r => r.riderId === parseInt(zID));
       if (!found) {
         await ephemeralReplyWithPublish(interaction, `❌ ZwiftID ${zID} not found in today's club_stats data.`);

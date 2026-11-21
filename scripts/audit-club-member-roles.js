@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 const path = require('path')
 const { initializeApp, cert, getApps } = require('firebase-admin/app')
 const { getFirestore } = require('firebase-admin/firestore')

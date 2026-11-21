@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import { Box, Button, Checkbox, Heading, Input, Table, Tbody, Td, Text, Th, Thead, Tr, useToast, HStack, Stack } from '@chakra-ui/react'
 
@@ -48,7 +48,7 @@ export default function MembershipAdminPage() {
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState('')
 
-  async function load() {
+  const load = useCallback(async () => {
     const [settingsRes, paymentsRes, totalsRes] = await Promise.all([
       fetch('/api/admin/membership/settings'),
       fetch('/api/admin/membership/payments'),
@@ -72,14 +72,14 @@ export default function MembershipAdminPage() {
     setTotals(t.totals || [])
     setLoadError('')
     setReady(true)
-  }
+  }, [year])
 
   useEffect(() => {
     load().catch((err: unknown) => {
       setReady(false)
       setLoadError(err instanceof Error ? err.message : 'Could not load settings')
     })
-  }, [])
+  }, [load])
 
   async function save() {
     if (!ready) return

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import { Box, Button, Input, Select, SimpleGrid, Stat, StatLabel, StatNumber, Table, Tbody, Td, Th, Thead, Tr, useToast, HStack } from '@chakra-ui/react'
 
@@ -12,15 +12,15 @@ export default function MembersAdminPage() {
   const [zwiftDraft, setZwiftDraft] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
-  async function load(nextType = type) {
+  const load = useCallback(async (nextType: string) => {
     setLoading(true)
     const res = await fetch(`/api/admin/members?type=${nextType}`)
     const body = await res.json()
     setMembers(body.members || [])
     setLoading(false)
-  }
+  }, [])
 
-  useEffect(() => { load().catch(() => {}) }, [])
+  useEffect(() => { load('all').catch(() => {}) }, [load])
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -46,7 +46,7 @@ export default function MembersAdminPage() {
       body: JSON.stringify({ discordId, zwiftId }),
     })
     toast({ title: res.ok ? 'Linked' : 'Failed', status: res.ok ? 'success' : 'error' })
-    if (res.ok) load()
+    if (res.ok) load(type)
   }
 
   return (
@@ -58,7 +58,7 @@ export default function MembersAdminPage() {
           <option value="unlinked">Unlinked</option>
         </Select>
         <Input placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} bg="gray.900" />
-        <Button onClick={() => load()} isLoading={loading}>Refresh</Button>
+        <Button onClick={() => load(type)} isLoading={loading}>Refresh</Button>
       </HStack>
       <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} mb={6}>
         <Stat><StatLabel>Members</StatLabel><StatNumber>{counts.members}</StatNumber></Stat>

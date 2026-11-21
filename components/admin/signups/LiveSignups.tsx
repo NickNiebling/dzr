@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
@@ -36,7 +36,7 @@ export default function LiveSignups() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  async function load(all = showAll) {
+  const load = useCallback(async (all: boolean) => {
     setLoading(true)
     try {
       const res = await fetch(`/api/admin/signups${all ? '?all=1' : ''}`, { cache: 'no-store' })
@@ -53,9 +53,9 @@ export default function LiveSignups() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
 
-  useEffect(() => { load().catch(() => {}) }, [])
+  useEffect(() => { load(false).catch(() => {}) }, [load])
 
   const selected = boards.find((b) => b.id === selectedId) || null
   const q = search.trim().toLowerCase()
@@ -91,7 +91,7 @@ export default function LiveSignups() {
         title: body.message || 'Deleted',
         status: body.warning ? 'warning' : 'success',
       })
-      await load()
+      await load(showAll)
     } catch (e: any) {
       toast({ title: e.message || 'Delete failed', status: 'error' })
     } finally {
@@ -122,7 +122,7 @@ export default function LiveSignups() {
         title: body.message || 'Removed',
         status: body.discordUpdated ? 'success' : 'warning',
       })
-      await load()
+      await load(showAll)
     } catch (e: any) {
       toast({ title: e.message || 'Remove failed', status: 'error' })
     } finally {
@@ -151,7 +151,7 @@ export default function LiveSignups() {
         >
           Include old / reposted boards
         </Checkbox>
-        <Button onClick={() => load()} isLoading={loading} variant="outline" colorScheme="red">Refresh</Button>
+        <Button onClick={() => load(showAll)} isLoading={loading} variant="outline" colorScheme="red">Refresh</Button>
       </HStack>
 
       {boards.length === 0 && !loading ? (

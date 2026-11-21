@@ -1,7 +1,7 @@
 import js from "@eslint/js";
 import globals from "globals";
 
-export default [
+const botConfig = [
   js.configs.recommended,
   {
     files: ["apps/bot/**/*.js"],
@@ -17,3 +17,5 @@ export default [
     },
   },
 ];
+
+export default botConfig;

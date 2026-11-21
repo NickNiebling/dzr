@@ -171,12 +171,10 @@ async function postSignupBoard(channel, configId = null) {
   };
 
   const tempEmbed = renderSignupEmbed(initialBoard, channel.guild, config);
-  const components = renderSignupComponents({ id: "temp", ...initialBoard }, config); // ID needed for button customId generation, but won't be correct yet. 
+  // Build with a temporary ID first so invalid button options can fail before posting.
+  renderSignupComponents({ id: "temp", ...initialBoard }, config);
 
-  // Issue: we need the message ID to generate the board ID to put in the button customId.
-  // But we need to send the message to get the ID.
-  // We can send without components first, then edit with components.
-
+  // The final buttons use the board ID derived from the posted message ID.
   const message = await channel.send({ embeds: [tempEmbed] });
   const boardId = getSignupDocId(guildId, message.id);
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Box, Button, Heading, Input, Table, Tbody, Td, Text, Textarea, Th, Thead, Tr, useToast, HStack,
 } from '@chakra-ui/react'
@@ -21,13 +21,13 @@ export default function CollectionManager({
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     const res = await fetch(`/api/admin/collection/${collection}`, { cache: 'no-store' })
     const body = await res.json()
     setDocs(body.docs || [])
-  }
+  }, [collection])
 
-  useEffect(() => { refresh().catch(() => {}) }, [collection])
+  useEffect(() => { refresh().catch(() => {}) }, [refresh])
 
   // Prefill (e.g. a knowledge gap's topic); anything already typed wins.
   useEffect(() => {
