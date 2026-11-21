@@ -19,8 +19,7 @@ function roundRect(ctx, x, y, width, height, radius) {
 async function generatePowerLineGraph(input) {
   const riders = Array.isArray(input) ? input : [input];
 
-  // Durations and labels (for reference)
-  const durations = [5, 10, 30, 60, 300, 1200];
+  // Durations in seconds, in axis order: 5, 10, 30, 60, 300, 1200.
   const durationLabels = ["5s", "10s", "30s", "1m", "5m", "20m"];
   // Custom normalized x positions (0 to 1): first four points are close together.
   const xPositionsNormalized = [0, 0.05, 0.2, 0.35, 0.6, 1.0];
@@ -161,8 +160,7 @@ async function generatePowerLineGraph(input) {
 async function generatePowerLineGraph2(input) {
   const riders = Array.isArray(input) ? input : [input];
 
-  // Durations and labels (for reference)
-  const durations = [5, 10, 30, 60, 300, 1200];
+  // Durations in seconds, in axis order: 5, 10, 30, 60, 300, 1200.
   const durationLabels = ["5s", "10s", "30s", "1m", "5m", "20m"];
   // Custom normalized x positions (0 to 1): first four points are close together.
   const xPositionsNormalized = [0, 0.05, 0.2, 0.35, 0.6, 1.0];

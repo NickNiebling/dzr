@@ -108,7 +108,7 @@ async function handleGuildMemberUpdate(oldMember, newMember) {
       const dmHint = onboarding?.outcome === "sent" ? DM_HINTS.role : "";
 
       // Process each added role
-      for (const [roleId, role] of addedRoles) {
+      for (const role of addedRoles.values()) {
         await handleRoleAssignment(newMember, role, dmHint);
       }
     }
