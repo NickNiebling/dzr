@@ -1,6 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
 const verificationService = require("../services/verificationService");
-const { ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
 
 /**
  * Handle setup_verification command

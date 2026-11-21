@@ -171,7 +171,7 @@ async function postSignupBoard(channel, configId = null) {
   };
 
   const tempEmbed = renderSignupEmbed(initialBoard, channel.guild, config);
-  const components = renderSignupComponents({ id: "temp", ...initialBoard }, config); // ID needed for button customId generation, but won't be correct yet. 
+  renderSignupComponents({ id: "temp", ...initialBoard }, config); // ID needed for button customId generation, but won't be correct yet.
 
   // Issue: we need the message ID to generate the board ID to put in the button customId.
   // But we need to send the message to get the ID.
