@@ -75,7 +75,7 @@ try {
     await assertFreshSaveStep(os)
     assert.equal(await otherTransfer.count(), 0)
     assert.equal(await page.getByText('Gem filen i en fast mappe, fx Dokumenter/DZR.', { exact: true }).isVisible(), true)
-    assert.equal(await page.getByText('Lad filen blive liggende dér, så OBS også kan finde den efter opsætningen.').isVisible(), true)
+    assert.equal(await page.getByText('Efter opsætningen skal filen blive liggende i samme mappe med samme navn. Den må ikke slettes.').isVisible(), true)
     const transferInstruction = supportsPicker
       ? /“Gem DZR-script” foreslår dzr-stream\.lua som filnavn og Dokumenter som startmappe/
       : /Klik på “Download DZR-script”, og flyt derefter dzr-stream\.lua fra Downloads/

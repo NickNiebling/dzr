@@ -195,7 +195,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 2 && (
               <Stack spacing={5}>
                 <Text color="gray.300">
-                  <strong>Gem filen i en fast mappe, fx Dokumenter/DZR.</strong> Lad filen blive liggende dér, så OBS også kan finde den efter opsætningen.
+                  <strong>Gem filen i en fast mappe, fx Dokumenter/DZR.</strong> Efter opsætningen skal filen blive liggende i samme mappe med samme navn. Den må ikke slettes.
                 </Text>
                 <Text color="gray.300">
                   {supportsPicker
