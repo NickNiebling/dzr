@@ -195,11 +195,11 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 2 && (
               <Stack spacing={5}>
                 <Text color="gray.300">
-                  Gem filen et sted, hvor du ikke kommer til at slette den, fx Dokumenter/DZR.
+                  <strong>Gem filen i en fast mappe, fx Dokumenter/DZR.</strong> Lad filen blive liggende dér, så OBS også kan finde den efter opsætningen.
                 </Text>
                 <Text color="gray.300">
                   {supportsPicker
-                    ? `“${SAVE_SCRIPT_LABEL}” foreslår ${SCRIPT_FILENAME} som filnavn og Dokumenter som startmappe. Vælg eller opret en DZR-mappe dér, hvis du vil bruge den placering.`
+                    ? `“${SAVE_SCRIPT_LABEL}” foreslår ${SCRIPT_FILENAME} som filnavn og Dokumenter som startmappe. I Dokumenter kan du vælge eller oprette mappen DZR og gemme filen dér.`
                     : `Klik på “${downloadScriptLabel}”, og flyt derefter ${SCRIPT_FILENAME} fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.`}
                 </Text>
                 {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
