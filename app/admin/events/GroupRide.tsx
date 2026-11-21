@@ -56,16 +56,20 @@ export default function GroupRide() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  useEffect(() => {
-    async function load() {
-      const res = await fetch('/api/admin/events/group-ride', { cache: 'no-store' })
-      if (!res.ok) {
-        setError(await errorMessage(res))
-        return
-      }
-      setView((await res.json()) as RideView)
-    }
+  function adopt(next: RideView) {
+    setView(next)
+  }
 
+  async function load() {
+    const res = await fetch('/api/admin/events/group-ride', { cache: 'no-store' })
+    if (!res.ok) {
+      setError(await errorMessage(res))
+      return
+    }
+    adopt((await res.json()) as RideView)
+  }
+
+  useEffect(() => {
     void load()
   }, [])
 
@@ -83,7 +87,7 @@ export default function GroupRide() {
       setError(await errorMessage(res))
       return
     }
-    setView((await res.json()) as RideView)
+    adopt((await res.json()) as RideView)
   }
 
   async function apply(row: RideDate) {
@@ -101,7 +105,7 @@ export default function GroupRide() {
       setError(await errorMessage(res))
       return
     }
-    setView((await res.json()) as RideView)
+    adopt((await res.json()) as RideView)
     setNotice(`Saved ${row.label}.`)
   }
 

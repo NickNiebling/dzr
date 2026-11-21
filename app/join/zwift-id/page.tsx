@@ -4,7 +4,6 @@ import React from 'react'
 import { Box, Button, Container, FormControl, FormLabel, Heading, Input, Stack, Text } from '@chakra-ui/react'
 import { track } from '@vercel/analytics'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
 import StepProgressHeader from '@/components/onboarding/StepProgressHeader'
 
 type SessionState = {
@@ -16,7 +15,6 @@ type SessionState = {
 type OnboardingStatusResponse = { membershipAlreadyPaid?: boolean; coveredThroughYear?: number | null; zwiftId?: string | null }
 
 export default function JoinZwiftIdPage() {
-  const router = useRouter()
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [canEdit, setCanEdit] = React.useState(false)
@@ -85,7 +83,7 @@ export default function JoinZwiftIdPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Kunne ikke gemme Zwift ID')
       track('onboarding_step3_zwift_saved')
-      router.push('/join/complete')
+      window.location.href = '/join/complete'
     } catch (err: any) {
       setMessage(err?.message || 'Kunne ikke gemme Zwift ID')
       setSaving(false)

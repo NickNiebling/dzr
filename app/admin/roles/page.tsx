@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import {
   Box,
@@ -49,7 +49,7 @@ export default function RolesAdminPage() {
   const [deleteModal, setDeleteModal] = useState<{ panel: RolePanel; role: PanelRole } | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const load = useCallback(async (preferPanelId?: string) => {
+  async function load(preferPanelId?: string) {
     setLoading(true)
     try {
       const res = await fetch('/api/admin/roles')
@@ -70,9 +70,9 @@ export default function RolesAdminPage() {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }
 
-  useEffect(() => { load().catch(() => {}) }, [load])
+  useEffect(() => { load().catch(() => {}) }, [])
 
   const selectedPanel = panels.find((p) => p.panelId === selectedPanelId) || null
 

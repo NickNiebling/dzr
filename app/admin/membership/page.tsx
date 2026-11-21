@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import AdminShell from '@/components/admin/AdminShell'
 import { Box, Button, Checkbox, Heading, Input, Table, Tbody, Td, Text, Th, Thead, Tr, useToast, HStack, Stack } from '@chakra-ui/react'
 
@@ -38,7 +38,7 @@ function periodsToOptions(flags: PeriodFlags, year: number, custom: PaymentOptio
 
 export default function MembershipAdminPage() {
   const toast = useToast()
-  const [year] = useState(() => new Date().getUTCFullYear())
+  const year = new Date().getUTCFullYear()
   const [settings, setSettings] = useState({ minAmountDkk: 10, maxAmountDkk: 100, clubMemberRoleId: '' })
   const [periods, setPeriods] = useState<PeriodFlags>({ current: false, next: false, both: false })
   const [customOptions, setCustomOptions] = useState<PaymentOption[]>([])
@@ -48,7 +48,7 @@ export default function MembershipAdminPage() {
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState('')
 
-  const load = useCallback(async () => {
+  async function load() {
     const [settingsRes, paymentsRes, totalsRes] = await Promise.all([
       fetch('/api/admin/membership/settings'),
       fetch('/api/admin/membership/payments'),
@@ -72,14 +72,14 @@ export default function MembershipAdminPage() {
     setTotals(t.totals || [])
     setLoadError('')
     setReady(true)
-  }, [year])
+  }
 
   useEffect(() => {
     load().catch((err: unknown) => {
       setReady(false)
       setLoadError(err instanceof Error ? err.message : 'Could not load settings')
     })
-  }, [load])
+  }, [])
 
   async function save() {
     if (!ready) return

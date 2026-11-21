@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useEffectEvent, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogBody,
@@ -328,14 +328,17 @@ export default function CoachMemoryEditor() {
     }
   }
 
-  const autosave = useEffectEvent(persist)
+  const persistRef = useRef(persist)
+  useEffect(() => {
+    persistRef.current = persist
+  }, [persist])
 
   useEffect(() => {
     if (!hydrated) return
     const payload = payloadFrom(form, ridesMin, ridesMax)
     const json = JSON.stringify(payload)
     if (json === lastSaved.current) return
-    const timer = window.setTimeout(() => { void autosave(payload) }, 500)
+    const timer = window.setTimeout(() => { void persistRef.current(payload) }, 500)
     return () => window.clearTimeout(timer)
   }, [form, ridesMin, ridesMax, hydrated])
 
