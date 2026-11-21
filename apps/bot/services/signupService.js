@@ -171,11 +171,12 @@ async function postSignupBoard(channel, configId = null) {
   };
 
   const tempEmbed = renderSignupEmbed(initialBoard, channel.guild, config);
-  // Use a placeholder board ID to check button options before posting.
-  renderSignupComponents({ id: "temp", ...initialBoard }, config);
+  renderSignupComponents({ id: "temp", ...initialBoard }, config); // ID needed for button customId generation, but won't be correct yet.
 
-  // Post without buttons to get the Discord message ID. It becomes part of the
-  // board ID used in each button's custom ID when we edit the message below.
+  // Issue: we need the message ID to generate the board ID to put in the button customId.
+  // But we need to send the message to get the ID.
+  // We can send without components first, then edit with components.
+
   const message = await channel.send({ embeds: [tempEmbed] });
   const boardId = getSignupDocId(guildId, message.id);
 

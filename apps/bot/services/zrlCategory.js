@@ -113,6 +113,7 @@ function parseZrlKnowledge(content) {
   const openC = parseCategoryFields(openStd.C);
   const openD = parseCategoryFields(openStd.D);
   const womenA = parseCategoryFields(womenStd.A);
+  // const womenB = parseCategoryFields(womenStd.B);
   const womenC = parseCategoryFields(womenStd.C);
   const womenD = parseCategoryFields(womenStd.D);
 
@@ -139,7 +140,6 @@ function parseZrlKnowledge(content) {
     },
     women: {
       A: { ftpWkg: womenA.ftp.minWkg, mapWkg: womenA.map.minWkg },
-      // The B threshold comes from C's upper bound, and the C threshold from D's.
       B: { ftpWkg: womenC.ftp.maxWkg, mapWkg: womenC.map.maxWkg },
       C: { ftpWkg: womenD.ftp.maxWkg, mapWkg: womenD.map.maxWkg },
     },
