@@ -25,6 +25,7 @@ import {
 } from '@chakra-ui/react'
 import { track } from '@vercel/analytics'
 import { signIn } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import StepProgressHeader from '@/components/onboarding/StepProgressHeader'
 
 type PaymentOption = { id: string; label?: string; coversYears?: number[] }
@@ -33,6 +34,7 @@ type OnboardingSessionResponse = { session: { steps?: { discordLinked?: boolean;
 type OnboardingStatusResponse = { membershipAlreadyPaid?: boolean; coveredThroughYear?: number | null; zwiftId?: string | null }
 
 export default function JoinPaymentPage() {
+  const { push } = useRouter()
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [canPay, setCanPay] = React.useState(false)
@@ -98,7 +100,7 @@ export default function JoinPaymentPage() {
             setIsPolling(false)
             track('onboarding_step2_payment_succeeded')
             await refreshOnboardingStatus()
-            window.location.href = '/join/zwift-id'
+            if (!ignore) push('/join/zwift-id')
           } else if (data?.status === 'pending') {
             pollConfirmation(ref, attemptsLeft - 1)
           } else if (data?.status === 'failed') {
@@ -165,7 +167,7 @@ export default function JoinPaymentPage() {
         if (confirmRes.ok && confirmData?.status === 'succeeded') {
           track('onboarding_step2_payment_succeeded')
           await refreshOnboardingStatus()
-          window.location.href = '/join/zwift-id'
+          if (!ignore) push('/join/zwift-id')
           return
         } else if (confirmData?.status === 'pending') {
           setMessage('Bekræfter betaling…')
@@ -197,7 +199,7 @@ export default function JoinPaymentPage() {
       ignore = true
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current)
     }
-  }, [])
+  }, [push])
 
   async function startPayment() {
     try {
