@@ -401,6 +401,7 @@ async function handleInteractions(interaction) {
       const parts = interaction.customId.split("_");
 
       if (parts.length === 4) {
+        // parts[1] is the "leave" action.
         const panelId = parts[2];
         const roleId = parts[3];
 
@@ -441,6 +442,7 @@ async function handleInteractions(interaction) {
       const parts = interaction.customId.split("_");
 
       if (parts.length === 4) {
+        // parts[1] is the "join" action.
         const panelId = parts[2];
         const roleId = parts[3];
 
