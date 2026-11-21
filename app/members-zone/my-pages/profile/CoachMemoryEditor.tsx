@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogBody,
@@ -162,7 +162,7 @@ export default function CoachMemoryEditor() {
   const lastSaved = useRef('')
   const saveSeq = useRef(0)
 
-  const applyProfile = useCallback((profile: CoachProfile) => {
+  function applyProfile(profile: CoachProfile) {
     const next: CoachProfile = {
       ...emptyForm(),
       ...profile,
@@ -186,7 +186,7 @@ export default function CoachMemoryEditor() {
     setRidesMin(min)
     setRidesMax(max)
     lastSaved.current = JSON.stringify(payloadFrom(next, min, max))
-  }, [])
+  }
 
   useEffect(() => {
     let ignore = false
@@ -222,7 +222,7 @@ export default function CoachMemoryEditor() {
     }
     load()
     return () => { ignore = true }
-  }, [applyProfile])
+  }, [])
 
   function toggleSport(sport: string) {
     setForm((prev) => ({
@@ -274,16 +274,7 @@ export default function CoachMemoryEditor() {
     }))
   }
 
-  const deleteAllNotesRequest = useCallback(async () => {
-    const res = await fetch('/api/coach/notes?all=1', { method: 'DELETE' })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      throw new Error(data?.error || 'Kunne ikke slette noter')
-    }
-    setChatNotes([])
-  }, [])
-
-  const persist = useCallback(async (payload: CoachProfile, { clearNotesOnDisable = false } = {}) => {
+  async function persist(payload: CoachProfile, { clearNotesOnDisable = false } = {}) {
     const json = JSON.stringify(payload)
     const seq = ++saveSeq.current
     setSaving(true)
@@ -335,16 +326,18 @@ export default function CoachMemoryEditor() {
     } finally {
       if (seq === saveSeq.current) setSaving(false)
     }
-  }, [applyProfile, deleteAllNotesRequest, toast])
+  }
+
+  const autosave = useEffectEvent(persist)
 
   useEffect(() => {
     if (!hydrated) return
     const payload = payloadFrom(form, ridesMin, ridesMax)
     const json = JSON.stringify(payload)
     if (json === lastSaved.current) return
-    const timer = window.setTimeout(() => { void persist(payload) }, 500)
+    const timer = window.setTimeout(() => { void autosave(payload) }, 500)
     return () => window.clearTimeout(timer)
-  }, [form, ridesMin, ridesMax, hydrated, persist])
+  }, [form, ridesMin, ridesMax, hydrated])
 
   async function resetSettingsRequest() {
     const res = await fetch('/api/coach/profile', { method: 'DELETE' })
@@ -353,6 +346,15 @@ export default function CoachMemoryEditor() {
       throw new Error(data?.error || 'Kunne ikke nulstille indstillinger')
     }
     applyProfile(data?.profile || emptyForm())
+  }
+
+  async function deleteAllNotesRequest() {
+    const res = await fetch('/api/coach/notes?all=1', { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(data?.error || 'Kunne ikke slette noter')
+    }
+    setChatNotes([])
   }
 
   async function clearSettings() {

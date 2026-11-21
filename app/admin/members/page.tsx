@@ -12,15 +12,15 @@ export default function MembersAdminPage() {
   const [zwiftDraft, setZwiftDraft] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async (nextType: string) => {
+  const load = useCallback(async () => {
     setLoading(true)
-    const res = await fetch(`/api/admin/members?type=${nextType}`)
+    const res = await fetch(`/api/admin/members?type=${type}`)
     const body = await res.json()
     setMembers(body.members || [])
     setLoading(false)
-  }, [])
+  }, [type])
 
-  useEffect(() => { load('all').catch(() => {}) }, [load])
+  useEffect(() => { load().catch(() => {}) }, [load])
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -46,19 +46,19 @@ export default function MembersAdminPage() {
       body: JSON.stringify({ discordId, zwiftId }),
     })
     toast({ title: res.ok ? 'Linked' : 'Failed', status: res.ok ? 'success' : 'error' })
-    if (res.ok) load(type)
+    if (res.ok) load()
   }
 
   return (
     <AdminShell title="Members">
       <HStack mb={4}>
-        <Select w="200px" value={type} onChange={(e) => { setType(e.target.value); load(e.target.value) }} bg="gray.900" color="white">
+        <Select w="200px" value={type} onChange={(e) => setType(e.target.value)} bg="gray.900" color="white">
           <option value="all">All</option>
           <option value="linked">Linked</option>
           <option value="unlinked">Unlinked</option>
         </Select>
         <Input placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} bg="gray.900" />
-        <Button onClick={() => load(type)} isLoading={loading}>Refresh</Button>
+        <Button onClick={() => load()} isLoading={loading}>Refresh</Button>
       </HStack>
       <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4} mb={6}>
         <Stat><StatLabel>Members</StatLabel><StatNumber>{counts.members}</StatNumber></Stat>

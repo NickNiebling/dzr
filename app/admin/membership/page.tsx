@@ -38,7 +38,7 @@ function periodsToOptions(flags: PeriodFlags, year: number, custom: PaymentOptio
 
 export default function MembershipAdminPage() {
   const toast = useToast()
-  const year = new Date().getUTCFullYear()
+  const [year] = useState(() => new Date().getUTCFullYear())
   const [settings, setSettings] = useState({ minAmountDkk: 10, maxAmountDkk: 100, clubMemberRoleId: '' })
   const [periods, setPeriods] = useState<PeriodFlags>({ current: false, next: false, both: false })
   const [customOptions, setCustomOptions] = useState<PaymentOption[]>([])
