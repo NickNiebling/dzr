@@ -108,9 +108,14 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     }
   }
 
-  function back() {
-    if (step === 3 && obsStep > 0) setObsStep(obsStep - 1)
-    else goTo(Math.max(1, step - 1))
+  function resetWizard() {
+    setSavedFilename(null)
+    setDownloaded(false)
+    setManualFileReady(false)
+    setObsStep(0)
+    setShowTest(false)
+    setFinished(false)
+    goTo(1)
   }
 
   function next() {
@@ -196,6 +201,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                     ? 'Gem som foreslår dzr-stream.lua som filnavn og Dokumenter som startmappe. Vælg eller opret en DZR-mappe dér, hvis du vil bruge den placering.'
                     : 'Hent dzr-stream.lua, og flyt den fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.'}
                 </Text>
+                {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
                 <Button
                   colorScheme="red" size="lg" minH="56px" whiteSpace="normal"
                   leftIcon={supportsPicker ? undefined : <FaDownload />}
@@ -213,7 +219,6 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
                 {downloaded && (
                   <Stack spacing={3}>
-                    {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
                     <Text color="gray.400" fontSize="sm">Behold filnavnet dzr-stream.lua. Undgå en ekstra endelse som .txt eller et nummer i filnavnet.</Text>
                     <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy} alignItems="start">
                       Jeg har flyttet dzr-stream.lua til en fast placering.
@@ -281,7 +286,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step < 5 && (
               <Stack direction={{ base: 'column-reverse', sm: 'row' }} spacing={3} pt={2}>
-                {step > 1 && <Button color="white" size="lg" variant="outline" _hover={{ bg: 'gray.700' }} onClick={back} isDisabled={busy}>Tilbage</Button>}
+                {step > 1 && <Button color="white" size="lg" variant="outline" _hover={{ bg: 'gray.700' }} onClick={resetWizard} isDisabled={busy}>{step === 2 ? 'Tilbage' : 'Tilbage til start'}</Button>}
                 {(step !== 2 || fileReceived) && (
                   <Button
                     colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
@@ -290,10 +295,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 )}
               </Stack>
             )}
-            {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={back}>Tilbage til indstillingerne</Button>}
+            {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={resetWizard}>Tilbage til start</Button>}
           </Stack>
         </Box>
-        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={() => goTo(1)}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
+        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={resetWizard}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
       </Stack>
     </Container>
   )
