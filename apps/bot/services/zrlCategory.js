@@ -139,6 +139,7 @@ function parseZrlKnowledge(content) {
     },
     women: {
       A: { ftpWkg: womenA.ftp.minWkg, mapWkg: womenA.map.minWkg },
+      // The B threshold comes from C's upper bound, and the C threshold from D's.
       B: { ftpWkg: womenC.ftp.maxWkg, mapWkg: womenC.map.maxWkg },
       C: { ftpWkg: womenD.ftp.maxWkg, mapWkg: womenD.map.maxWkg },
     },
