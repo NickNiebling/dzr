@@ -1,4 +1,5 @@
 export const SCRIPT_FILENAME = 'dzr-stream.lua'
+export const SAVE_SCRIPT_LABEL = 'Gem DZR-script'
 
 export type SaveFilePicker = (options: {
   suggestedName: string
@@ -68,8 +69,8 @@ export async function installScript({ pickFile, fetchScript }: {
 
 export function getInstallationErrorMessage(error: unknown) {
   switch (errorName(error)) {
-    case 'AbortError': return 'Gem som blev annulleret. Klik på Gem DZR-script for at prøve igen.'
-    case 'NotAllowedError': return 'Browseren fik ikke lov til at gemme filen. Prøv igen, og tillad adgang.'
+    case 'AbortError': return `Gemningen blev annulleret. Klik på “${SAVE_SCRIPT_LABEL}” for at prøve igen.`
+    case 'NotAllowedError': return `Browseren fik ikke lov til at gemme filen. Klik på “${SAVE_SCRIPT_LABEL}” igen, og tillad adgang.`
     case 'SecurityError': return 'Åbn guiden i en almindelig browserfane med sikker forbindelse, og prøv igen.'
     case 'NotFoundError': return 'Mappen eller filen blev flyttet eller slettet. Vælg en placering igen.'
     case 'TimeoutError': return 'Det tog for lang tid at hente filen. Kontrollér forbindelsen, og prøv igen.'
