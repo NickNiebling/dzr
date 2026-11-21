@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
@@ -36,10 +36,10 @@ export default function LiveSignups() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  async function load(all = showAll) {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/signups${all ? '?all=1' : ''}`, { cache: 'no-store' })
+      const res = await fetch(`/api/admin/signups${showAll ? '?all=1' : ''}`, { cache: 'no-store' })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Failed to load signups')
       const next: Board[] = body.boards || []
@@ -53,9 +53,9 @@ export default function LiveSignups() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [showAll, toast])
 
-  useEffect(() => { load().catch(() => {}) }, [])
+  useEffect(() => { void load() }, [load])
 
   const selected = boards.find((b) => b.id === selectedId) || null
   const q = search.trim().toLowerCase()
@@ -143,11 +143,7 @@ export default function LiveSignups() {
         <Checkbox
           colorScheme="red"
           isChecked={showAll}
-          onChange={(e) => {
-            const next = e.target.checked
-            setShowAll(next)
-            load(next)
-          }}
+          onChange={(e) => setShowAll(e.target.checked)}
         >
           Include old / reposted boards
         </Checkbox>
