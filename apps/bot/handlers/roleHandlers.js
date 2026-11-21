@@ -978,6 +978,12 @@ async function handleRemoveTeamMember(interaction) {
       const roleConfig = panel.roles.find(role => role.roleId === teamRole.id && role.teamCaptainId === userId);
       if (roleConfig) {
         isTeamCaptain = true;
+        // Reference: panelId is the key from Object.entries(panels).
+        // const teamInfo = {
+        //   panelId: panelId,
+        //   panelName: panel.name,
+        //   roleConfig: roleConfig
+        // };
         break;
       }
     }
