@@ -7,7 +7,7 @@ import {
 } from '@chakra-ui/react'
 import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
 import {
-  fetchScriptFile, getInstallationErrorMessage, installScript, SCRIPT_FILENAME, supportsSavePicker,
+  fetchScriptFile, getInstallationErrorMessage, installScript, SAVE_SCRIPT_LABEL, SCRIPT_FILENAME, supportsSavePicker,
   type SaveFilePicker,
 } from './installScript'
 
@@ -16,10 +16,11 @@ type Props = { scriptUrl?: string }
 type PickerWindow = Window & { showSaveFilePicker?: SaveFilePicker }
 
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
+const downloadScriptLabel = 'Download DZR-script'
 const obsSteps = [
-  { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg Værktøjer / Tools → Scripts i menuen øverst.' },
+  { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg “Scripts” under “Værktøjer” eller “Tools” i menuen øverst.' },
   { title: 'Tilføj DZR-scriptet', image: 'add-script', text: 'Klik på + (plus) nederst til venstre for at tilføje filen fra trin 2.' },
-  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik Åbn / Open.' },
+  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik på “Åbn” eller “Open”.' },
 ]
 
 export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/script' }: Props) {
@@ -198,8 +199,8 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 </Text>
                 <Text color="gray.300">
                   {supportsPicker
-                    ? 'Gem som foreslår dzr-stream.lua som filnavn og Dokumenter som startmappe. Vælg eller opret en DZR-mappe dér, hvis du vil bruge den placering.'
-                    : 'Hent dzr-stream.lua, og flyt den fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.'}
+                    ? `“${SAVE_SCRIPT_LABEL}” foreslår ${SCRIPT_FILENAME} som filnavn og Dokumenter som startmappe. Vælg eller opret en DZR-mappe dér, hvis du vil bruge den placering.`
+                    : `Klik på “${downloadScriptLabel}”, og flyt derefter ${SCRIPT_FILENAME} fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.`}
                 </Text>
                 {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
                 <Button
@@ -207,7 +208,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                   leftIcon={supportsPicker ? undefined : <FaDownload />}
                   onClick={supportsPicker ? install : download} isLoading={busy} loadingText="Arbejder…"
                 >
-                  {supportsPicker ? 'Gem DZR-script' : 'Download DZR-script'}
+                  {supportsPicker ? SAVE_SCRIPT_LABEL : downloadScriptLabel}
                 </Button>
 
                 {savedFilename && (
@@ -243,13 +244,13 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step === 4 && (
               <Stack spacing={5}>
-                <Text>Vælg <strong>{obsFilename}</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
-                {illustration('configure', 'Indsæt din personlige API-nøgle i DZR key i OBS-scriptets indstillinger.')}
+                <Text>Vælg <strong>{obsFilename}</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>“DZR key”</strong> til højre.</Text>
+                {illustration('configure', 'Indsæt din personlige API-nøgle i “DZR key” i OBS-scriptets indstillinger.')}
                 <Stack spacing={2}>
                   <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
                   <Text color="gray.300">Find den private Discord-besked, hvor din nøgle blev oprettet med <strong>/streaming_add</strong>. Kopiér din personlige DZR-nøgle direkte ind i OBS.</Text>
                   <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke.</Text>
-                  <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Få en ny via /streaming_add; når du gemmer, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
+                  <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Kør <strong>/streaming_add</strong>, og klik på <strong>“Redigér kanaler og få ny nøgle”</strong>. Når du gemmer formularen, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
                 </Stack>
                 <Text color="gray.300">Du kan streame til én eller flere platforme på samme tid. DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler, så du behøver ikke begrænse dig til én platform.</Text>
               </Stack>
@@ -272,10 +273,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 </Button>
                 {showTest && (
                   <Stack id="connection-test" spacing={3} bg="gray.800" p={4} borderRadius="lg">
-                    <Text><strong>1.</strong> Klik på <strong>Test forbindelse</strong> i OBS-scriptets indstillinger.</Text>
-                    <Text><strong>2.</strong> Gå tilbage til din private Discord-besked, og klik på <strong>Kontrollér OBS-forbindelse</strong>.</Text>
+                    <Text><strong>1.</strong> Klik på <strong>“Test forbindelse”</strong> i OBS-scriptets indstillinger.</Text>
+                    <Text><strong>2.</strong> Gå tilbage til din private Discord-besked, og klik på <strong>“Kontrollér OBS-forbindelse”</strong>.</Text>
                     <Text><strong>3.</strong> Kontrollér, at tidspunktet for signalet passer med din nye test.</Text>
-                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i DZR key, og prøv igen. Find statusknappen i din private Discord-besked fra /streaming_add.</Text>
+                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i “DZR key”, og prøv igen. Knappen “Kontrollér OBS-forbindelse” ligger i din private Discord-besked fra /streaming_add.</Text>
                     <Text color="gray.300" fontSize="sm">Testen sender ingen offentlig besked. En annonce kræver, at din offentlige livestream er verificeret.</Text>
                     {!finished && <Button colorScheme="red" size="lg" onClick={() => setFinished(true)}>Afslut guiden</Button>}
                   </Stack>

@@ -75,13 +75,19 @@ try {
     await assertFreshSaveStep(os)
     assert.equal(await otherTransfer.count(), 0)
     assert.equal(await page.getByText('Gem filen et sted, hvor du ikke kommer til at slette den, fx Dokumenter/DZR.', { exact: true }).isVisible(), true)
-    assert.equal(await page.getByText(/flyt den fra Downloads/).count(), supportsPicker ? 0 : 1)
+    const transferInstruction = supportsPicker
+      ? /“Gem DZR-script” foreslår dzr-stream\.lua som filnavn og Dokumenter som startmappe/
+      : /Klik på “Download DZR-script”, og flyt derefter dzr-stream\.lua fra Downloads/
+    assert.equal(await page.getByText(transferInstruction).isVisible(), true)
 
     if (supportsPicker) {
       for (const pickerError of ['AbortError', 'NotAllowedError']) {
         await page.evaluate(error => { window.streamingTest.error = error }, pickerError)
         await transfer.click()
-        await page.getByText(pickerError === 'AbortError' ? /Gem som blev annulleret/ : /Browseren fik ikke lov/).waitFor()
+        const message = pickerError === 'AbortError'
+          ? 'Gemningen blev annulleret. Klik på “Gem DZR-script” for at prøve igen.'
+          : 'Browseren fik ikke lov til at gemme filen. Klik på “Gem DZR-script” igen, og tillad adgang.'
+        await page.getByText(message, { exact: true }).waitFor()
         assert.equal(await next.count(), 0)
       }
       await page.evaluate(() => { window.streamingTest.error = null })
@@ -135,11 +141,11 @@ try {
     await continueButton.click()
     assert.equal(await removeHint.count(), 0)
     const filename = supportsPicker ? 'custom$&.lua' : 'dzr-stream.lua'
-    assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik Åbn / Open.`, { exact: true }).isVisible(), true)
+    assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik på “Åbn” eller “Open”.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('img', { name: `${os}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)
     await continueButton.click()
     await page.getByRole('heading', { name: 'Forbind OBS med DZR', exact: true }).waitFor()
-    assert.equal(await page.getByText(`Vælg ${filename} i OBS-listen. Indsæt din personlige API-nøgle i DZR key til højre.`, { exact: true }).isVisible(), true)
+    assert.equal(await page.getByText(`Vælg ${filename} i OBS-listen. Indsæt din personlige API-nøgle i “DZR key” til højre.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('button', { name: 'Kopiér adresse', exact: true }).count(), 0)
     assert.ok(!(await page.locator('main').innerText()).includes('DZR endpoint'))
     assert.ok(!(await page.locator('main').innerText()).includes('/streaming_add_new'))
