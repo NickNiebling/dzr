@@ -113,7 +113,6 @@ function parseZrlKnowledge(content) {
   const openC = parseCategoryFields(openStd.C);
   const openD = parseCategoryFields(openStd.D);
   const womenA = parseCategoryFields(womenStd.A);
-  const womenB = parseCategoryFields(womenStd.B);
   const womenC = parseCategoryFields(womenStd.C);
   const womenD = parseCategoryFields(womenStd.D);
 

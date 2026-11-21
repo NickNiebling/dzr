@@ -250,7 +250,7 @@ async function generateEventResultsImage(events) {
 
   // Events already sorted above
 
-  for (const [eventId, event] of sortedEvents) {
+  for (const [, event] of sortedEvents) {
     // Event title
     ctx.font = "bold 24px Arial";
     ctx.fillText(event.event_info.title, leftMargin, yOffset);

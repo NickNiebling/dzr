@@ -974,17 +974,10 @@ async function handleRemoveTeamMember(interaction) {
     // Check if the user is a team captain for this role
     const panels = await roleService.getAllPanels(interaction.guild.id);
     let isTeamCaptain = false;
-    let teamInfo = null;
-
-    for (const [panelId, panel] of Object.entries(panels)) {
+    for (const panel of Object.values(panels)) {
       const roleConfig = panel.roles.find(role => role.roleId === teamRole.id && role.teamCaptainId === userId);
       if (roleConfig) {
         isTeamCaptain = true;
-        teamInfo = {
-          panelId: panelId,
-          panelName: panel.name,
-          roleConfig: roleConfig
-        };
         break;
       }
     }
