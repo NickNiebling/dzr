@@ -129,7 +129,11 @@ try {
 
     await next.click()
     await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
-    for (let i = 0; i < 2; i++) await continueButton.click()
+    await continueButton.click()
+    const removeHint = page.getByText('Står DZR-scriptet allerede på listen?', { exact: true })
+    assert.equal(await removeHint.isVisible(), true)
+    await continueButton.click()
+    assert.equal(await removeHint.count(), 0)
     const filename = supportsPicker ? 'custom$&.lua' : 'dzr-stream.lua'
     assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik Åbn / Open.`, { exact: true }).isVisible(), true)
     assert.equal(await page.getByRole('img', { name: `${os}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)

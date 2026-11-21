@@ -18,7 +18,7 @@ type PickerWindow = Window & { showSaveFilePicker?: SaveFilePicker }
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
 const obsSteps = [
   { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg Værktøjer / Tools → Scripts i menuen øverst.' },
-  { title: 'Klik på plusset', image: 'add-script', text: 'Klik på + nederst til venstre i Scripts-vinduet.' },
+  { title: 'Tilføj DZR-scriptet', image: 'add-script', text: 'Klik på + (plus) nederst til venstre for at tilføje filen fra trin 2.' },
   { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik Åbn / Open.' },
 ]
 
@@ -231,11 +231,13 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 3 && (
               <Stack spacing={4}>
                 <Text color="red.300" fontSize="sm">OBS · {obsStep + 1} af {obsSteps.length}</Text>
+                {obsStep === 1 && (
+                  <Text color="gray.300">
+                    <strong>Står DZR-scriptet allerede på listen?</strong> Markér det, og klik på <strong>− (minus)</strong> nederst til venstre for at fjerne det fra OBS. Filen bliver liggende på computeren.
+                  </Text>
+                )}
                 <Text fontSize="lg">{obsInstruction}</Text>
                 {illustration(obsSteps[obsStep].image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
-                {obsStep === 2 && (
-                  <Text color="gray.400" fontSize="sm">Er filen allerede tilføjet? Vælg den i listen. Hvis den er flyttet eller slettet, skal du gendanne den på den gamle placering og genindlæse scriptet i OBS.</Text>
-                )}
               </Stack>
             )}
 
@@ -246,7 +248,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 <Stack spacing={2}>
                   <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
                   <Text color="gray.300">Find den private Discord-besked, hvor din nøgle blev oprettet med <strong>/streaming_add</strong>. Kopiér din personlige DZR-nøgle direkte ind i OBS.</Text>
-                  <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke. Har du allerede den rigtige nøgle i OBS, beholder du den.</Text>
+                  <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke.</Text>
                   <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Få en ny via /streaming_add; når du gemmer, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
                 </Stack>
                 <Text color="gray.300">Du kan streame til én eller flere platforme på samme tid. DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler, så du behøver ikke begrænse dig til én platform.</Text>
