@@ -6,7 +6,7 @@
     "render": "node render.mjs"
   },
   "devDependencies": {
-    "mermaid": "11.17.2",
+    "mermaid": "12.2.0",
     "playwright-core": "1.56.1"
   }
 }
