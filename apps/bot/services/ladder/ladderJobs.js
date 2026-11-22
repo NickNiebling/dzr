@@ -82,6 +82,7 @@ async function syncTeam(client, team, now) {
         await ladderState.markPosted("postedLadderPreview", id);
       }
     } catch (err) {
+      if (ladderClient.isAuthUnavailable(err)) throw err;
       console.error(`[ladder] Match ${id} (${team.name}) failed:`, err.message);
     }
   }
@@ -97,11 +98,16 @@ async function maybeRunLadderJobs(client, now = new Date()) {
       try {
         await syncTeam(client, team, now);
       } catch (err) {
+        if (ladderClient.isAuthUnavailable(err)) throw err;
         console.error(`[ladder] Team ${team.name} failed:`, err.message);
       }
     }
   } catch (err) {
-    console.error("[ladder] Job failed:", err.message);
+    if (ladderClient.isAuthUnavailable(err)) {
+      console.warn("[ladder] Job paused:", err.message);
+    } else {
+      console.error("[ladder] Job failed:", err.message);
+    }
   } finally {
     running = false;
   }

@@ -1,6 +1,6 @@
 const { handleOnboardingPreview, handleOnboardingReset } = require("./onboardingCommands");
 const { handleAnnouncerRun, handleAnnouncerPause, handleAnnouncerStats, handleAnnouncerPreviewDm } = require("./announcerCommands");
-const { ActionRowBuilder, StringSelectMenuBuilder, InteractionResponseType, MessageFlags, EmbedBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { ActionRowBuilder, MessageFlags, EmbedBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const roleService = require("../services/roleService");
 const { linkUserZwiftId, getTodaysClubStats } = require("../services/firebase");
 const { handlePublishButton, ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
@@ -401,7 +401,7 @@ async function handleInteractions(interaction) {
       const parts = interaction.customId.split("_");
 
       if (parts.length === 4) {
-        const action = parts[1]; // "leave"
+        // parts[1] is the "leave" action.
         const panelId = parts[2];
         const roleId = parts[3];
 
@@ -442,7 +442,7 @@ async function handleInteractions(interaction) {
       const parts = interaction.customId.split("_");
 
       if (parts.length === 4) {
-        const action = parts[1]; // "join"
+        // parts[1] is the "join" action.
         const panelId = parts[2];
         const roleId = parts[3];
 

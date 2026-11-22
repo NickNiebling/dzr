@@ -38,7 +38,11 @@ async function findFixture(interaction, teamName) {
 }
 
 async function replyError(interaction, name, error) {
-  console.error(`❌ ${name} error:`, error);
+  if (ladderClient.isAuthUnavailable(error)) {
+    console.warn(`${name}:`, error.message);
+  } else {
+    console.error(`❌ ${name} error:`, error);
+  }
   await interaction.editReply({ content: error.userMessage || "⚠️ Der skete en fejl." });
 }
 

@@ -2,25 +2,25 @@
 
 import React from 'react'
 import {
-  Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel,
   Alert, AlertIcon, Box, Button, Checkbox, Container, Heading, HStack,
   Image, Progress, SimpleGrid, Stack, Text,
 } from '@chakra-ui/react'
 import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
 import {
-  fetchScriptFile, getInstallationErrorMessage, installScript, SCRIPT_FILENAME,
-  type DirectoryPicker, type InstallationResult,
+  fetchScriptFile, getInstallationErrorMessage, installScript, SAVE_SCRIPT_LABEL, SCRIPT_FILENAME, supportsSavePicker,
+  type SaveFilePicker,
 } from './installScript'
 
 type OperatingSystem = 'windows' | 'macos'
 type Props = { scriptUrl?: string }
-type PickerWindow = Window & { showDirectoryPicker?: DirectoryPicker }
+type PickerWindow = Window & { showSaveFilePicker?: SaveFilePicker }
 
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
+const downloadScriptLabel = 'Download DZR-script'
 const obsSteps = [
-  { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg Værktøjer / Tools → Scripts i menuen øverst.' },
-  { title: 'Klik på plusset', image: 'add-script', text: 'Klik på + nederst til venstre i Scripts-vinduet.' },
-  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Find den DZR-mappe, du brugte i trin 2. Vælg dzr-stream.lua, og klik Åbn / Open.' },
+  { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg “Scripts” under “Værktøjer” eller “Tools” i menuen øverst.' },
+  { title: 'Tilføj DZR-scriptet', image: 'add-script', text: 'Klik på + (plus) nederst til venstre for at tilføje filen fra trin 2.' },
+  { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik på “Åbn” eller “Open”.' },
 ]
 
 export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/script' }: Props) {
@@ -32,23 +32,22 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [copyMessage, setCopyMessage] = React.useState('')
-  const [installation, setInstallation] = React.useState<InstallationResult | null>(null)
+  const [savedFilename, setSavedFilename] = React.useState<string | null>(null)
   const [downloaded, setDownloaded] = React.useState(false)
   const [manualFileReady, setManualFileReady] = React.useState(false)
   const [obsStep, setObsStep] = React.useState(0)
   const [showTest, setShowTest] = React.useState(false)
   const [finished, setFinished] = React.useState(false)
   const heading = React.useRef<HTMLHeadingElement>(null)
-  const hasConflict = installation?.status === 'conflict'
-  const fileReceived = !hasConflict && (downloaded || installation?.status === 'saved' || installation?.status === 'identical')
-  const fileReady = !hasConflict && ((downloaded && manualFileReady) || installation?.status === 'saved' || installation?.status === 'identical')
+  const fileReceived = Boolean(savedFilename) || downloaded
+  const fileReady = Boolean(savedFilename) || (downloaded && manualFileReady)
 
   React.useEffect(() => {
     const platform = navigator.platform || navigator.userAgent
     if (/Win/i.test(platform)) setOs('windows')
     else if (/Mac/i.test(platform)) setOs('macos')
     setMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1))
-    setSupportsPicker(window.isSecureContext && typeof (window as PickerWindow).showDirectoryPicker === 'function')
+    setSupportsPicker(supportsSavePicker(window as PickerWindow))
   }, [])
 
   function goTo(next: number) {
@@ -69,24 +68,19 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
   async function install() {
     if (busy) return
-    const pick = (window as PickerWindow).showDirectoryPicker
+    const pick = (window as PickerWindow).showSaveFilePicker
     if (!pick) return
     setBusy(true)
     setError('')
     try {
       // installScript invokes the picker immediately, while this click is active.
-      const result = await installScript({
-        pickDirectory: (options) => pick.call(window, options),
+      const filename = await installScript({
+        pickFile: (options) => pick.call(window, options),
         fetchScript: () => fetchScriptFile(scriptUrl),
       })
-      setInstallation(result)
-      if (result.status === 'conflict') {
-        setManualFileReady(false)
-      }
+      setSavedFilename(filename)
     } catch (cause) {
-      setError(hasConflict
-        ? 'Filen kunne ikke gemmes i en ny mappe. Den eksisterende fil er ikke ændret. Vælg en anden mappe, og tillad adgang.'
-        : getInstallationErrorMessage(cause))
+      setError(getInstallationErrorMessage(cause))
     } finally {
       setBusy(false)
     }
@@ -107,6 +101,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       setDownloaded(true)
+      setManualFileReady(false)
     } catch (cause) {
       setError(getInstallationErrorMessage(cause))
     } finally {
@@ -114,9 +109,14 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     }
   }
 
-  function back() {
-    if (step === 3 && obsStep > 0) setObsStep(obsStep - 1)
-    else goTo(Math.max(1, step - 1))
+  function resetWizard() {
+    setSavedFilename(null)
+    setDownloaded(false)
+    setManualFileReady(false)
+    setObsStep(0)
+    setShowTest(false)
+    setFinished(false)
+    goTo(1)
   }
 
   function next() {
@@ -138,6 +138,8 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     )
   }
 
+  const obsFilename = savedFilename ?? SCRIPT_FILENAME
+  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', () => obsFilename)
   const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', obsSteps[obsStep].title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
 
   return (
@@ -193,92 +195,64 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 2 && (
               <Stack spacing={5}>
                 <Text color="gray.300">
-                  Filen skal blive liggende i en fast mappe. Vi foreslår Dokumenter / Documents → DZR.
+                  <strong>Gem filen i en fast mappe, fx Dokumenter/DZR.</strong> Efter opsætningen skal filen blive liggende i samme mappe med samme navn. Den må ikke slettes.
                 </Text>
-                {supportsPicker && (
-                  <Stack spacing={4}>
-                    <Text color="gray.300">Klik på <strong>Installér DZR OBS-script</strong>, og vælg <strong>Dokumenter / Documents</strong> i vinduet, der åbner. Vi opretter selv DZR-mappen i den mappe, du vælger, og gemmer filen dér. Du skal kun vælge Dokumenter og tillade adgang.</Text>
-                    <Button colorScheme="red" size="lg" minH="56px" whiteSpace="normal" onClick={install} isLoading={busy} loadingText="Arbejder…">
-                      {installation?.status === 'conflict' ? 'Vælg en anden mappe' : 'Installér DZR OBS-script'}
-                    </Button>
-                  </Stack>
-                )}
-                {!hasConflict && (
-                  <Stack spacing={3}>
-                    <Heading as="h2" size="sm">{supportsPicker ? 'Problemer med installation herover?' : 'Hent filen til din computer'}</Heading>
-                    <Text color="gray.300">Hent filen, og vælg selv en placering på din computer. Brug en fast mappe, som du ikke sletter senere, da filen skal blive liggende, efter den er tilføjet i OBS.</Text>
-                    <Button
-                      leftIcon={<FaDownload />} onClick={download} isDisabled={busy}
-                      variant={supportsPicker ? 'outline' : 'solid'} colorScheme={supportsPicker ? 'gray' : 'red'}
-                      color="white" size="lg" minH="52px" whiteSpace="normal"
-                    >{supportsPicker ? 'Hent filen i stedet' : 'Hent dzr-stream.lua'}</Button>
-                  </Stack>
-                )}
-                {!supportsPicker && <Text color="gray.400" fontSize="sm">Din browser bruger almindelig download. Du kan følge hele guiden her.</Text>}
+                <Text color="gray.300">
+                  {supportsPicker
+                    ? `“${SAVE_SCRIPT_LABEL}” foreslår ${SCRIPT_FILENAME} som filnavn og Dokumenter som startmappe. I Dokumenter kan du vælge eller oprette mappen DZR og gemme filen dér.`
+                    : `Klik på “${downloadScriptLabel}”, og flyt derefter ${SCRIPT_FILENAME} fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.`}
+                </Text>
+                {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
+                <Button
+                  colorScheme="red" size="lg" minH="56px" whiteSpace="normal"
+                  leftIcon={supportsPicker ? undefined : <FaDownload />}
+                  onClick={supportsPicker ? install : download} isLoading={busy} loadingText="Arbejder…"
+                >
+                  {supportsPicker ? SAVE_SCRIPT_LABEL : downloadScriptLabel}
+                </Button>
 
-                {hasConflict && (
-                  <Alert status="warning" bg="orange.900" borderRadius="lg" role="alert">
-                    <AlertIcon />
-                    <Text>Der ligger allerede en anden eller tom dzr-stream.lua i <strong>{installation.directoryName}</strong>. Den er ikke ændret. Klik på <strong>Vælg en anden mappe</strong> for at gemme filen et nyt sted. Du kan først fortsætte, når filen er gemt eller matcher DZR-filen. En download alene løser ikke konflikten.</Text>
-                  </Alert>
-                )}
-
-                {installation && installation.status !== 'conflict' && (
+                {savedFilename && (
                   <Alert status="success" bg="green.900" borderRadius="lg">
                     <AlertIcon />
-                    <Text>{installation.status === 'saved' ? 'Filen er gemt i' : 'Den samme fil ligger allerede i'} <strong>{installation.directoryName}</strong>. Nu skal den tilføjes i OBS.</Text>
+                    <Text><strong>{savedFilename}</strong> er gemt. Nu skal filen tilføjes i OBS.</Text>
                   </Alert>
                 )}
 
-                {!hasConflict && downloaded && (
+                {downloaded && (
                   <Stack spacing={3}>
-                    <Text>Når filen er hentet: Åbn Downloads / Overførsler. Ved denne manuelle download skal du selv oprette en DZR-mappe i Dokumenter og flytte <strong>dzr-stream.lua</strong> dertil.</Text>
-                    {illustration('save-file', 'Flyt dzr-stream.lua fra Downloads til en fast DZR-mappe i Dokumenter.')}
                     <Text color="gray.400" fontSize="sm">Behold filnavnet dzr-stream.lua. Undgå en ekstra endelse som .txt eller et nummer i filnavnet.</Text>
+                    <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy} alignItems="start">
+                      Jeg har flyttet dzr-stream.lua til en fast placering.
+                    </Checkbox>
                   </Stack>
                 )}
-
-                {downloaded && !hasConflict && (
-                  <Checkbox colorScheme="red" isChecked={manualFileReady} onChange={(event) => setManualFileReady(event.target.checked)} isDisabled={busy || hasConflict} alignItems="start">
-                    Jeg har selv lagt dzr-stream.lua i en fast DZR-mappe.
-                  </Checkbox>
-                )}
-                {downloaded && manualFileReady && !hasConflict && <Text color="green.300" fontSize="sm">Du har bekræftet filens placering. Browseren har ikke kontrolleret den.</Text>}
               </Stack>
             )}
 
             {step === 3 && (
               <Stack spacing={4}>
                 <Text color="red.300" fontSize="sm">OBS · {obsStep + 1} af {obsSteps.length}</Text>
-                <Text fontSize="lg">{obsSteps[obsStep].text}</Text>
-                {illustration(obsSteps[obsStep].image, obsSteps[obsStep].text)}
-                {obsStep === 2 && (
-                  <Text color="gray.400" fontSize="sm">Er filen allerede tilføjet? Vælg den i listen. Hvis den er flyttet eller slettet, skal du gendanne den på den gamle placering og genindlæse scriptet i OBS.</Text>
+                {obsStep === 1 && (
+                  <Text color="gray.300">
+                    <strong>Står DZR-scriptet allerede på listen?</strong> Markér det, og klik på <strong>− (minus)</strong> nederst til venstre for at fjerne det fra OBS. Filen bliver liggende på computeren.
+                  </Text>
                 )}
+                <Text fontSize="lg">{obsInstruction}</Text>
+                {illustration(obsSteps[obsStep].image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
               </Stack>
             )}
 
             {step === 4 && (
               <Stack spacing={5}>
-                <Text>Vælg <strong>dzr-stream.lua</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>DZR key</strong> til højre.</Text>
-                {illustration('configure', 'Indsæt din personlige API-nøgle i DZR key i OBS-scriptets indstillinger.')}
+                <Text>Vælg <strong>{obsFilename}</strong> i OBS-listen. Indsæt din personlige API-nøgle i <strong>“DZR key”</strong> til højre.</Text>
+                {illustration('configure', 'Indsæt din personlige API-nøgle i “DZR key” i OBS-scriptets indstillinger.')}
                 <Stack spacing={2}>
                   <Text fontWeight="bold">DZR key – din personlige API-nøgle</Text>
                   <Text color="gray.300">Find den private Discord-besked, hvor din nøgle blev oprettet med <strong>/streaming_add</strong>. Kopiér din personlige DZR-nøgle direkte ind i OBS.</Text>
-                  <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke. Har du allerede den rigtige nøgle i OBS, beholder du den.</Text>
-                  <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Få en ny via /streaming_add; når du gemmer, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
+                  <Text color="gray.400" fontSize="sm">Det er din DZR-nøgle, ikke streamnøglen til YouTube eller Twitch. Del den ikke.</Text>
+                  <Text color="gray.400" fontSize="sm">Kan du ikke finde nøglen? Beskeden kan forsvinde, når du genstarter Discord. Kør <strong>/streaming_add</strong>, og klik på <strong>“Redigér kanaler og få ny nøgle”</strong>. Når du gemmer formularen, bliver den gamle nøgle ugyldig. Indsæt derefter den nye nøgle i OBS.</Text>
                 </Stack>
                 <Text color="gray.300">Du kan streame til én eller flere platforme på samme tid. DZR finder automatisk aktive streams på dine tilmeldte YouTube- og Twitch-kanaler, så du behøver ikke begrænse dig til én platform.</Text>
-                <Accordion allowToggle>
-                  <AccordionItem borderColor="gray.700">
-                    <h3><AccordionButton px={0} py={3}><Box flex="1" textAlign="left">YouTube-videolink – valgfrit</Box><AccordionIcon /></AccordionButton></h3>
-                    <AccordionPanel px={0} color="gray.300">
-                      <Stack spacing={3}>
-                        <Text><strong>YouTube-videolink</strong> er valgfrit. Du kan lade feltet stå tomt. Et link til den aktuelle stream kan gøre live-verifikationen hurtigere; opdatér det, hvis du bruger det.</Text>
-                      </Stack>
-                    </AccordionPanel>
-                  </AccordionItem>
-                </Accordion>
               </Stack>
             )}
 
@@ -286,7 +260,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
               <Stack spacing={5}>
                 <HStack align="start" spacing={3}>
                   <Box color="green.300" pt={1}><FaCheckCircle size={24} /></Box>
-                  <Text>Du har gennemgået installationen og indstillingerne. Behold filen i DZR-mappen.</Text>
+                  <Text>Du har gennemgået installationen og indstillingerne. Lad scriptfilen blive liggende dér, hvor OBS bruger den.</Text>
                 </HStack>
                 <Alert status="info" bg="blue.900" borderRadius="lg"><AlertIcon /><Text>OBS-forbindelsen er ikke kontrolleret her. Kun et nyt signal i Discord bekræfter forbindelsen.</Text></Alert>
                 {finished ? (
@@ -294,15 +268,15 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 ) : (
                   <Button colorScheme="red" size="lg" minH="56px" onClick={() => setFinished(true)}>Afslut uden test</Button>
                 )}
-                <Button color="white" variant="outline" size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
+                <Button color="white" variant="outline" _hover={{ bg: 'gray.700' }} size="lg" whiteSpace="normal" minH="52px" onClick={() => setShowTest(!showTest)} aria-expanded={showTest} aria-controls="connection-test">
                   {showTest ? 'Skjul forbindelsestest' : 'Vis forbindelsestest – valgfrit'}
                 </Button>
                 {showTest && (
                   <Stack id="connection-test" spacing={3} bg="gray.800" p={4} borderRadius="lg">
-                    <Text><strong>1.</strong> Klik på <strong>Test forbindelse</strong> i OBS-scriptets indstillinger.</Text>
-                    <Text><strong>2.</strong> Gå tilbage til din private Discord-besked, og klik på <strong>Kontrollér OBS-forbindelse</strong>.</Text>
+                    <Text><strong>1.</strong> Klik på <strong>“Test forbindelse”</strong> i OBS-scriptets indstillinger.</Text>
+                    <Text><strong>2.</strong> Gå tilbage til din private Discord-besked, og klik på <strong>“Kontrollér OBS-forbindelse”</strong>.</Text>
                     <Text><strong>3.</strong> Kontrollér, at tidspunktet for signalet passer med din nye test.</Text>
-                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i DZR key, og prøv igen. Find statusknappen i din private Discord-besked fra /streaming_add.</Text>
+                    <Text color="gray.300" fontSize="sm">Intet nyt signal? Kontrollér, at din personlige nøgle er indsat i “DZR key”, og prøv igen. Knappen “Kontrollér OBS-forbindelse” ligger i din private Discord-besked fra /streaming_add.</Text>
                     <Text color="gray.300" fontSize="sm">Testen sender ingen offentlig besked. En annonce kræver, at din offentlige livestream er verificeret.</Text>
                     {!finished && <Button colorScheme="red" size="lg" onClick={() => setFinished(true)}>Afslut guiden</Button>}
                   </Stack>
@@ -315,7 +289,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
             {step < 5 && (
               <Stack direction={{ base: 'column-reverse', sm: 'row' }} spacing={3} pt={2}>
-                {step > 1 && <Button color="white" size="lg" variant="outline" onClick={back} isDisabled={busy}>Tilbage</Button>}
+                {step > 1 && <Button color="white" size="lg" variant="outline" _hover={{ bg: 'gray.700' }} onClick={resetWizard} isDisabled={busy}>{step === 2 ? 'Tilbage' : 'Tilbage til start'}</Button>}
                 {(step !== 2 || fileReceived) && (
                   <Button
                     colorScheme="red" size="lg" minH="52px" flex="1" whiteSpace="normal" onClick={next}
@@ -324,10 +298,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                 )}
               </Stack>
             )}
-            {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={back}>Tilbage til indstillingerne</Button>}
+            {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={resetWizard}>Tilbage til start</Button>}
           </Stack>
         </Box>
-        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={() => goTo(1)}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
+        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={resetWizard}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
       </Stack>
     </Container>
   )

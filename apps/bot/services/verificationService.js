@@ -162,7 +162,7 @@ class VerificationService {
       // Fetch all guild members
       const members = await guild.members.fetch();
       
-      for (const [memberId, member] of members) {
+      for (const member of members.values()) {
         if (member.user.bot) continue; // Skip bots
         
         try {

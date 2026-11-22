@@ -26,8 +26,8 @@ jobs:
     # Keep the browser runner on an OS supported by the pinned Playwright 1.56.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -36,8 +36,9 @@ jobs:
       - run: npm ci
       # Production dependencies only. braces has no patched release and is pulled in by the
       # ESLint toolchain, so a full audit would stay red after the runtime fixes.
+      # picomatch's current high advisory also has no patched release; the checker waives that one id.
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: node scripts/audit-prod.js
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Lint site
@@ -69,8 +70,8 @@ jobs:
       run:
         working-directory: apps/bot
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: apps/bot/.nvmrc
       # Adapter tests import the OpenAI SDK, so dependencies must be present. Disable lifecycle
@@ -93,8 +94,8 @@ jobs:
     name: API (Sentry smoke tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -102,13 +103,14 @@ jobs:
       - run: python -m pip install -r apps/api/requirements.txt
       # In-memory transport: no Firebase credentials or external Sentry delivery.
       - run: python -m unittest discover -s apps/api/tests -p test_observability.py
+      - run: python -m unittest discover -s apps/api/tests -p test_ladder.py
 
   shared-sync:
     name: Shared copies are in sync
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
       # packages/shared is the source of truth, but Render and Cloud Run build apps/* as their

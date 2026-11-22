@@ -1,7 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { isPreviewDue, isReminderDue, localDate, localHour } = require("./ladderJobs");
+const { maybeRunLadderJobs, isPreviewDue, isReminderDue, localDate, localHour } = require("./ladderJobs");
 const { parseTeamName } = require("./ladderTeams");
+const ladderClient = require("./ladderClient");
+const ladderState = require("./ladderState");
+const ladderTeams = require("./ladderTeams");
 const { createStore } = require("./ladderStore");
 const { summarizeProfile, formPercent } = require("./riderPower");
 
@@ -28,6 +31,30 @@ test("reminder is due from 12:00 local time on match day until the match starts"
   assert.equal(isReminderDue(start, new Date("2026-10-15T10:00:00Z"), TZ), true);
   assert.equal(isReminderDue(start, new Date("2026-10-15T18:01:00Z"), TZ), false);
   assert.equal(isReminderDue(start, new Date("2026-10-14T12:00:00Z"), TZ), false);
+});
+
+test("scheduled jobs pause once on an auth outage and still report other errors per match", async (t) => {
+  const errorLog = t.mock.method(console, "error", () => {});
+  const warningLog = t.mock.method(console, "warn", () => {});
+  t.mock.method(ladderTeams, "list", async () => [{ name: "First team" }, { name: "Second team" }]);
+  const getFixtures = t.mock.method(ladderClient, "getFixtures", async () => [{ id: "1" }, { id: "2" }]);
+  t.mock.method(ladderState, "isPosted", async () => false);
+  let failure = Object.assign(new Error("Ladder authentication is unavailable"), { code: "ladder_auth_unavailable" });
+  const getFixtureStart = t.mock.method(ladderClient, "getFixtureStart", async () => { throw failure; });
+  const client = { channels: { fetch: async () => ({}) } };
+
+  await maybeRunLadderJobs(client, new Date("2026-10-15T17:00:00Z"));
+  assert.equal(getFixtures.mock.callCount(), 1);
+  assert.equal(getFixtureStart.mock.callCount(), 1);
+  assert.equal(warningLog.mock.callCount(), 1);
+  assert.equal(errorLog.mock.callCount(), 0);
+
+  failure = new Error("Unexpected match error");
+  await maybeRunLadderJobs(client, new Date("2026-10-15T17:10:00Z"));
+  assert.equal(getFixtures.mock.callCount(), 3);
+  assert.equal(getFixtureStart.mock.callCount(), 5);
+  assert.equal(warningLog.mock.callCount(), 1);
+  assert.equal(errorLog.mock.callCount(), 4);
 });
 
 test("parseTeamName accepts plain names and ladder links", () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Badge,
@@ -117,7 +117,7 @@ export default function WeeklySeries() {
     setMessages((current) => ({ ...current, [seriesId]: message }))
   }
 
-  async function loadSaved() {
+  const loadSaved = useCallback(async () => {
     const ids = ['after-party', 'zwifty-fifty'] as const
     const loaded = await Promise.all(
       ids.map(async (seriesId) => {
@@ -128,22 +128,22 @@ export default function WeeklySeries() {
       })
     )
     setSavedBySeries(Object.fromEntries(loaded))
-  }
-
-  async function load() {
-    const res = await fetch('/api/admin/events/series', { cache: 'no-store' })
-    if (!res.ok) {
-      setLoadError(await errorMessage(res))
-      return
-    }
-    const body = await res.json()
-    setSeries(Array.isArray(body.series) ? body.series : [])
-    await loadSaved()
-  }
+  }, [])
 
   useEffect(() => {
+    async function load() {
+      const res = await fetch('/api/admin/events/series', { cache: 'no-store' })
+      if (!res.ok) {
+        setLoadError(await errorMessage(res))
+        return
+      }
+      const body = await res.json()
+      setSeries(Array.isArray(body.series) ? body.series : [])
+      await loadSaved()
+    }
+
     void load()
-  }, [])
+  }, [loadSaved])
 
   async function saveOverride(seriesId: string, date: string, route: string) {
     setBusy(`${seriesId}:${date}`)

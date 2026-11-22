@@ -65,6 +65,32 @@ test("describeFailure names the API status, a timeout or a missing connection", 
   assert.equal(describeFailure({ code: "ENOTFOUND" }), "ingen forbindelse til API");
 });
 
+test("only the Ladder auth failure response gets a typed, user-facing error", async (t) => {
+  const axios = require("axios");
+  const config = require("../../config/config");
+  const { getPage, isAuthUnavailable } = require("./ladderClient");
+  const original = config.contentApi;
+  config.contentApi = { baseUrl: "http://localhost", apiKey: "test" };
+  t.after(() => { config.contentApi = original; });
+  let status = 503;
+  let data = '{"code":"ladder_auth_unavailable","error":"API detail"}';
+  t.mock.method(axios, "get", async () => {
+    throw Object.assign(new Error("Request failed"), { response: { status, data } });
+  });
+
+  await assert.rejects(getPage("/summary"), (error) => {
+    assert.ok(isAuthUnavailable(error));
+    assert.match(error.userMessage, /Ladder-login er midlertidigt utilgængeligt/);
+    assert.doesNotMatch(error.message, /API detail/);
+    return true;
+  });
+  status = 502;
+  await assert.rejects(getPage("/summary"), (error) => !isAuthUnavailable(error) && /502/.test(error.userMessage));
+  status = 503;
+  data = "<html>Service unavailable</html>";
+  await assert.rejects(getPage("/summary"), (error) => !isAuthUnavailable(error) && /503/.test(error.userMessage));
+});
+
 test("scout catalog shares refreshes, caches for 15 minutes and resolves only unambiguous names or valid links", async (t) => {
   const axios = require("axios");
   const config = require("../../config/config");
@@ -129,4 +155,14 @@ test("scout fetches complete rosters each time, deduplicates verified identities
   await getRoster({ id: "501" }, { fetchPage });
   assert.equal(teamReads, 2);
   await assert.rejects(getRoster({ id: "501" }, { fetchPage: async (path) => path.startsWith("/team/") ? html : "" }), /Ingen ryttere.*Zwift-id/);
+});
+
+test("scout propagates an auth outage that starts while reading rider profiles", async () => {
+  const html = require("node:fs").readFileSync(`${__dirname}/fixtures/roster-11.html`, "utf8");
+  const outage = Object.assign(new Error("Ladder authentication is unavailable"), { code: "ladder_auth_unavailable" });
+  const fetchPage = async (path) => {
+    if (path.startsWith("/team/")) return html;
+    throw outage;
+  };
+  await assert.rejects(getRoster({ id: "501" }, { fetchPage }), outage);
 });
