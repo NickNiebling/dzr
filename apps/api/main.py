@@ -1182,6 +1182,16 @@ def zwift_profile(rider_id: int):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _send_ladder_renewal_alert(message: str) -> bool:
+    try:
+        if DiscordAPI(guild_id=DISCORD_GUILD_ID).send_text_channel_message("it-alerts", message):
+            return True
+    except (ValueError, requests.RequestException):
+        pass
+    logging.warning("Could not deliver the Ladder renewal alert to #it-alerts")
+    return False
+
+
 @app.route('/ladder_page', methods=['GET'])
 def ladder_page():
     """Read-only page from ladder.cycleracing.club, fetched with the club's ladder login (allow-listed paths only)"""
@@ -1192,7 +1202,7 @@ def ladder_page():
     if not ladder.is_allowed_path(path):
         return jsonify({"error": "Path not allowed"}), 400
     try:
-        body, content_type = ladder.get_client().get_page(path)
+        body, content_type = ladder.get_client(send_alert=_send_ladder_renewal_alert).get_page(path)
         return app.response_class(body, mimetype=content_type.split(';')[0].strip())
     except ladder.LadderAuthError as error:
         g.skip_handled_failure_report = True

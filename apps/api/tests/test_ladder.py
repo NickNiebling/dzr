@@ -54,9 +54,42 @@ class LadderSessionCookieTest(unittest.TestCase):
         self.assertFalse(client.using_session_cookie)
 
     def test_cookie_prefix_from_the_browser_is_accepted(self):
-        with mock.patch.dict("os.environ", {"LADDER_SESSION": " connect.sid=s%3Aabc "}), \
+        with mock.patch.dict("os.environ", {
+            "LADDER_SESSION": " connect.sid=s%3Aabc ",
+            "LADDER_SESSION_EXPIRES_AT": "2026-12-01T00:00:00Z",
+        }), \
                 mock.patch.object(ladder, "_client", None):
-            self.assertEqual(ladder.get_client().session.cookies.get("connect.sid"), "s%3Aabc")
+            client = ladder.get_client()
+        self.assertEqual(client.session.cookies.get("connect.sid"), "s%3Aabc")
+        self.assertEqual(client._session_expires_at, 1796083200)
+
+    def test_expiry_and_definitive_rejection_each_alert_once(self):
+        send = mock.Mock(return_value=True)
+        expires_at = 2_000_000_000
+        client = ladder.LadderClient("club@example.com", "secret", "private-cookie", send_alert=send)
+        client.session.cookies.set("connect.sid", "private-cookie", domain=ladder.LADDER_HOST, path="/", expires=expires_at)
+        with mock.patch.object(ladder.time, "time", return_value=expires_at - ladder.RENEWAL_WINDOW) as wall_clock, \
+                mock.patch.object(ladder.time, "monotonic", return_value=1000) as clock, \
+                mock.patch.object(client, "_get", return_value=_page("fixtures")) as fetch, \
+                mock.patch.object(client.session, "get", return_value=_page(SIGN_IN)), \
+                mock.patch.object(client.session, "post", return_value=_page("Denied", status=403)), \
+                self.assertLogs(level="WARNING"):
+            client.get_page("/summary")
+            send.assert_not_called()
+            wall_clock.return_value += 1
+            client.get_page("/summary")
+            client.get_page("/summary")
+            send.assert_called_once()
+            self.assertIn(f"<t:{expires_at}:R>", send.call_args.args[0])
+
+            fetch.return_value = _page(SIGN_IN)
+            for advance in (0, 1, ladder.AUTH_RETRY_INITIAL):
+                clock.return_value += advance
+                with self.assertRaises(ladder.LadderAuthError):
+                    client.get_page("/summary")
+        self.assertEqual(send.call_count, 2)
+        self.assertIn("password", send.call_args.args[0])
+        self.assertNotIn("private-cookie", str(send.call_args_list))
 
     def test_rejected_password_sign_in_logs_each_attempt_and_backs_off_until_recovery(self):
         client = ladder.LadderClient("club@example.com", "secret")
@@ -99,7 +132,8 @@ class LadderSessionCookieTest(unittest.TestCase):
         self.assertFalse(client.using_session_cookie)
 
     def test_upstream_sign_in_failure_starts_backoff(self):
-        client = ladder.LadderClient("club@example.com", "secret")
+        send = mock.Mock()
+        client = ladder.LadderClient("club@example.com", "secret", send_alert=send)
         with mock.patch.object(client.session, "get", return_value=_page(SIGN_IN)), \
                 mock.patch.object(client.session, "post", return_value=_page("Unavailable", status=503)), \
                 self.assertLogs(level="ERROR") as logs:
@@ -107,6 +141,7 @@ class LadderSessionCookieTest(unittest.TestCase):
                 client.get_page("/summary")
             self.assertEqual(failure.exception.retry_after, 300)
         self.assertIn("HTTP 503", logs.output[0])
+        send.assert_not_called()
 
     def test_upstream_page_failure_does_not_start_auth_backoff(self):
         client = ladder.LadderClient("club@example.com", "secret", "s%3Aabc")
