@@ -46,9 +46,11 @@ class LadderSessionCookieTest(unittest.TestCase):
     def test_rejected_session_cookie_falls_back_to_password_sign_in(self):
         client = ladder.LadderClient("club@example.com", "secret", "s%3Aexpired")
         with mock.patch.object(client, "login") as login, \
-                mock.patch.object(client, "_get", side_effect=[_page(SIGN_IN), _page("fixtures")]):
+                mock.patch.object(client, "_get", side_effect=[_page(SIGN_IN), _page("fixtures")]), \
+                self.assertLogs(level="WARNING") as logs:
             self.assertEqual(client.get_page("/summary")[0], "fixtures")
         login.assert_called_once()
+        self.assertEqual([record.levelname for record in logs.records], ["WARNING"])
         self.assertFalse(client.using_session_cookie)
 
     def test_cookie_prefix_from_the_browser_is_accepted(self):
@@ -56,29 +58,33 @@ class LadderSessionCookieTest(unittest.TestCase):
                 mock.patch.object(ladder, "_client", None):
             self.assertEqual(ladder.get_client().session.cookies.get("connect.sid"), "s%3Aabc")
 
-    def test_rejected_password_session_is_retried_only_after_cooldown(self):
+    def test_rejected_password_sign_in_logs_each_attempt_and_backs_off_until_recovery(self):
         client = ladder.LadderClient("club@example.com", "secret")
+        rejected = _page("Signed out", path="/signin")
+        delays = [300, 600, 1200, 2400, 3600, 3600]
         with mock.patch.object(ladder.time, "monotonic", return_value=1000) as clock, \
-                mock.patch.object(client.session, "get", side_effect=[
-                    _page(SIGN_IN), _page("Signed out", path="/signin"),
-                    _page(SIGN_IN), _page("fixtures"),
-                ]) as get, \
+                mock.patch.object(client.session, "get") as get, \
                 mock.patch.object(client.session, "post", return_value=_page("Welcome")) as post, \
-                self.assertLogs(level="WARNING") as logs:
-            with self.assertRaises(ladder.LadderAuthError) as first:
-                client.get_page("/summary")
-            self.assertEqual(first.exception.retry_after, ladder.AUTH_RETRY_SECONDS)
-            self.assertFalse(client.logged_in)
-            clock.return_value += 1
-            with self.assertRaises(ladder.LadderAuthError) as second:
-                client.get_page("/team/n/82")
-            self.assertEqual(second.exception.retry_after, ladder.AUTH_RETRY_SECONDS - 1)
-            self.assertEqual(get.call_count, 2)
-            post.assert_called_once()
-            clock.return_value = 1000 + ladder.AUTH_RETRY_SECONDS
+                self.assertLogs(level="ERROR") as logs:
+            for attempt, delay in enumerate(delays, start=1):
+                get.side_effect = [_page(SIGN_IN), rejected]
+                with self.assertRaises(ladder.LadderAuthError) as failure:
+                    client.get_page("/summary")
+                self.assertEqual(failure.exception.retry_after, delay)
+                clock.return_value += 1
+                with self.assertRaises(ladder.LadderAuthError) as paused:
+                    client.get_page("/team/n/82")
+                self.assertEqual(paused.exception.retry_after, delay - 1)
+                self.assertEqual(post.call_count, attempt)
+                self.assertEqual(len(logs.records), attempt)
+                clock.return_value += delay - 1
+
+            get.side_effect = [_page(SIGN_IN), _page("fixtures"), rejected, _page(SIGN_IN), rejected]
             self.assertEqual(client.get_page("/summary")[0], "fixtures")
-            self.assertEqual(post.call_count, 2)
-        self.assertEqual(len(logs.records), 1)
+            with self.assertRaises(ladder.LadderAuthError) as failure:
+                client.get_page("/summary")
+            self.assertEqual(failure.exception.retry_after, delays[0])
+        self.assertEqual(len(logs.records), len(delays) + 1)
 
     def test_session_expiring_during_discord_skip_can_fall_back(self):
         client = ladder.LadderClient("club@example.com", "secret", "s%3Aexpired")
@@ -92,13 +98,22 @@ class LadderSessionCookieTest(unittest.TestCase):
         post.assert_called_once()
         self.assertFalse(client.using_session_cookie)
 
-    def test_upstream_service_failure_is_not_an_auth_cooldown(self):
+    def test_upstream_sign_in_failure_starts_backoff(self):
         client = ladder.LadderClient("club@example.com", "secret")
-        with mock.patch.object(client.session, "get", side_effect=[
-            _page(SIGN_IN), _page(SIGN_IN), _page("fixtures"),
-        ]), mock.patch.object(client.session, "post", side_effect=[
-            _page(SIGN_IN, status=503), _page("Welcome"),
-        ]):
+        with mock.patch.object(client.session, "get", return_value=_page(SIGN_IN)), \
+                mock.patch.object(client.session, "post", return_value=_page("Unavailable", status=503)), \
+                self.assertLogs(level="ERROR") as logs:
+            with self.assertRaises(ladder.LadderAuthError) as failure:
+                client.get_page("/summary")
+            self.assertEqual(failure.exception.retry_after, 300)
+        self.assertIn("HTTP 503", logs.output[0])
+
+    def test_upstream_page_failure_does_not_start_auth_backoff(self):
+        client = ladder.LadderClient("club@example.com", "secret", "s%3Aabc")
+        with mock.patch.object(client, "_get", side_effect=[
+            _page("Unavailable", status=503), _page("fixtures"),
+        ]), mock.patch.object(client, "login") as login:
             with self.assertRaises(requests.HTTPError):
                 client.get_page("/summary")
             self.assertEqual(client.get_page("/summary")[0], "fixtures")
+        login.assert_not_called()

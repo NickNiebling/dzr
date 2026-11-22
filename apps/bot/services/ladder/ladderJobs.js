@@ -98,16 +98,15 @@ async function maybeRunLadderJobs(client, now = new Date()) {
       try {
         await syncTeam(client, team, now);
       } catch (err) {
-        if (ladderClient.isAuthUnavailable(err)) throw err;
+        if (ladderClient.isAuthUnavailable(err)) {
+          console.warn("[ladder] Job paused:", err.message);
+          return;
+        }
         console.error(`[ladder] Team ${team.name} failed:`, err.message);
       }
     }
   } catch (err) {
-    if (ladderClient.isAuthUnavailable(err)) {
-      console.warn("[ladder] Job paused:", err.message);
-    } else {
-      console.error("[ladder] Job failed:", err.message);
-    }
+    console.error("[ladder] Job failed:", err.message);
   } finally {
     running = false;
   }
