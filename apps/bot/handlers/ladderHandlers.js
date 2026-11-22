@@ -4,6 +4,7 @@ const { buildLadderPreviewMessage, buildLadderScoutMessage } = require("../servi
 const { buildLadderAnalysisMessage } = require("../services/ladder/ladderAnalysis");
 const { buildLadderAiMessage } = require("../services/ladder/ladderAi");
 const config = require("../config/config");
+const { ephemeralMessageWithPublish } = require("../utils/ephemeralStore");
 
 // The team from the option, else the team added from this channel, else the only added team.
 async function resolveTeam(interaction) {
@@ -145,7 +146,8 @@ async function handleLadderScout(interaction) {
       return;
     }
     const [home, away] = await Promise.all([ladderClient.getRoster(homeTeam), ladderClient.getRoster(awayTeam)]);
-    await interaction.editReply(await buildLadderScoutMessage(home, away));
+    const report = await buildLadderScoutMessage(home, away);
+    await ephemeralMessageWithPublish(interaction, report, "Post i kanalen");
   } catch (error) {
     await replyError(interaction, "ladder_scout", error);
   }
