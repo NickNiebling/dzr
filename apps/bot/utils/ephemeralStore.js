@@ -1,22 +1,12 @@
 const crypto = require("crypto");
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 
-/**
- * A global store for ephemeral results.
- * Maps a unique key => { content, files } to allow "Publish to Channel."
- */
+const REPORT_TTL_MS = 15 * 60 * 1000;
 const ephemeralStore = new Map();
 
-/**
- * Utility: ephemeralReplyWithPublish
- *  - Generates a unique ID
- *  - Stores ephemeral content in ephemeralStore
- *  - Edits the ephemeral reply to include the content and a "Publish to Channel" button
- */
 async function ephemeralReplyWithPublish(interaction, content, files = []) {
+  const message = typeof content === "object" && content !== null ? content : { content, files };
   const uniqueId = crypto.randomUUID();
-  ephemeralStore.set(uniqueId, { content, files });
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`publish_${uniqueId}`)
@@ -24,50 +14,60 @@ async function ephemeralReplyWithPublish(interaction, content, files = []) {
       .setStyle(ButtonStyle.Primary)
   );
 
-  await interaction.editReply({
-    content,
-    files,
-    components: [row]
-  });
+  ephemeralStore.set(uniqueId, message);
+  try {
+    await interaction.editReply({ ...message, components: [row] });
+  } catch (error) {
+    ephemeralStore.delete(uniqueId);
+    throw error;
+  }
+  if (message.embeds?.length) {
+    // Release attachment buffers even if the report is never posted.
+    setTimeout(() => ephemeralStore.delete(uniqueId), REPORT_TTL_MS).unref();
+  }
 }
 
-/**
- * Handle publish button clicks
- */
 async function handlePublishButton(interaction, uniqueId) {
   const stored = ephemeralStore.get(uniqueId);
-  if (stored) {
-    ephemeralStore.delete(uniqueId);
-    await interaction.deferUpdate();
-    await interaction.followUp({
-      content: stored.content,
-      files: stored.files ?? [],
-      ephemeral: false
+  const preview = interaction.message;
+  // Only older text replies can be recovered from their displayed content.
+  const fallback = stored === undefined && !preview?.embeds?.length && preview?.content;
+  const message = stored || (fallback && { content: fallback });
+
+  if (!message) {
+    await interaction.reply({
+      content: stored === null ? "This result is already being published." : "❌ Could not find the content to publish.",
+      flags: MessageFlags.Ephemeral,
     });
-    await interaction.editReply({ components: [] });
-    return true;
+    return false;
   }
 
-  // Fallback: publish the content from the ephemeral message itself (text-only)
-  const fallbackContent = interaction?.message?.content;
-  if (fallbackContent && fallbackContent.length > 0) {
+  // Keep the entry reserved until this click finishes posting.
+  ephemeralStore.set(uniqueId, null);
+  try {
     await interaction.deferUpdate();
-    await interaction.followUp({ content: fallbackContent, ephemeral: false });
-    try {
-      await interaction.editReply({ components: [] });
-    } catch {}
-    return true;
+    await interaction.followUp(message);
+  } catch (error) {
+    if (stored && ephemeralStore.has(uniqueId)) {
+      ephemeralStore.set(uniqueId, stored);
+    } else {
+      ephemeralStore.delete(uniqueId);
+    }
+    if (!interaction.deferred) throw error;
+    console.error("Could not publish the preview:", error);
+    await interaction.followUp({
+      content: "Could not publish this result. Try again.",
+      flags: MessageFlags.Ephemeral,
+    }).catch(console.error);
+    return false;
   }
 
-  await interaction.reply({ 
-    content: "❌ Could not find the content to publish.", 
-    flags: MessageFlags.Ephemeral 
-  });
-  return false;
+  await interaction.editReply({ components: [] }).catch(console.error);
+  ephemeralStore.delete(uniqueId);
+  return true;
 }
 
 module.exports = {
-  ephemeralStore,
   ephemeralReplyWithPublish,
   handlePublishButton,
-}; 
+};
