@@ -794,6 +794,11 @@ const commands = [
     .setDescription("Post a Zwift route quiz — guess the route from the map shape"),
   // Ladder match previews (team list is stored in Firestore collection ladder_bot)
   new SlashCommandBuilder()
+    .setName("ladder_teams")
+    .setDescription("Se tilknyttede Ladder-hold, kanaler og preview-indstillinger")
+    .setDMPermission(false)
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+  new SlashCommandBuilder()
     .setName("ladder_link")
     .setDescription("Add or remove a ladder team that gets previews and match-day reminders")
     .addStringOption(option =>
