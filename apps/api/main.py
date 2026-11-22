@@ -1184,12 +1184,12 @@ def zwift_profile(rider_id: int):
 
 def _send_ladder_renewal_alert(message: str) -> bool:
     try:
-        if DiscordAPI(guild_id=DISCORD_GUILD_ID).send_text_channel_message("it-alerts", message):
-            return True
-    except (ValueError, requests.RequestException):
-        pass
-    logging.warning("Could not deliver the Ladder renewal alert to #it-alerts")
-    return False
+        channel_id = _SHARED_DISCORD["channels"]["itAlerts"]
+        DiscordAPI(guild_id=DISCORD_GUILD_ID).send_channel_message(channel_id, message)
+    except (KeyError, ValueError, requests.RequestException):
+        logging.warning("Could not deliver the Ladder renewal alert to #it-alerts")
+        return False
+    return True
 
 
 @app.route('/ladder_page', methods=['GET'])

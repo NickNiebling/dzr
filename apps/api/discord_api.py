@@ -376,20 +376,13 @@ class DiscordAPI:
             print(f"Error fetching Discord member {discord_id}: {e}")
             return None
 
-    def send_text_channel_message(self, name: str, content: str) -> bool:
-        response = requests.get(f"{self.api_base_url}/guilds/{self.guild_id}/channels", headers=self.headers, timeout=5)
-        response.raise_for_status()
-        channels = [channel for channel in response.json() if channel["name"] == name and channel["type"] == 0]
-        if len(channels) != 1:
-            return False
-        channel_id = channels[0]["id"]
+    def send_channel_message(self, channel_id: str, content: str) -> None:
         requests.post(
             f"{self.api_base_url}/channels/{channel_id}/messages",
             headers=self.headers,
             json={"content": content, "allowed_mentions": {"parse": []}},
             timeout=5,
         ).raise_for_status()
-        return True
 
     def _create_dm_channel(self, user_id: str) -> Optional[str]:
         """
