@@ -1,3 +1,4 @@
+const { EmbedBuilder, PermissionsBitField, escapeMarkdown } = require("discord.js");
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
 const { buildLadderPreviewMessage, buildLadderScoutMessage } = require("../services/ladder/ladderEmbed");
@@ -44,6 +45,47 @@ async function replyError(interaction, name, error) {
     console.error(`❌ ${name} error:`, error);
   }
   await interaction.editReply({ content: error.userMessage || "⚠️ Der skete en fejl." });
+}
+
+async function handleLadderTeams(interaction) {
+  if (interaction.guildId !== config.discord.guildId || !interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.editReply({ content: "Kun administratorer på DZR-serveren kan se Ladder-konfigurationen." });
+    return;
+  }
+
+  try {
+    const teams = await ladderTeams.list();
+    if (!teams.length) {
+      await interaction.editReply({ content: "Der er ingen tilknyttede Ladder-hold. Tilføj et med `/ladder_link`." });
+      return;
+    }
+
+    const ladderOrigin = "https://ladder.cycleracing.club";
+    const { channelId, previewMinutes, tz } = config.ladder;
+    const embed = new EmbedBuilder().setTitle("Tilknyttede Ladder-hold").setDescription([
+      `Automatiske previews og løbsdagsbeskeder: <#${channelId}>`,
+      `Standard for preview: ${previewMinutes} min. før start`,
+      `Tidszone for løbsdagsbeskeder: ${tz}`,
+    ].join("\n"));
+
+    for (const team of teams.sort((a, b) => a.name.localeCompare(b.name, "da"))) {
+      const channel = team.channelId ? `<#${team.channelId}>` : "Ingen kanal tilknyttet";
+      const details = `Standardkanal for kommandoer: ${channel}\nPreview: ${team.previewMinutes || previewMinutes} min. før start`;
+      const links = [
+        `[Holdside](<${ladderOrigin}/teamView/${encodeURIComponent(team.name)}>)`,
+        `[Kampe](<${ladderOrigin}${ladderClient.fixturesPath(team.name)}>)`,
+      ];
+      // Leave room under Discord's 6000-character embed limit for all ten teams.
+      const linkBudget = 300 - details.length - 1;
+      const allLinks = links.join(" · ");
+      const visibleLinks = allLinks.length <= linkBudget ? allLinks : links.find((link) => link.length <= linkBudget);
+      embed.addFields({ name: escapeMarkdown(team.name).slice(0, 256), value: visibleLinks ? `${details}\n${visibleLinks}` : details });
+    }
+
+    await interaction.editReply({ content: "", embeds: [embed], allowedMentions: { parse: [] } });
+  } catch (error) {
+    await replyError(interaction, "ladder_teams", error);
+  }
 }
 
 async function handleLadderLink(interaction) {
@@ -151,4 +193,4 @@ async function handleLadderScout(interaction) {
   }
 }
 
-module.exports = { handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout };
+module.exports = { handleLadderTeams, handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout };
