@@ -6,12 +6,11 @@ const ephemeralStore = new Map();
 
 async function ephemeralReplyWithPublish(interaction, content, files = []) {
   const message = typeof content === "object" && content !== null ? content : { content, files };
-  const hasEmbeds = Boolean(message.embeds?.length);
   const uniqueId = crypto.randomUUID();
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`publish_${uniqueId}`)
-      .setLabel(hasEmbeds ? "Post i kanalen" : "Publish to Channel")
+      .setLabel("Publish to Channel")
       .setStyle(ButtonStyle.Primary)
   );
 
@@ -22,7 +21,7 @@ async function ephemeralReplyWithPublish(interaction, content, files = []) {
     ephemeralStore.delete(uniqueId);
     throw error;
   }
-  if (hasEmbeds) {
+  if (message.embeds?.length) {
     // Release attachment buffers even if the report is never posted.
     setTimeout(() => ephemeralStore.delete(uniqueId), REPORT_TTL_MS).unref();
   }
@@ -37,7 +36,7 @@ async function handlePublishButton(interaction, uniqueId) {
 
   if (!message) {
     await interaction.reply({
-      content: stored === null ? "Opslaget er i gang." : "Resultatet kan ikke længere postes. Kør kommandoen igen.",
+      content: stored === null ? "This result is already being published." : "❌ Could not find the content to publish.",
       flags: MessageFlags.Ephemeral,
     });
     return false;
@@ -57,7 +56,7 @@ async function handlePublishButton(interaction, uniqueId) {
     if (!interaction.deferred) throw error;
     console.error("Could not publish the preview:", error);
     await interaction.followUp({
-      content: "Opslaget kunne ikke sendes. Prøv igen.",
+      content: "Could not publish this result. Try again.",
       flags: MessageFlags.Ephemeral,
     }).catch(console.error);
     return false;
