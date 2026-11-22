@@ -38,7 +38,9 @@ def monitor_responses(app):
 
     @app.after_request
     def capture_handled_failure(response):
-        if response.status_code >= 500 and not getattr(g, "sentry_exception_captured", False):
+        if (response.status_code >= 500
+                and not getattr(g, "sentry_exception_captured", False)
+                and not getattr(g, "skip_handled_failure_report", False)):
             with sentry_sdk.new_scope() as scope:
                 route = str(request.url_rule) if request.url_rule else "unmatched"
                 scope.fingerprint = ["handled-http-5xx", request.method, route]

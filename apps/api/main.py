@@ -4,7 +4,7 @@ import inspect
 import logging
 import json
 from pathlib import Path
-from flask import Flask, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, request, jsonify, session, redirect, url_for, flash, g
 from dotenv import load_dotenv
 from functools import wraps
 import requests
@@ -1194,6 +1194,12 @@ def ladder_page():
     try:
         body, content_type = ladder.get_client().get_page(path)
         return app.response_class(body, mimetype=content_type.split(';')[0].strip())
+    except ladder.LadderAuthError as error:
+        g.skip_handled_failure_report = True
+        return jsonify({
+            "error": "Ladder sign-in is temporarily unavailable",
+            "code": "ladder_auth_unavailable",
+        }), 503, {"Retry-After": str(error.retry_after)}
     except Exception as e:
         logging.error(f"Ladder page {path} failed: {e}")
         return jsonify({"error": str(e)}), 502

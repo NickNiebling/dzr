@@ -50,14 +50,18 @@ function buildTactics({ us, them, usStats, themStats, decisive, info, fixture })
   if (info) bullets.push(`Ruten er ${info.kind.toLowerCase()} (${info.distKm.toFixed(1)} km, ${Math.round(info.elevM)} hm) og afgøres typisk på ${decisive.map((s) => LABEL[s]).join(" og ")}.`);
 
   const edges = decisive
-    .map((s) => (usStats[s] && themStats[s] ? usStats[s].top3 - themStats[s].top3 : null))
-    .filter((v) => v !== null);
+    .filter((s) => usStats[s] && themStats[s])
+    .map((s) => ({ s, diff: usStats[s].top3 - themStats[s].top3 }));
   if (edges.length) {
-    const edge = mean(edges);
-    const labels = decisive.map((s) => LABEL[s]).join(" og ");
-    if (edge > 0.1) bullets.push(`Vi har fordelen på ${labels} (top 3 +${edge.toFixed(2)} W/kg). Sæt tempoet ved de selektive punkter og lad dem køre efter.`);
-    else if (edge < -0.1) bullets.push(`De er stærkest på ${labels} (top 3 +${Math.abs(edge).toFixed(2)} W/kg). Spar kræfter i feltet, åbn ikke tidligt og brug holdet til at lukke huller.`);
-    else bullets.push(`Holdene er jævnt matchede på ${labels}. Kør økonomisk og gem mindst én rytter til afgørelsen.`);
+    const labelsOf = (list) => list.map((e) => LABEL[e.s]).join(" og ");
+    const detail = `vores top 3 mod deres: ${edges.map((e) => `${LABEL[e.s]} ${e.diff >= 0 ? "+" : "-"}${Math.abs(e.diff).toFixed(2)}`).join(", ")} W/kg`;
+    const ours = edges.filter((e) => e.diff > 0.1);
+    const theirs = edges.filter((e) => e.diff < -0.1);
+    if (ours.length === edges.length) bullets.push(`Vi har fordelen på ${labelsOf(edges)} (${detail}). Sæt tempoet ved de selektive punkter og lad dem køre efter.`);
+    else if (theirs.length === edges.length) bullets.push(`De er stærkest på ${labelsOf(edges)} (${detail}). Spar kræfter i feltet, åbn ikke tidligt og brug holdet til at lukke huller.`);
+    else if (ours.length) bullets.push(`Fordelen er delt (${detail}). Læg løbet an, så det afgøres på ${labelsOf(ours)}.`);
+    else if (theirs.length) bullets.push(`Fordelen er delt (${detail}). Undgå, at det afgøres på ${labelsOf(theirs)}.`);
+    else bullets.push(`Holdene er jævnt matchede på ${labelsOf(edges)} (${detail}). Kør økonomisk og gem mindst én rytter til afgørelsen.`);
   }
 
   if (usStats[15] && themStats[15]) {

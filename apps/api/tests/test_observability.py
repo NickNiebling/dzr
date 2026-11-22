@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from flask import Flask
+from flask import Flask, g
 import sentry_sdk
 from sentry_sdk.transport import Transport
 
@@ -40,6 +40,11 @@ class ObservabilityTest(unittest.TestCase):
         def handled(identifier):
             return {"error": "private response body"}, 503
 
+        @app.get("/expected-unavailable")
+        def expected_unavailable():
+            g.skip_handled_failure_report = True
+            return "temporarily unavailable", 503
+
         @app.get("/exception")
         def exception():
             raise ValueError("test exception")
@@ -71,6 +76,12 @@ class ObservabilityTest(unittest.TestCase):
     def test_client_errors_are_not_reported(self):
         self.client.get("/client-error")
         self.assertEqual(self.events, [])
+
+    def test_expected_unavailability_is_skipped_for_that_request_only(self):
+        self.assertEqual(self.client.get("/expected-unavailable").status_code, 503)
+        self.assertEqual(self.events, [])
+        self.client.get("/handled/123")
+        self.assertEqual(len(self.events), 1)
 
     def test_existing_python_error_logging_is_captured(self):
         logging.getLogger("dzr-test").error("test logged error")

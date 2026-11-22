@@ -3,6 +3,21 @@ const axios = require("axios");
 const config = require("../../config/config");
 const { parseFixtureList, parseFixture, parseRosterPage, parseProfileIdentity, parseSummaryTeams, parseTeamInput, teamReference } = require("./ladderParser");
 
+const AUTH_UNAVAILABLE = "ladder_auth_unavailable";
+
+function isAuthUnavailable(error) {
+  return error?.code === AUTH_UNAVAILABLE;
+}
+
+function isAuthFailureResponse(response) {
+  if (response?.status !== 503) return false;
+  try {
+    return JSON.parse(response.data)?.code === AUTH_UNAVAILABLE;
+  } catch {
+    return false;
+  }
+}
+
 // Short reason shown to the user, so a failing API can be told apart without looking in the logs.
 function describeFailure(err) {
   if (err.response) return `API svarede ${err.response.status}`;
@@ -23,6 +38,12 @@ async function getPage(path) {
     });
     return res.data;
   } catch (err) {
+    if (isAuthFailureResponse(err.response)) {
+      const error = new Error("Ladder authentication is unavailable");
+      error.code = AUTH_UNAVAILABLE;
+      error.userMessage = "Ladder-login er midlertidigt utilgængeligt. Prøv igen senere.";
+      throw error;
+    }
     const status = err.response ? err.response.status : "no response";
     const wrapped = new Error(`Ladder page ${path} failed: ${status} ${err.message}`);
     wrapped.userMessage = `Ladder-siden kunne ikke hentes lige nu (${describeFailure(err)}). Prøv igen senere.`;
@@ -161,7 +182,12 @@ async function getRoster(team, { fetchPage = getPage } = {}) {
   const worker = async () => {
     for (let profileId = profiles.shift(); profileId !== undefined; profileId = profiles.shift()) {
       let html;
-      try { html = await fetchPage(`/profile/${profileId}`); } catch { continue; }
+      try {
+        html = await fetchPage(`/profile/${profileId}`);
+      } catch (error) {
+        if (isAuthUnavailable(error)) throw error;
+        continue;
+      }
       identities.set(profileId, parseProfileIdentity(html));
     }
   };
@@ -183,4 +209,4 @@ async function getRoster(team, { fetchPage = getPage } = {}) {
   return { ...teamReference(id, roster.name), riders };
 }
 
-module.exports = { getPage, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, warmCatalog, autocomplete, resolveTeam, getRoster };
+module.exports = { getPage, isAuthUnavailable, describeFailure, fixturesPath, getFixtures, getFixture, getFixtureStart, getNextFixture, refreshSignups, refreshFixture, warmCatalog, autocomplete, resolveTeam, getRoster };
