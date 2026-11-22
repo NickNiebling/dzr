@@ -128,17 +128,23 @@ async function buildLadderPreviewMessage(fixture, ourTeam = null) {
 async function buildLadderScoutMessage(home, away, { enrich = enrichRiders, render = buildLadderChart } = {}) {
   const teams = [home, away];
   await enrich([...home.riders, ...away.riders]);
-  const counts = (predicate) => teams.map((team) => `${team.name}: ${team.riders.filter(predicate).length}`).join("\n");
   const embed = new EmbedBuilder()
     .setTitle(clip(`Ladder scout: ${home.name} mod ${away.name}`, 256))
     .setURL(home.url)
     .setDescription(teams.map((team) => `[${escapeMarkdown(team.name)}](${team.url}): **${team.riders.length} ryttere i truppen**`).join("\n"))
     .setColor(0xff6600)
-    .addFields(
-      { name: "Mangler Zwift-id", value: counts((rider) => !rider.zwiftId) },
-      { name: "Mangler power", value: counts((rider) => !DURATIONS.some((d) => Number.isFinite(rider.wkg[d.seconds]) && rider.wkg[d.seconds] > 0)) }
-    )
     .setFooter({ text: "Hele aktuelle trupper | Power: ZwiftPower (90 dage), ellers Ladder | ZRS: Zwift" });
+
+  const addMissingField = (name, isMissing) => {
+    const counts = teams.map((team) => ({ teamName: team.name, count: team.riders.filter(isMissing).length }));
+    if (counts.some(({ count }) => count > 0)) {
+      embed.addFields({ name, value: counts.map(({ teamName, count }) => `${teamName}: ${count}`).join("\n") });
+    }
+  };
+  addMissingField("Mangler Zwift-id", (rider) => !rider.zwiftId);
+  addMissingField("Mangler power", (rider) =>
+    !DURATIONS.some(({ seconds }) => Number.isFinite(rider.wkg[seconds]) && rider.wkg[seconds] > 0));
+
   try {
     const png = await render({ home, away, scout: true }, home.name);
     embed.setImage("attachment://scout.png");
