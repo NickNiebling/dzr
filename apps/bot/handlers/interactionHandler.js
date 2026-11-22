@@ -23,7 +23,7 @@ const {
 } = require("./commandHandlers");
 const { handleCoach } = require("../services/coachDm");
 const { isRiderSelect, riderSelectOwner } = require("../services/riderSearch");
-const { handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout } = require("./ladderHandlers");
+const { handleLadderTeams, handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout } = require("./ladderHandlers");
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
 const {
@@ -584,6 +584,7 @@ async function handleInteractions(interaction) {
       "disable_verification": handleDisableVerification,
       "quiz": startQuizFromInteraction,
       "coach": handleCoach,
+      "ladder_teams": handleLadderTeams,
       "ladder_link": handleLadderLink,
       "ladder_preview": handleLadderPreview,
       "ladder_analysis": handleLadderAnalysis,
