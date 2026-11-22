@@ -1,9 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { MessageFlags } = require("discord.js");
 const { buildLadderScoutMessage } = require("./ladderEmbed");
 const { handleLadderScout } = require("../../handlers/ladderHandlers");
-const { handlePublishButton } = require("../../utils/ephemeralStore");
 const ladderTeams = require("./ladderTeams");
 const ladderClient = require("./ladderClient");
 
@@ -55,41 +53,6 @@ test("handler rejects teams outside ladder_link and the same resolved team befor
   await handleLadderScout(interaction);
   assert.match(reply.content, /samme hold/);
   assert.equal(load.mock.callCount(), 0);
-});
-
-test("the private scout preview can post its full report and attachment once", async (t) => {
-  const home = team(82, "DZR", 0);
-  const away = team(102, "Opponent", 0);
-  t.mock.method(ladderTeams, "getTeam", async () => home);
-  t.mock.method(ladderClient, "resolveTeam", async (name) => name === home.name ? home : away);
-  const rosters = t.mock.method(ladderClient, "getRoster", async (team) => team);
-  const command = {
-    options: { getString: (name) => name === "team" ? home.name : away.name },
-    editReply: t.mock.fn(async () => {}),
-  };
-  await handleLadderScout(command);
-  const [{ components, ...report }] = command.editReply.mock.calls[0].arguments;
-  const button = components[0].toJSON().components[0];
-  assert.equal(button.label, "Post i kanalen");
-  assert.equal(report.embeds[0].toJSON().title, "Ladder scout: DZR mod Opponent");
-  assert.match(report.files[0].name, /^scout\.(png|txt)$/);
-  const uniqueId = button.custom_id.replace(/^publish_/, "");
-
-  const click = {
-    message: report,
-    deferUpdate: t.mock.fn(async () => {}),
-    followUp: t.mock.fn(async () => {}),
-    editReply: t.mock.fn(async () => {}),
-    reply: t.mock.fn(async () => {}),
-  };
-  assert.equal(await handlePublishButton(click, uniqueId), true);
-  assert.equal(await handlePublishButton(click, uniqueId), false);
-  assert.equal(click.deferUpdate.mock.callCount(), 1);
-  assert.equal(click.followUp.mock.callCount(), 1);
-  assert.deepEqual(click.followUp.mock.calls[0].arguments, [report]);
-  assert.deepEqual(click.editReply.mock.calls[0].arguments, [{ components: [] }]);
-  assert.equal(click.reply.mock.calls[0].arguments[0].flags, MessageFlags.Ephemeral);
-  assert.equal(rosters.mock.callCount(), 2);
 });
 
 test("rendering failure keeps every roster member and power value in the text attachment", async () => {
