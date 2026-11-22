@@ -376,6 +376,14 @@ class DiscordAPI:
             print(f"Error fetching Discord member {discord_id}: {e}")
             return None
 
+    def send_channel_message(self, channel_id: str, content: str) -> None:
+        requests.post(
+            f"{self.api_base_url}/channels/{channel_id}/messages",
+            headers=self.headers,
+            json={"content": content, "allowed_mentions": {"parse": []}},
+            timeout=5,
+        ).raise_for_status()
+
     def _create_dm_channel(self, user_id: str) -> Optional[str]:
         """
         Create (or fetch) a DM channel with a user.
@@ -437,4 +445,4 @@ class DiscordAPI:
 # linked = discord_api.find_linked_members()
 # 
 # Only members without ZwiftIDs:
-# unlinked = discord_api.find_unlinked_members() 
+# unlinked = discord_api.find_unlinked_members()

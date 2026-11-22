@@ -9,6 +9,8 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
+from datetime import datetime, timezone
 from math import ceil
 from urllib.parse import urlsplit
 
@@ -19,6 +21,11 @@ LADDER_HOST = "ladder.cycleracing.club"
 SESSION_COOKIE = "connect.sid"
 AUTH_RETRY_INITIAL = 300
 AUTH_RETRY_MAX = 3600
+RENEWAL_WINDOW = 7 * 24 * 60 * 60
+RENEWAL_INSTRUCTIONS = (
+    "Forny klubbens Ladder-session manuelt, og opdater `LADDER_SESSION` "
+    "og `LADDER_SESSION_EXPIRES_AT` på Cloud Run."
+)
 
 # Only these pages can be fetched, so /ladder_page cannot be used as an open proxy.
 ALLOWED_PATH = re.compile(
@@ -30,9 +37,10 @@ _SIGN_IN_FORM = re.compile(r'<form[^>]+id="signin"', re.I)
 
 
 class LadderAuthError(Exception):
-    def __init__(self, message: str, retry_after: int = 0):
+    def __init__(self, message: str, retry_after: int = 0, *, definitive: bool = True):
         super().__init__(message)
         self.retry_after = retry_after
+        self.definitive = definitive
 
 
 def is_allowed_path(path: str) -> bool:
@@ -54,7 +62,10 @@ def _is_refreshing_page(body: str) -> bool:
 
 
 class LadderClient:
-    def __init__(self, email: str | None, password: str | None, session_cookie: str | None = None):
+    def __init__(
+        self, email: str | None, password: str | None, session_cookie: str | None = None, *,
+        session_expires_at: float | None = None, send_alert: Callable[[str], bool] | None = None,
+    ):
         self.email = email
         self.password = password
         self.session = requests.Session()
@@ -63,6 +74,9 @@ class LadderClient:
         self.using_session_cookie = False
         self._retry_at = 0.0
         self._retry_delay = AUTH_RETRY_INITIAL
+        self._session_expires_at = session_expires_at
+        self._send_alert = send_alert
+        self._alert_after: dict[str, float] = {}
         self._lock = threading.Lock()
         if session_cookie:
             # A browser session works even when the site refuses the password sign-in for scripts.
@@ -84,8 +98,11 @@ class LadderClient:
             )
             res.raise_for_status()
         except requests.RequestException as error:
-            reason = f"HTTP {error.response.status_code}" if error.response is not None else type(error).__name__
-            raise LadderAuthError(f"Ladder password sign-in request failed ({reason})") from error
+            status = error.response.status_code if error.response is not None else None
+            reason = f"HTTP {status}" if status is not None else type(error).__name__
+            raise LadderAuthError(
+                f"Ladder password sign-in request failed ({reason})", definitive=status in (401, 403),
+            ) from error
         if _SIGN_IN_FORM.search(res.text):
             raise LadderAuthError("Ladder returned the sign-in form after password sign-in")
         self.logged_in = True
@@ -127,6 +144,8 @@ class LadderClient:
                 self._retry_at = time.monotonic() + self._retry_delay
                 self._retry_delay = min(self._retry_delay * 2, AUTH_RETRY_MAX)
                 logging.error("Ladder password sign-in failed: %s. Retrying in %d seconds", error, error.retry_after)
+                if error.definitive:
+                    self._notify_renewal("rejected", f"Ladder-adgang kan ikke gendannes med password. {RENEWAL_INSTRUCTIONS}")
                 raise
 
     def _read_page(self, path: str):
@@ -144,14 +163,45 @@ class LadderClient:
             res = self._get(path)
             _require_authenticated_page(res)
         self._retry_delay = AUTH_RETRY_INITIAL
+        if self.using_session_cookie:
+            self._check_session_expiry()
         return res.text, res.headers.get("Content-Type", "text/html")
+
+    def _check_session_expiry(self):
+        expires_at = next((
+            cookie.expires for cookie in self.session.cookies
+            if cookie.name == SESSION_COOKIE and cookie.domain.lstrip(".") == LADDER_HOST
+            and cookie.path == "/" and cookie.expires is not None
+        ), self._session_expires_at)
+        if expires_at is not None and 0 < expires_at - time.time() < RENEWAL_WINDOW:
+            self._notify_renewal("expiring", f"Ladder-sessionen udløber <t:{int(expires_at)}:R>. {RENEWAL_INSTRUCTIONS}")
+
+    def _notify_renewal(self, reason: str, message: str):
+        now = time.monotonic()
+        if self._send_alert is None or now < self._alert_after.get(reason, 0):
+            return
+        # The configured cookie stays fixed for this process. Retry only failed deliveries.
+        self._alert_after[reason] = now + AUTH_RETRY_INITIAL
+        if self._send_alert(message):
+            self._alert_after[reason] = float("inf")
+
+
+def _session_expiry() -> float | None:
+    value = os.getenv("LADDER_SESSION_EXPIRES_AT", "").strip()
+    if value:
+        try:
+            expires_at = datetime.fromisoformat(value)
+            return (expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)).timestamp()
+        except ValueError:
+            logging.warning("LADDER_SESSION_EXPIRES_AT must be an ISO 8601 date or timestamp")
+    return None
 
 
 _client = None
 _client_lock = threading.Lock()
 
 
-def get_client() -> LadderClient:
+def get_client(send_alert: Callable[[str], bool] | None = None) -> LadderClient:
     global _client
     with _client_lock:
         if _client is None:
@@ -159,5 +209,7 @@ def get_client() -> LadderClient:
             email = os.getenv("LADDER_EMAIL") or os.getenv("ZWIFT_USERNAME")
             password = os.getenv("LADDER_PASSWORD") or os.getenv("ZWIFT_PASSWORD")
             session_cookie = (os.getenv("LADDER_SESSION") or "").strip().removeprefix(f"{SESSION_COOKIE}=")
-            _client = LadderClient(email, password, session_cookie or None)
+            _client = LadderClient(
+                email, password, session_cookie or None, session_expires_at=_session_expiry(), send_alert=send_alert,
+            )
         return _client
