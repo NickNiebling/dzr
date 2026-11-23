@@ -1,6 +1,7 @@
 const { createHash } = require("node:crypto");
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionsBitField, escapeMarkdown,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MessageFlags, MessagePayload, PermissionsBitField,
+  SectionBuilder, TextDisplayBuilder, escapeMarkdown,
 } = require("discord.js");
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
@@ -51,7 +52,10 @@ async function replyError(interaction, name, error) {
   } else {
     console.error(`❌ ${name} error:`, error);
   }
-  await interaction.editReply({ content: error.userMessage || "⚠️ Der skete en fejl." });
+  const content = error.userMessage || "⚠️ Der skete en fejl.";
+  await interaction.editReply(name === "ladder_teams"
+    ? ladderTeamsPayload(interaction, new TextDisplayBuilder().setContent(content))
+    : { content });
 }
 
 function canManageLadderTeams(interaction) {
@@ -62,58 +66,72 @@ function ladderTeamButtonKey(team) {
   return createHash("sha256").update(team.name.toLowerCase()).digest("base64url");
 }
 
-function buildLadderTeamsOverview(teams) {
-  if (!teams.length) {
-    return {
-      content: "Der er ingen tilknyttede Ladder-hold. Tilføj et med `/ladder_link`.",
-      embeds: [],
-      components: [],
-    };
-  }
+function ladderTeamsPayload(interaction, ...components) {
+  const message = interaction.message;
+  const payload = {
+    flags: MessageFlags.IsComponentsV2,
+    components,
+    allowedMentions: { parse: [] },
+    // Buttons from the previous overview can still be clicked after deployment.
+    ...(message?.embeds?.length && { embeds: [] }),
+  };
+  if (!message?.content) return payload;
 
+  // Discord requires a null reset when converting a legacy confirmation to V2.
+  const edit = MessagePayload.create(interaction.webhook, payload).resolveBody();
+  edit.body.content = null;
+  return edit;
+}
+
+function buildLadderTeamsOverview(teams) {
   const ladderOrigin = "https://ladder.cycleracing.club";
   const { channelId, optaktMin, tz } = config.ladder;
-  const embed = new EmbedBuilder().setTitle("Tilknyttede Ladder-hold").setDescription([
+  const header = [
+    "## Tilknyttede Ladder-hold",
+    "**Standardkonfiguration**",
     `Ladder kanal: <#${channelId}>`,
     `Optakt: ${optaktMin} min før start`,
     `Tidszone: ${tz}`,
-  ].join("\n")).setFooter({ text: "Admin: Fjern hold" });
-  const components = [];
+  ];
+  if (!teams.length) {
+    header.push("", "Der er ingen tilknyttede Ladder-hold. Tilføj et med `/ladder_link`.");
+  }
+  const headerText = header.join("\n");
+  const overview = new ContainerBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
+  // Budget the 4,000 characters of Text Display content across the whole message.
+  const sectionTextBudget = Math.floor((4000 - headerText.length) / Math.max(1, teams.length));
 
-  for (const team of teams.sort((a, b) => a.name.localeCompare(b.name, "da"))) {
+  for (const team of teams.toSorted((a, b) => a.name.localeCompare(b.name, "da"))) {
     const channel = team.channelId ? `<#${team.channelId}>` : `<#${channelId}> (standard)`;
-    const details = `Kanal: ${channel}\nOptakt: ${team.optaktMin || optaktMin} min før start`;
+    const details = `### ${escapeMarkdown(team.name).slice(0, 256)}\n${channel} · ${team.optaktMin || optaktMin} min før start`;
     const links = [
       `[Holdside](<${ladderOrigin}/teamView/${encodeURIComponent(team.name)}>)`,
       `[Kampe](<${ladderOrigin}${ladderClient.fixturesPath(team.name)}>)`,
     ];
-    // Leave room under Discord's 6000-character embed limit for all ten teams.
-    const linkBudget = 300 - details.length - 1;
+    const linkBudget = sectionTextBudget - details.length - 1;
     const allLinks = links.join(" · ");
     const visibleLinks = allLinks.length <= linkBudget ? allLinks : links.find((link) => link.length <= linkBudget);
-    embed.addFields({ name: escapeMarkdown(team.name).slice(0, 256), value: visibleLinks ? `${details}\n${visibleLinks}` : details });
-
-    if (!components.length || components.at(-1).components.length === 5) {
-      components.push(new ActionRowBuilder());
-    }
-    components.at(-1).addComponents(new ButtonBuilder()
-      .setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}remove:${ladderTeamButtonKey(team)}`)
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji("❌")
-      .setLabel(team.name.slice(0, 80)));
+    overview.addSectionComponents(new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(visibleLinks ? `${details}\n${visibleLinks}` : details))
+      .setButtonAccessory(new ButtonBuilder()
+        .setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}remove:${ladderTeamButtonKey(team)}`)
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("🗑️")));
   }
 
-  return { content: "", embeds: [embed], components, allowedMentions: { parse: [] } };
+  return overview;
 }
 
 async function handleLadderTeams(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!canManageLadderTeams(interaction)) {
-    await interaction.editReply({ content: "Kun administratorer på DZR-serveren kan se Ladder-konfigurationen." });
+    await interaction.editReply(ladderTeamsPayload(interaction, new TextDisplayBuilder()
+      .setContent("Kun administratorer på DZR-serveren kan se Ladder-konfigurationen.")));
     return;
   }
 
   try {
-    await interaction.editReply(buildLadderTeamsOverview(await ladderTeams.list()));
+    await interaction.editReply(ladderTeamsPayload(interaction, buildLadderTeamsOverview(await ladderTeams.list())));
   } catch (error) {
     await replyError(interaction, "ladder_teams", error);
   }
@@ -126,8 +144,8 @@ function isLadderTeamsButton(interaction) {
 async function handleLadderTeamsButton(interaction) {
   if (!canManageLadderTeams(interaction)) {
     await interaction.reply({
-      content: "Kun administratorer på DZR-serveren kan fjerne Ladder-hold.",
-      flags: MessageFlags.Ephemeral,
+      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+      components: [new TextDisplayBuilder().setContent("Kun administratorer på DZR-serveren kan fjerne Ladder-hold.")],
     });
     return;
   }
@@ -138,15 +156,13 @@ async function handleLadderTeamsButton(interaction) {
     let teams = await ladderTeams.list();
     const team = id && teams.find((candidate) => ladderTeamButtonKey(candidate) === id);
     if (team && action === "remove") {
-      await interaction.editReply({
-        content: `Fjern ${escapeMarkdown(team.name).slice(0, 256)}?`,
-        embeds: [],
-        components: [new ActionRowBuilder().addComponents(
+      await interaction.editReply(ladderTeamsPayload(interaction,
+        new TextDisplayBuilder().setContent(`Fjern ${escapeMarkdown(team.name).slice(0, 256)}?`),
+        new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}confirm:${id}`).setStyle(ButtonStyle.Danger).setLabel("Fjern hold"),
           new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}cancel`).setStyle(ButtonStyle.Secondary).setLabel("Annuller"),
-        )],
-        allowedMentions: { parse: [] },
-      });
+        ),
+      ));
       return;
     }
 
@@ -154,7 +170,7 @@ async function handleLadderTeamsButton(interaction) {
       await ladderTeams.unlink(team.name);
       teams = await ladderTeams.list();
     }
-    await interaction.editReply(buildLadderTeamsOverview(teams));
+    await interaction.editReply(ladderTeamsPayload(interaction, buildLadderTeamsOverview(teams)));
   } catch (error) {
     await replyError(interaction, "ladder_teams", error);
   }

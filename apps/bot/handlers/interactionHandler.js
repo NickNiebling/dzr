@@ -517,6 +517,11 @@ async function handleInteractions(interaction) {
     // Handle slash commands
     if (!interaction.isCommand()) return;
 
+    if (interaction.commandName === "ladder_teams") {
+      if (!interaction.replied && !interaction.deferred) await handleLadderTeams(interaction);
+      return;
+    }
+
     console.log(`🔄 [${HANDLER_ID}] Interaction state before response: replied=${interaction.replied}, deferred=${interaction.deferred}`);
 
     // Add a small delay to see if this helps with timing
@@ -598,7 +603,6 @@ async function handleInteractions(interaction) {
       "disable_verification": handleDisableVerification,
       "quiz": startQuizFromInteraction,
       "coach": handleCoach,
-      "ladder_teams": handleLadderTeams,
       "ladder_link": handleLadderLink,
       "ladder_optakt": handleLadderOptakt,
       "ladder_analysis": handleLadderAnalysis,
