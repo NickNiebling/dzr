@@ -792,49 +792,50 @@ const commands = [
   new SlashCommandBuilder()
     .setName("quiz")
     .setDescription("Post a Zwift route quiz — guess the route from the map shape"),
-  // Ladder match previews (team list is stored in Firestore collection ladder_bot)
+  // Ladder optakt (team list is stored in Firestore collection ladder_bot)
   new SlashCommandBuilder()
     .setName("ladder_teams")
-    .setDescription("Se tilknyttede Ladder-hold, kanaler og preview-indstillinger")
+    .setDescription("Se og fjern tilknyttede Ladder-hold")
     .setDMPermission(false)
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
   new SlashCommandBuilder()
     .setName("ladder_link")
-    .setDescription("Add or remove a ladder team that gets previews and match-day reminders")
+    .setDescription("Tilknyt eller fjern et Ladder-hold for optakt og løbsdagsbeskeder")
+    .setDMPermission(false)
     .addStringOption(option =>
       option
         .setName("team")
-        .setDescription("Team name or a link to the team on ladder.cycleracing.club")
+        .setDescription("Holdnavn eller link til holdet på ladder.cycleracing.club")
         .setRequired(true)
     )
     .addBooleanOption(option =>
       option
         .setName("remove")
-        .setDescription("Remove the team instead of adding it")
+        .setDescription("Fjern det tilknyttede hold (kun administratorer)")
         .setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName("minutes")
-        .setDescription("Minutes before start the preview is posted (default 65)")
+        .setDescription("Minutter før start. For eksisterende hold kan kun administratorer ændre tiden.")
         .setMinValue(5)
         .setMaxValue(1440)
         .setRequired(false)
     ),
   new SlashCommandBuilder()
-    .setName("ladder_preview")
-    .setDescription("Post a ladder match preview now (image with route, powerups and riders)")
+    .setName("ladder_optakt")
+    .setDescription("Send en Ladder-optakt med rute, powerups og ryttere")
     .addStringOption(option =>
       option
         .setName("team")
-        .setDescription("Team name or link (default: the only added team)")
+        .setDescription("Holdnavn eller link (standard er kanalens hold eller det eneste tilknyttede hold)")
         .setAutocomplete(true)
         .setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName("match")
-        .setDescription("Ladder match id (default: the team's next match)")
+        .setDescription("Ladder-kampens ID (standard er holdets næste kamp)")
         .setRequired(false)
     ),
   new SlashCommandBuilder()

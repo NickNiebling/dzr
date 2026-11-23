@@ -146,7 +146,7 @@ Onboarding DMs, reminders and the admin outreach page share one record, `onboard
 | Weekly routes and Fifty results | Half-hour checks; route updates through the website, result fixes through Flask | [events guide](events.md#weekly-race-application-who-updates-the-live-event) |
 | Route quiz | Configured daily probability check | [quizService](../../apps/bot/services/quizService.js) |
 | Coach follow-ups | Opt-in cadence; catch-up window 08:00–11:00 Europe/Copenhagen | [follow-up service](../../apps/bot/services/coachFollowUp.js), [schedule rules](../../apps/bot/services/coachFollowUpSchedule.js) |
-| Ladder previews and reminders | Internal ten-minute throttle; persisted posted IDs | [ladderJobs](../../apps/bot/services/ladder/ladderJobs.js) |
+| Ladder optakt and match-day reminders | Internal ten-minute throttle with persisted posted IDs | [ladderJobs](../../apps/bot/services/ladder/ladderJobs.js) |
 | Announcement index sync | Once a day (`bot_state` `announcement_index_sync`); live message events update it in between | [announcementIndex](../../apps/bot/services/announcementIndex.js) |
 
 Exact-minute jobs can be missed during downtime. Follow-ups have a catch-up window; do not assume every job does. Host scheduling and any external callers of job endpoints are [operational uncertainties](findings.md#what-the-repository-cannot-establish).
@@ -192,9 +192,9 @@ flowchart TB
 
 </details>
 
-`/ladder_link` registers teams; preview/analysis commands and [jobs](../../apps/bot/services/ladder/ladderJobs.js) reuse the [Ladder services](../../apps/bot/services/ladder/). The bot has no Ladder or Zwift login password. Flask's [`/ladder_page`](../../apps/api/main.py) accepts only allow-listed paths from [ladder.py](../../apps/api/ladder.py). Rider enrichment uses `/rider_data/{id}` and `/zwift_profile/{id}`; route geometry comes from the website [route-profile route](../../app/api/route-profile/route.ts).
+`/ladder_link` registers teams and links them to the current channel, or to the parent channel when called from a thread. The `/ladder_optakt` and `/ladder_analysis` commands share the same Ladder services as the scheduled jobs. The bot has no Ladder or Zwift login password. Flask's `/ladder_page` accepts only allow-listed paths. Rider enrichment uses `/rider_data/{id}` and `/zwift_profile/{id}`. Route geometry comes from the website's route-profile endpoint. [Ladder services](../../apps/bot/services/ladder/) · [Jobs](../../apps/bot/services/ladder/ladderJobs.js) · [Flask routes](../../apps/api/main.py) · [Ladder broker](../../apps/api/ladder.py) · [Route profile](../../app/api/route-profile/route.ts)
 
-Defaults: preview inside 65 minutes before start, match-day reminder from noon Copenhagen time. [ladderStore](../../apps/bot/services/ladder/ladderStore.js) loads documents into memory and serializes whole-document writes; this is restart persistence, not a multi-instance locking protocol. Post/send and marking state are separate operations. `/ladder_ai` adds OpenAI tactics analysis with per-user daily runs and a short-lived result cache; it shares the OpenAI integration but is not a Coach conversation.
+The default optakt window is 65 minutes before start, and match-day reminders start at noon Copenhagen time. Both go to the team's linked channel, with the default channel used when the link is missing or the channel was deleted. The job records each message type per team and fixture after Discord accepts the post. The Ladder store loads documents into memory and serializes whole-document writes for restart persistence. The in-memory cache and write queue are local to each bot process. Team timings use the existing Firestore field `previewMinutes`. `/ladder_ai` uses the shared OpenAI integration with per-user daily runs and a short-lived result cache. [Ladder store](../../apps/bot/services/ladder/ladderStore.js) · [Ladder teams](../../apps/bot/services/ladder/ladderTeams.js)
 
 ## Onboarding DMs: which message does a member get?
 
