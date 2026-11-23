@@ -515,38 +515,13 @@ async function handleInteractions(interaction) {
     }
 
     // Handle slash commands
-    if (!interaction.isCommand()) return;
+    if (!interaction.isCommand() || interaction.replied || interaction.deferred) return;
 
-    if (interaction.commandName === "ladder_teams") {
-      if (!interaction.replied && !interaction.deferred) await handleLadderTeams(interaction);
-      return;
-    }
-
-    console.log(`🔄 [${HANDLER_ID}] Interaction state before response: replied=${interaction.replied}, deferred=${interaction.deferred}`);
-
-    // Add a small delay to see if this helps with timing
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Try immediate reply instead of defer to avoid timing issues
-    if (!interaction.replied && !interaction.deferred) {
-      console.log(`⏳ [${HANDLER_ID}] Attempting to reply to interaction ${interaction.id}`);
-      try {
-        await interaction.reply({
-          content: "⏳ Processing command...",
-          flags: MessageFlags.Ephemeral
-        });
-        console.log(`✅ [${HANDLER_ID}] Successfully replied to interaction`);
-      } catch (replyError) {
-        console.log(`❌ [${HANDLER_ID}] Failed to reply to interaction: ${replyError.message}`);
-        if (replyError.code === 40060) { // Already acknowledged
-          console.log(`🔄 [${HANDLER_ID}] Interaction was already acknowledged by another handler`);
-          return; // Exit gracefully
-        }
-        throw replyError; // Re-throw other errors
-      }
-    } else {
-      console.log(`⚠️ [${HANDLER_ID}] Interaction already acknowledged, skipping reply`);
-      return; // Exit if already handled
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      if (error.code === 40060) return; // Already acknowledged
+      throw error;
     }
 
     const commandName = interaction.commandName;
@@ -603,6 +578,7 @@ async function handleInteractions(interaction) {
       "disable_verification": handleDisableVerification,
       "quiz": startQuizFromInteraction,
       "coach": handleCoach,
+      "ladder_teams": handleLadderTeams,
       "ladder_link": handleLadderLink,
       "ladder_optakt": handleLadderOptakt,
       "ladder_analysis": handleLadderAnalysis,

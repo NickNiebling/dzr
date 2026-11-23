@@ -123,7 +123,6 @@ function buildLadderTeamsOverview(teams) {
 }
 
 async function handleLadderTeams(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   if (!canManageLadderTeams(interaction)) {
     await interaction.editReply(ladderTeamsPayload(interaction, new TextDisplayBuilder()
       .setContent("Kun administratorer på DZR-serveren kan se Ladder-konfigurationen.")));

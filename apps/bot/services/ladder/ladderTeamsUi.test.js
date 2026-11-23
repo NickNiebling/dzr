@@ -30,7 +30,7 @@ test("regular members cannot view or remove Ladder teams", async (t) => {
   const replies = [];
   const reply = async (payload) => replies.push(payload);
 
-  await handleLadderTeams({ ...member, deferReply: async () => {}, editReply: reply });
+  await handleLadderTeams({ ...member, editReply: reply });
   for (const action of ["remove", "confirm"]) {
     await handleLadderTeamsButton({ ...member, customId: `ladder_team:${action}:test`, reply });
   }
@@ -54,7 +54,7 @@ test("the overview shows a linked team and lets an admin cancel or confirm remov
     ...admin, customId, deferUpdate: async () => {}, editReply,
   });
 
-  await handleLadderTeams({ ...admin, deferReply: async () => {}, editReply });
+  await handleLadderTeams({ ...admin, editReply });
   const overview = components(reply);
   assert.equal(overview.length, 1);
   const [header, team] = overview[0].components;
@@ -100,7 +100,7 @@ test("ten teams fit within Discord's component limit and retain alphabetical ord
   t.mock.method(ladderTeams, "list", async () => names.toReversed().map((name) => ({ name })));
   const editReply = t.mock.fn();
 
-  await handleLadderTeams({ ...admin, deferReply: async () => {}, editReply });
+  await handleLadderTeams({ ...admin, editReply });
 
   const overview = components(editReply.mock.calls[0].arguments[0]);
   const [header, ...teams] = overview[0].components;
@@ -117,7 +117,7 @@ test("Ladder teams errors are displayed as V2 text", async (t) => {
   t.mock.method(console, "error", () => {});
   const editReply = t.mock.fn();
 
-  await handleLadderTeams({ ...admin, deferReply: async () => {}, editReply });
+  await handleLadderTeams({ ...admin, editReply });
 
   assert.match(components(editReply.mock.calls[0].arguments[0])[0].content, /Der skete en fejl/);
 });
