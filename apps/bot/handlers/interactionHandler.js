@@ -4,6 +4,7 @@ const { ActionRowBuilder, MessageFlags, EmbedBuilder, ButtonBuilder, ButtonStyle
 const roleService = require("../services/roleService");
 const { linkUserZwiftId, getTodaysClubStats } = require("../services/firebase");
 const { handlePublishButton, ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
+const { editTextReply } = require("../utils/interactionReply");
 const { updateKmsStatus } = require("../services/scheduler");
 const {
   handleMyZwiftId,
@@ -603,22 +604,13 @@ async function handleInteractions(interaction) {
     }
 
     try {
-      // Check current interaction state before trying to respond
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: "⚠️ An unexpected error occurred!",
-          flags: MessageFlags.Ephemeral
-        });
-      } else if (interaction.replied) {
-        // Already replied, edit the reply
-        await interaction.editReply({ content: "⚠️ An unexpected error occurred!" });
-      } else if (interaction.deferred && !interaction.replied) {
-        await interaction.editReply({ content: "⚠️ An unexpected error occurred!" });
+      const content = "⚠️ An unexpected error occurred!";
+      if (interaction.replied || interaction.deferred) {
+        await editTextReply(interaction, content);
       } else {
-        // Fallback: try follow-up
-        await interaction.followUp({
-          content: "⚠️ An unexpected error occurred!",
-          flags: MessageFlags.Ephemeral
+        await interaction.reply({
+          content,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (responseError) {

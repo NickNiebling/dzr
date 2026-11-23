@@ -1,6 +1,6 @@
 const { createHash } = require("node:crypto");
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MessageFlags, MessagePayload, PermissionsBitField,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, MessageFlags, PermissionsBitField,
   SectionBuilder, TextDisplayBuilder, escapeMarkdown,
 } = require("discord.js");
 const ladderTeams = require("../services/ladder/ladderTeams");
@@ -10,6 +10,7 @@ const { buildLadderAnalysisMessage } = require("../services/ladder/ladderAnalysi
 const { buildLadderAiMessage } = require("../services/ladder/ladderAi");
 const config = require("../config/config");
 const { ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
+const { componentsV2Reply, editComponentsV2, editTextReply } = require("../utils/interactionReply");
 
 const LADDER_TEAM_BUTTON_PREFIX = "ladder_team:";
 
@@ -46,16 +47,13 @@ async function findFixture(interaction, teamName) {
   return fixture && fixture.start ? ladderClient.refreshFixture(fixture) : null;
 }
 
-async function replyError(interaction, name, error) {
+async function replyError(interaction, name, error, options) {
   if (ladderClient.isAuthUnavailable(error)) {
     console.warn(`${name}:`, error.message);
   } else {
     console.error(`❌ ${name} error:`, error);
   }
-  const content = error.userMessage || "⚠️ Der skete en fejl.";
-  await interaction.editReply(name === "ladder_teams"
-    ? ladderTeamsPayload(interaction, new TextDisplayBuilder().setContent(content))
-    : { content });
+  await editTextReply(interaction, error.userMessage || "⚠️ Der skete en fejl.", options);
 }
 
 function canManageLadderTeams(interaction) {
@@ -64,23 +62,6 @@ function canManageLadderTeams(interaction) {
 
 function ladderTeamButtonKey(team) {
   return createHash("sha256").update(team.name.toLowerCase()).digest("base64url");
-}
-
-function ladderTeamsPayload(interaction, ...components) {
-  const message = interaction.message;
-  const payload = {
-    flags: MessageFlags.IsComponentsV2,
-    components,
-    allowedMentions: { parse: [] },
-    // Buttons from the previous overview can still be clicked after deployment.
-    ...(message?.embeds?.length && { embeds: [] }),
-  };
-  if (!message?.content) return payload;
-
-  // Discord requires a null reset when converting a legacy confirmation to V2.
-  const edit = MessagePayload.create(interaction.webhook, payload).resolveBody();
-  edit.body.content = null;
-  return edit;
 }
 
 function buildLadderTeamsOverview(teams) {
@@ -124,15 +105,14 @@ function buildLadderTeamsOverview(teams) {
 
 async function handleLadderTeams(interaction) {
   if (!canManageLadderTeams(interaction)) {
-    await interaction.editReply(ladderTeamsPayload(interaction, new TextDisplayBuilder()
-      .setContent("Kun administratorer på DZR-serveren kan se Ladder-konfigurationen.")));
+    await editTextReply(interaction, "Kun administratorer på DZR-serveren kan se Ladder-konfigurationen.", { useComponentsV2: true });
     return;
   }
 
   try {
-    await interaction.editReply(ladderTeamsPayload(interaction, buildLadderTeamsOverview(await ladderTeams.list())));
+    await editComponentsV2(interaction, [buildLadderTeamsOverview(await ladderTeams.list())]);
   } catch (error) {
-    await replyError(interaction, "ladder_teams", error);
+    await replyError(interaction, "ladder_teams", error, { useComponentsV2: true });
   }
 }
 
@@ -142,10 +122,9 @@ function isLadderTeamsButton(interaction) {
 
 async function handleLadderTeamsButton(interaction) {
   if (!canManageLadderTeams(interaction)) {
-    await interaction.reply({
-      flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
-      components: [new TextDisplayBuilder().setContent("Kun administratorer på DZR-serveren kan fjerne Ladder-hold.")],
-    });
+    await interaction.reply(componentsV2Reply([
+      new TextDisplayBuilder().setContent("Kun administratorer på DZR-serveren kan fjerne Ladder-hold."),
+    ], MessageFlags.Ephemeral));
     return;
   }
 
@@ -155,13 +134,13 @@ async function handleLadderTeamsButton(interaction) {
     let teams = await ladderTeams.list();
     const team = id && teams.find((candidate) => ladderTeamButtonKey(candidate) === id);
     if (team && action === "remove") {
-      await interaction.editReply(ladderTeamsPayload(interaction,
+      await editComponentsV2(interaction, [
         new TextDisplayBuilder().setContent(`Fjern ${escapeMarkdown(team.name).slice(0, 256)}?`),
         new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}confirm:${id}`).setStyle(ButtonStyle.Danger).setLabel("Fjern hold"),
           new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}cancel`).setStyle(ButtonStyle.Secondary).setLabel("Annuller"),
         ),
-      ));
+      ]);
       return;
     }
 
@@ -169,9 +148,9 @@ async function handleLadderTeamsButton(interaction) {
       await ladderTeams.unlink(team.name);
       teams = await ladderTeams.list();
     }
-    await interaction.editReply(ladderTeamsPayload(interaction, buildLadderTeamsOverview(teams)));
+    await editComponentsV2(interaction, [buildLadderTeamsOverview(teams)]);
   } catch (error) {
-    await replyError(interaction, "ladder_teams", error);
+    await replyError(interaction, "ladder_teams", error, { useComponentsV2: true });
   }
 }
 
