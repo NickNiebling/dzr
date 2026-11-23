@@ -84,7 +84,11 @@ function buildLadderTeamsOverview(teams) {
 
   for (const team of teams.toSorted((a, b) => a.name.localeCompare(b.name, "da"))) {
     const channel = team.channelId ? `<#${team.channelId}>` : `<#${channelId}> (standard)`;
-    const details = `### ${escapeMarkdown(team.name).slice(0, 256)}\n${channel} · ${team.optaktMin || optaktMin} min før start`;
+    const details = [
+      `### ${escapeMarkdown(team.name).slice(0, 256)}`,
+      `-# Kanal: ${channel}`,
+      `-# Optakt: ${team.optaktMin || optaktMin} min før start`,
+    ].join("\n");
     const links = [
       `[Holdside](<${ladderOrigin}/teamView/${encodeURIComponent(team.name)}>)`,
       `[Kampe](<${ladderOrigin}${ladderClient.fixturesPath(team.name)}>)`,
@@ -96,8 +100,8 @@ function buildLadderTeamsOverview(teams) {
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(visibleLinks ? `${details}\n${visibleLinks}` : details))
       .setButtonAccessory(new ButtonBuilder()
         .setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}remove:${ladderTeamButtonKey(team)}`)
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("🗑️")));
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("❌")));
   }
 
   return overview;
