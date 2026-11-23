@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 // Fake Firestore so the stores work without credentials (services/firebase.js throws without them).
 const docs = new Map();
+const teamDoc = "ladder_bot/ladderTeams";
 const fakeDb = {
   collection: (c) => ({
     doc: (d) => ({
@@ -19,8 +20,13 @@ require.cache[firebasePath] = { id: firebasePath, filename: firebasePath, loaded
 const ladderTeams = require("./ladderTeams");
 
 test("a team linked from a channel is found by that channel", async () => {
+  docs.set(teamDoc, {
+    json: JSON.stringify({
+      "a whole lot of danes": { name: "A whole lot of Danes", channelId: "444", previewMinutes: 55 },
+    }),
+  });
   assert.equal(await ladderTeams.link("A whole lot of Danes", "111"), true);
-  assert.equal((await ladderTeams.findByChannel("111")).name, "A whole lot of Danes");
+  assert.deepEqual(await ladderTeams.findByChannel("111"), { name: "A whole lot of Danes", channelId: "111", optaktMin: 55 });
   assert.equal(await ladderTeams.findByChannel("222"), null);
 });
 
@@ -31,10 +37,14 @@ test("linking another team from the same channel moves the channel to it", async
 });
 
 test("linking the same team again keeps one entry, whatever the spelling", async () => {
-  await ladderTeams.link("A WHOLE LOT OF DANES", "333");
+  await ladderTeams.link("A WHOLE LOT OF DANES", "333", 75);
   const names = (await ladderTeams.list()).map((t) => t.name);
   assert.equal(names.filter((n) => n.toLowerCase() === "a whole lot of danes").length, 1);
-  assert.equal((await ladderTeams.findByChannel("333")).name, "A WHOLE LOT OF DANES");
+  assert.deepEqual(await ladderTeams.findByChannel("333"), { name: "A WHOLE LOT OF DANES", channelId: "333", optaktMin: 75 });
+
+  await new Promise(setImmediate);
+  const savedTeams = JSON.parse(docs.get(teamDoc).json);
+  assert.deepEqual(savedTeams["a whole lot of danes"], { name: "A WHOLE LOT OF DANES", channelId: "333", previewMinutes: 75 });
 });
 
 test("removing a team removes its channel default", async () => {

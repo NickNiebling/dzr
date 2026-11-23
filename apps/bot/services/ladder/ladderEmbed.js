@@ -51,9 +51,9 @@ function accentColor(fixture, ourTeam) {
   return /^#[0-9a-f]{6}$/i.test(hex || "") ? parseInt(hex.slice(1), 16) : 0xff6600;
 }
 
-// Builds the ladder preview embed from a parsed fixture (see ladderParser.js).
+// Builds the ladder optakt embed from a parsed fixture (see ladderParser.js).
 // With compact=true the rider/average text is left out because the chart image shows it.
-function buildLadderPreviewEmbed(fixture, { compact = false, ourTeam = null, info = null } = {}) {
+function buildLadderOptaktEmbed(fixture, { compact = false, ourTeam = null, info = null } = {}) {
   const { home, away } = fixture;
   const ts = Math.floor(new Date(fixture.start).getTime() / 1000);
   const route = fixture.route
@@ -91,13 +91,13 @@ function buildLadderPreviewEmbed(fixture, { compact = false, ourTeam = null, inf
 
 // Two images when the site profile loads: the route (with powerup icons) and the W/kg chart.
 // A missing profile still posts the chart. A failed chart falls back to the text embed.
-async function buildLadderPreviewMessage(fixture, ourTeam = null) {
+async function buildLadderOptaktMessage(fixture, ourTeam = null) {
   await enrichRiders([...fixture.home.riders, ...fixture.away.riders]);
   const profile = await loadMatchProfile(fixture);
   const info = describeProfile(profile);
   try {
     const files = [];
-    const embed = buildLadderPreviewEmbed(fixture, { compact: true, ourTeam, info });
+    const embed = buildLadderOptaktEmbed(fixture, { compact: true, ourTeam, info });
     let routeImage = false;
     if (profile) {
       const subtitle = [fixture.world, info ? `${info.distKm.toFixed(1)} km · ${Math.round(info.elevM)} m` : null]
@@ -115,16 +115,16 @@ async function buildLadderPreviewMessage(fixture, ourTeam = null) {
       }
     }
     const statsPng = await buildLadderChart(fixture, ourTeam, info);
-    files.push(new AttachmentBuilder(statsPng, { name: "preview.png" }));
-    if (!routeImage) embed.setImage("attachment://preview.png");
+    files.push(new AttachmentBuilder(statsPng, { name: "optakt.png" }));
+    if (!routeImage) embed.setImage("attachment://optakt.png");
     return { embeds: [embed], files };
   } catch (err) {
     console.error("[ladderEmbed] Chart rendering failed, using text embed:", err.message);
-    return { embeds: [buildLadderPreviewEmbed(fixture, { ourTeam, info })] };
+    return { embeds: [buildLadderOptaktEmbed(fixture, { ourTeam, info })] };
   }
 }
 
-// Scout compares full current rosters using the same power cache and chart as the match preview.
+// Scout compares full current rosters using the same power cache and chart as the match optakt.
 async function buildLadderScoutMessage(home, away, { enrich = enrichRiders, render = buildLadderChart } = {}) {
   const teams = [home, away];
   await enrich([...home.riders, ...away.riders]);
@@ -162,4 +162,4 @@ async function buildLadderScoutMessage(home, away, { enrich = enrichRiders, rend
   }
 }
 
-module.exports = { buildLadderPreviewEmbed, buildLadderPreviewMessage, buildLadderScoutMessage, accentColor };
+module.exports = { buildLadderOptaktEmbed, buildLadderOptaktMessage, buildLadderScoutMessage, accentColor };

@@ -1,11 +1,16 @@
-const { EmbedBuilder, PermissionsBitField, escapeMarkdown } = require("discord.js");
+const { createHash } = require("node:crypto");
+const {
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags, PermissionsBitField, escapeMarkdown,
+} = require("discord.js");
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
-const { buildLadderPreviewMessage, buildLadderScoutMessage } = require("../services/ladder/ladderEmbed");
+const { buildLadderOptaktMessage, buildLadderScoutMessage } = require("../services/ladder/ladderEmbed");
 const { buildLadderAnalysisMessage } = require("../services/ladder/ladderAnalysis");
 const { buildLadderAiMessage } = require("../services/ladder/ladderAi");
 const config = require("../config/config");
 const { ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
+
+const LADDER_TEAM_BUTTON_PREFIX = "ladder_team:";
 
 // The team from the option, else the team added from this channel, else the only added team.
 async function resolveTeam(interaction) {
@@ -21,7 +26,7 @@ async function resolveTeam(interaction) {
 async function missingTeamMessage() {
   const names = (await ladderTeams.list()).map((team) => team.name);
   return names.length
-    ? `Vælg et hold i feltet team, eller kør /ladder_link i denne kanal for at gøre holdet til standard her. Tilføjede hold: ${names.join(", ")}.`
+    ? `Vælg et hold i feltet team, eller brug /ladder_link til at vælge et standardhold for en kanal. Tilføjede hold: ${names.join(", ")}.`
     : "Der er ingen hold endnu. Tilføj et med /ladder_link.";
 }
 
@@ -48,42 +53,107 @@ async function replyError(interaction, name, error) {
   await interaction.editReply({ content: error.userMessage || "⚠️ Der skete en fejl." });
 }
 
+function canManageLadderTeams(interaction) {
+  return interaction.guildId === config.discord.guildId && interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator);
+}
+
+function ladderTeamButtonKey(team) {
+  return createHash("sha256").update(team.name.toLowerCase()).digest("base64url");
+}
+
+function buildLadderTeamsOverview(teams) {
+  if (!teams.length) {
+    return {
+      content: "Der er ingen tilknyttede Ladder-hold. Tilføj et med `/ladder_link`.",
+      embeds: [],
+      components: [],
+    };
+  }
+
+  const ladderOrigin = "https://ladder.cycleracing.club";
+  const { channelId, optaktMin, tz } = config.ladder;
+  const embed = new EmbedBuilder().setTitle("Tilknyttede Ladder-hold").setDescription([
+    `Ladder kanal: <#${channelId}>`,
+    `Optakt: ${optaktMin} min før start`,
+    `Tidszone: ${tz}`,
+  ].join("\n")).setFooter({ text: "Admin: Fjern hold" });
+  const components = [];
+
+  for (const team of teams.sort((a, b) => a.name.localeCompare(b.name, "da"))) {
+    const channel = team.channelId ? `<#${team.channelId}>` : `<#${channelId}> (standard)`;
+    const details = `Kanal: ${channel}\nOptakt: ${team.optaktMin || optaktMin} min før start`;
+    const links = [
+      `[Holdside](<${ladderOrigin}/teamView/${encodeURIComponent(team.name)}>)`,
+      `[Kampe](<${ladderOrigin}${ladderClient.fixturesPath(team.name)}>)`,
+    ];
+    // Leave room under Discord's 6000-character embed limit for all ten teams.
+    const linkBudget = 300 - details.length - 1;
+    const allLinks = links.join(" · ");
+    const visibleLinks = allLinks.length <= linkBudget ? allLinks : links.find((link) => link.length <= linkBudget);
+    embed.addFields({ name: escapeMarkdown(team.name).slice(0, 256), value: visibleLinks ? `${details}\n${visibleLinks}` : details });
+
+    if (!components.length || components.at(-1).components.length === 5) {
+      components.push(new ActionRowBuilder());
+    }
+    components.at(-1).addComponents(new ButtonBuilder()
+      .setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}remove:${ladderTeamButtonKey(team)}`)
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji("❌")
+      .setLabel(team.name.slice(0, 80)));
+  }
+
+  return { content: "", embeds: [embed], components, allowedMentions: { parse: [] } };
+}
+
 async function handleLadderTeams(interaction) {
-  if (interaction.guildId !== config.discord.guildId || !interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+  if (!canManageLadderTeams(interaction)) {
     await interaction.editReply({ content: "Kun administratorer på DZR-serveren kan se Ladder-konfigurationen." });
     return;
   }
 
   try {
-    const teams = await ladderTeams.list();
-    if (!teams.length) {
-      await interaction.editReply({ content: "Der er ingen tilknyttede Ladder-hold. Tilføj et med `/ladder_link`." });
+    await interaction.editReply(buildLadderTeamsOverview(await ladderTeams.list()));
+  } catch (error) {
+    await replyError(interaction, "ladder_teams", error);
+  }
+}
+
+function isLadderTeamsButton(interaction) {
+  return interaction.isButton() && interaction.customId.startsWith(LADDER_TEAM_BUTTON_PREFIX);
+}
+
+async function handleLadderTeamsButton(interaction) {
+  if (!canManageLadderTeams(interaction)) {
+    await interaction.reply({
+      content: "Kun administratorer på DZR-serveren kan fjerne Ladder-hold.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  try {
+    const [action, id] = interaction.customId.slice(LADDER_TEAM_BUTTON_PREFIX.length).split(":");
+    let teams = await ladderTeams.list();
+    const team = id && teams.find((candidate) => ladderTeamButtonKey(candidate) === id);
+    if (team && action === "remove") {
+      await interaction.editReply({
+        content: `Fjern ${escapeMarkdown(team.name).slice(0, 256)}?`,
+        embeds: [],
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}confirm:${id}`).setStyle(ButtonStyle.Danger).setLabel("Fjern hold"),
+          new ButtonBuilder().setCustomId(`${LADDER_TEAM_BUTTON_PREFIX}cancel`).setStyle(ButtonStyle.Secondary).setLabel("Annuller"),
+        )],
+        allowedMentions: { parse: [] },
+      });
       return;
     }
 
-    const ladderOrigin = "https://ladder.cycleracing.club";
-    const { channelId, previewMinutes, tz } = config.ladder;
-    const embed = new EmbedBuilder().setTitle("Tilknyttede Ladder-hold").setDescription([
-      `Automatiske previews og løbsdagsbeskeder: <#${channelId}>`,
-      `Standard for preview: ${previewMinutes} min. før start`,
-      `Tidszone for løbsdagsbeskeder: ${tz}`,
-    ].join("\n"));
-
-    for (const team of teams.sort((a, b) => a.name.localeCompare(b.name, "da"))) {
-      const channel = team.channelId ? `<#${team.channelId}>` : "Ingen kanal tilknyttet";
-      const details = `Standardkanal for kommandoer: ${channel}\nPreview: ${team.previewMinutes || previewMinutes} min. før start`;
-      const links = [
-        `[Holdside](<${ladderOrigin}/teamView/${encodeURIComponent(team.name)}>)`,
-        `[Kampe](<${ladderOrigin}${ladderClient.fixturesPath(team.name)}>)`,
-      ];
-      // Leave room under Discord's 6000-character embed limit for all ten teams.
-      const linkBudget = 300 - details.length - 1;
-      const allLinks = links.join(" · ");
-      const visibleLinks = allLinks.length <= linkBudget ? allLinks : links.find((link) => link.length <= linkBudget);
-      embed.addFields({ name: escapeMarkdown(team.name).slice(0, 256), value: visibleLinks ? `${details}\n${visibleLinks}` : details });
+    if (team && action === "confirm") {
+      await ladderTeams.unlink(team.name);
+      teams = await ladderTeams.list();
     }
-
-    await interaction.editReply({ content: "", embeds: [embed], allowedMentions: { parse: [] } });
+    await interaction.editReply(buildLadderTeamsOverview(teams));
   } catch (error) {
     await replyError(interaction, "ladder_teams", error);
   }
@@ -99,25 +169,34 @@ async function handleLadderLink(interaction) {
 
     if (interaction.options.getBoolean("remove")) {
       const removed = await ladderTeams.unlink(teamName);
-      await interaction.editReply({ content: removed ? `${teamName} får ikke længere preview.` : `${teamName} var ikke tilføjet.` });
+      await interaction.editReply({ content: removed ? `${teamName} er fjernet fra Ladder-oversigten.` : `${teamName} var ikke tilføjet.`, allowedMentions: { parse: [] } });
       return;
     }
 
-    const minutes = interaction.options.getInteger("minutes");
-    if (!(await ladderTeams.link(teamName, interaction.channelId))) {
+    const channel = interaction.channel ?? await interaction.client.channels.fetch(interaction.channelId);
+    const channelId = channel?.isThread() ? channel.parentId : channel?.id;
+    if (!channelId) {
+      await interaction.editReply({ content: "Kunne ikke finde kanalen til holdet." });
+      return;
+    }
+
+    const optaktMin = interaction.options.getInteger("minutes");
+    if (!(await ladderTeams.link(teamName, channelId, optaktMin))) {
       await interaction.editReply({ content: `Der kan højst tilføjes ${ladderTeams.MAX_TEAMS} hold. Fjern et hold først.` });
       return;
     }
-    if (minutes) await ladderTeams.setPreviewMinutes(teamName, minutes);
+    const team = await ladderTeams.getTeam(teamName);
+    const effectiveOptaktMin = team?.optaktMin || config.ladder.optaktMin;
     await interaction.editReply({
-      content: `${teamName} får nu preview og løbsdag-besked i <#${config.ladder.channelId}>${minutes ? `, preview ${minutes} minutter før start` : ""}. Kommandoer i denne kanal bruger holdet som standard.`,
+      content: `✅ ${escapeMarkdown(teamName)} er tilknyttet <#${channelId}>.\n\nOptakt og løbsdagsbeskeder sendes til denne kanal.\n\nOptakt: ${effectiveOptaktMin} min før start.`,
+      allowedMentions: { parse: [] },
     });
   } catch (error) {
     await replyError(interaction, "ladder_link", error);
   }
 }
 
-async function handleLadderPreview(interaction) {
+async function handleLadderOptakt(interaction) {
   try {
     const teamName = await resolveTeam(interaction);
     if (!teamName) {
@@ -129,11 +208,11 @@ async function handleLadderPreview(interaction) {
       await interaction.editReply({ content: await noFixtureMessage(teamName) });
       return;
     }
-    // Deliberately does not mark the match as posted, so the scheduled preview is unaffected.
-    await interaction.channel.send(await buildLadderPreviewMessage(fixture, teamName));
-    await interaction.editReply({ content: "✅ Preview postet." });
+    // Manual posts leave the scheduled optakt pending.
+    await interaction.channel.send(await buildLadderOptaktMessage(fixture, teamName));
+    await interaction.editReply({ content: "✅ Optakt sendt." });
   } catch (error) {
-    await replyError(interaction, "ladder_preview", error);
+    await replyError(interaction, "ladder_optakt", error);
   }
 }
 
@@ -194,4 +273,13 @@ async function handleLadderScout(interaction) {
   }
 }
 
-module.exports = { handleLadderTeams, handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout };
+module.exports = {
+  handleLadderTeams,
+  isLadderTeamsButton,
+  handleLadderTeamsButton,
+  handleLadderLink,
+  handleLadderOptakt,
+  handleLadderAnalysis,
+  handleLadderAi,
+  handleLadderScout,
+};

@@ -23,7 +23,16 @@ const {
 } = require("./commandHandlers");
 const { handleCoach } = require("../services/coachDm");
 const { isRiderSelect, riderSelectOwner } = require("../services/riderSearch");
-const { handleLadderTeams, handleLadderLink, handleLadderPreview, handleLadderAnalysis, handleLadderAi, handleLadderScout } = require("./ladderHandlers");
+const {
+  handleLadderTeams,
+  isLadderTeamsButton,
+  handleLadderTeamsButton,
+  handleLadderLink,
+  handleLadderOptakt,
+  handleLadderAnalysis,
+  handleLadderAi,
+  handleLadderScout,
+} = require("./ladderHandlers");
 const ladderTeams = require("../services/ladder/ladderTeams");
 const ladderClient = require("../services/ladder/ladderClient");
 const {
@@ -90,7 +99,7 @@ async function handleAutocomplete(interaction) {
       await interaction.respond(filtered);
     } else if (commandName === "ladder_scout" && focusedOption.name === "opponent") {
       await interaction.respond(ladderClient.autocomplete(focusedOption.value));
-    } else if (focusedOption.name === 'team' && (commandName === "ladder_preview" || commandName === "ladder_analysis" || commandName === "ladder_ai" || commandName === "ladder_scout")) {
+    } else if (focusedOption.name === 'team' && (commandName === "ladder_optakt" || commandName === "ladder_analysis" || commandName === "ladder_ai" || commandName === "ladder_scout")) {
       const typed = focusedOption.value.toLowerCase();
       const names = (await ladderTeams.list()).map(team => team.name);
       await interaction.respond(
@@ -200,6 +209,11 @@ async function handleSelectMenus(interaction) {
 async function handleInteractions(interaction) {
   try {
     console.log(`🔍 [${HANDLER_ID}] Handling interaction: ${interaction.type} - ${interaction.isCommand() ? interaction.commandName : 'N/A'} (ID: ${interaction.id})`);
+
+    if (isLadderTeamsButton(interaction)) {
+      await handleLadderTeamsButton(interaction);
+      return;
+    }
 
     // Handle publish buttons
     if (interaction.isButton() && interaction.customId.startsWith("quiz_answer_")) {
@@ -586,7 +600,7 @@ async function handleInteractions(interaction) {
       "coach": handleCoach,
       "ladder_teams": handleLadderTeams,
       "ladder_link": handleLadderLink,
-      "ladder_preview": handleLadderPreview,
+      "ladder_optakt": handleLadderOptakt,
       "ladder_analysis": handleLadderAnalysis,
       "ladder_ai": handleLadderAi,
       "ladder_scout": handleLadderScout,

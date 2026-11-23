@@ -1,14 +1,15 @@
-// Scheduled ladder posts: a preview shortly before each match and a reminder on match day, both in the ladder channel.
-const { EmbedBuilder } = require("discord.js");
+// Scheduled ladder posts: optakt shortly before each match and a reminder on match day.
+const { EmbedBuilder, RESTJSONErrorCodes } = require("discord.js");
 const config = require("../../config/config");
 const ladderTeams = require("./ladderTeams");
 const ladderClient = require("./ladderClient");
 const ladderState = require("./ladderState");
-const { buildLadderPreviewMessage, accentColor } = require("./ladderEmbed");
+const { buildLadderOptaktMessage, accentColor } = require("./ladderEmbed");
 const { describeProfile, loadMatchProfile } = require("./routeInfo");
 
 const TICK_MS = 10 * 60 * 1000;
 const REMINDER_HOUR = 12;
+const OPTAKT_STATE_KEY = "postedLadderPreview"; // Preserve the stored delivery history.
 
 let lastRun = 0;
 let running = false;
@@ -22,10 +23,10 @@ function localHour(date, tz) {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hour12: false }).format(date)) % 24;
 }
 
-// A preview is due once the match is inside the lead-time window and has not started.
-function isPreviewDue(startIso, windowMinutes, now = new Date()) {
+// Optakt is due once the match is inside the lead-time window and has not started.
+function isOptaktDue(startIso, optaktMin, now = new Date()) {
   const minutesUntil = (new Date(startIso).getTime() - now.getTime()) / 60000;
-  return Number.isFinite(minutesUntil) && minutesUntil > 0 && minutesUntil <= windowMinutes;
+  return Number.isFinite(minutesUntil) && minutesUntil > 0 && minutesUntil <= optaktMin;
 }
 
 // A reminder is due from REMINDER_HOUR on the day of a match that has not started yet.
@@ -48,7 +49,7 @@ function dayEmbed(fixture, ourTeam, info = null) {
   return new EmbedBuilder()
     .setTitle(`Løbsdag: ${fixture.home.name} mod ${fixture.away.name}`)
     .setURL(`https://ladder.cycleracing.club/fixture/${fixture.id}`)
-    .setDescription(`Vi kører i dag. Start <t:${ts}:t> (<t:${ts}:R>).${route ? `\nRute: ${route}` : ""}\nPreview med power-sammenligning kommer før start.`)
+    .setDescription(`Vi kører i dag. Start <t:${ts}:t> (<t:${ts}:R>).${route ? `\nRute: ${route}` : ""}\nOptakt med power-sammenligning kommer før start.`)
     .setColor(accentColor(fixture, ourTeam))
     .addFields({
       name: `${ours.name} (${ours.riders.length} tilmeldte)`,
@@ -58,28 +59,41 @@ function dayEmbed(fixture, ourTeam, info = null) {
 
 async function syncTeam(client, team, now) {
   const fixtures = await ladderClient.getFixtures(team.name);
-  const channel = await client.channels.fetch(config.ladder.channelId);
+  const defaultChannelId = config.ladder.channelId;
+  let channelId = team.channelId || defaultChannelId;
+  const optaktMin = team.optaktMin || config.ladder.optaktMin;
+
+  async function send(message) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      await channel.send(message);
+    } catch (err) {
+      if (channelId === defaultChannelId || err.code !== RESTJSONErrorCodes.UnknownChannel) throw err;
+      channelId = defaultChannelId;
+      const channel = await client.channels.fetch(channelId);
+      await channel.send(message);
+    }
+  }
 
   for (const { id } of fixtures) {
-    const wantPreview = !(await ladderState.isPosted("postedLadderPreview", id));
+    const wantOptakt = !(await ladderState.isPosted(OPTAKT_STATE_KEY, id));
     const wantReminder = !(await ladderState.isPosted("postedLadderDayReminder", id));
-    if (!wantPreview && !wantReminder) continue;
+    if (!wantOptakt && !wantReminder) continue;
 
     try {
       const start = await ladderClient.getFixtureStart(id);
-      const windowMinutes = team.previewMinutes || config.ladder.previewMinutes;
 
       if (wantReminder && isReminderDue(start, now, config.ladder.tz)) {
         const fixture = await ladderClient.getFixture(id);
         const info = describeProfile(await loadMatchProfile(fixture));
-        await channel.send({ embeds: [dayEmbed(fixture, team.name, info)] });
+        await send({ embeds: [dayEmbed(fixture, team.name, info)] });
         await ladderState.markPosted("postedLadderDayReminder", id);
       }
-      if (wantPreview && isPreviewDue(start, windowMinutes, now)) {
+      if (wantOptakt && isOptaktDue(start, optaktMin, now)) {
         // Re-fetch inside the window so signups are current; this also presses the ladder's refresh button.
         const fixture = await ladderClient.refreshFixture(await ladderClient.getFixture(id));
-        await channel.send(await buildLadderPreviewMessage(fixture, team.name));
-        await ladderState.markPosted("postedLadderPreview", id);
+        await send(await buildLadderOptaktMessage(fixture, team.name));
+        await ladderState.markPosted(OPTAKT_STATE_KEY, id);
       }
     } catch (err) {
       if (ladderClient.isAuthUnavailable(err)) throw err;
@@ -112,4 +126,4 @@ async function maybeRunLadderJobs(client, now = new Date()) {
   }
 }
 
-module.exports = { maybeRunLadderJobs, isPreviewDue, isReminderDue, localDate, localHour, dayEmbed };
+module.exports = { maybeRunLadderJobs, isOptaktDue, isReminderDue, localDate, localHour, dayEmbed };
