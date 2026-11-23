@@ -4,6 +4,7 @@ const { ActionRowBuilder, MessageFlags, EmbedBuilder, ButtonBuilder, ButtonStyle
 const roleService = require("../services/roleService");
 const { linkUserZwiftId, getTodaysClubStats } = require("../services/firebase");
 const { handlePublishButton, ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
+const { editTextReply } = require("../utils/interactionReply");
 const { updateKmsStatus } = require("../services/scheduler");
 const {
   handleMyZwiftId,
@@ -515,33 +516,13 @@ async function handleInteractions(interaction) {
     }
 
     // Handle slash commands
-    if (!interaction.isCommand()) return;
+    if (!interaction.isCommand() || interaction.replied || interaction.deferred) return;
 
-    console.log(`🔄 [${HANDLER_ID}] Interaction state before response: replied=${interaction.replied}, deferred=${interaction.deferred}`);
-
-    // Add a small delay to see if this helps with timing
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Try immediate reply instead of defer to avoid timing issues
-    if (!interaction.replied && !interaction.deferred) {
-      console.log(`⏳ [${HANDLER_ID}] Attempting to reply to interaction ${interaction.id}`);
-      try {
-        await interaction.reply({
-          content: "⏳ Processing command...",
-          flags: MessageFlags.Ephemeral
-        });
-        console.log(`✅ [${HANDLER_ID}] Successfully replied to interaction`);
-      } catch (replyError) {
-        console.log(`❌ [${HANDLER_ID}] Failed to reply to interaction: ${replyError.message}`);
-        if (replyError.code === 40060) { // Already acknowledged
-          console.log(`🔄 [${HANDLER_ID}] Interaction was already acknowledged by another handler`);
-          return; // Exit gracefully
-        }
-        throw replyError; // Re-throw other errors
-      }
-    } else {
-      console.log(`⚠️ [${HANDLER_ID}] Interaction already acknowledged, skipping reply`);
-      return; // Exit if already handled
+    try {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      if (error.code === 40060) return; // Already acknowledged
+      throw error;
     }
 
     const commandName = interaction.commandName;
@@ -623,22 +604,13 @@ async function handleInteractions(interaction) {
     }
 
     try {
-      // Check current interaction state before trying to respond
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({
-          content: "⚠️ An unexpected error occurred!",
-          flags: MessageFlags.Ephemeral
-        });
-      } else if (interaction.replied) {
-        // Already replied, edit the reply
-        await interaction.editReply({ content: "⚠️ An unexpected error occurred!" });
-      } else if (interaction.deferred && !interaction.replied) {
-        await interaction.editReply({ content: "⚠️ An unexpected error occurred!" });
+      const content = "⚠️ An unexpected error occurred!";
+      if (interaction.replied || interaction.deferred) {
+        await editTextReply(interaction, content);
       } else {
-        // Fallback: try follow-up
-        await interaction.followUp({
-          content: "⚠️ An unexpected error occurred!",
-          flags: MessageFlags.Ephemeral
+        await interaction.reply({
+          content,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } catch (responseError) {

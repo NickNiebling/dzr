@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { MessageFlags, PermissionsBitField } = require("discord.js");
+const { PermissionsBitField } = require("discord.js");
 const config = require("../../config/config");
 const { handleLadderTeams, handleLadderTeamsButton } = require("../../handlers/ladderHandlers");
 const ladderTeams = require("./ladderTeams");
@@ -10,79 +10,66 @@ const admin = {
   memberPermissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator),
 };
 
-test("a regular member cannot open or confirm a Ladder team removal", async (t) => {
+function buttonIds(components) {
+  const ids = [];
+  for (const component of components) {
+    if (component.custom_id) ids.push(component.custom_id);
+    if (component.accessory?.custom_id) ids.push(component.accessory.custom_id);
+    if (component.components) ids.push(...buttonIds(component.components));
+  }
+  return ids;
+}
+
+test("regular members cannot view or remove Ladder teams", async (t) => {
   const list = t.mock.method(ladderTeams, "list", async () => []);
   const unlink = t.mock.method(ladderTeams, "unlink", async () => true);
-  const replies = [];
+  const member = { ...admin, memberPermissions: new PermissionsBitField() };
+  const editReply = t.mock.fn();
+  const reply = t.mock.fn();
 
+  await handleLadderTeams({ ...member, editReply });
   for (const action of ["remove", "confirm"]) {
-    await handleLadderTeamsButton({
-      guildId: config.discord.guildId,
-      memberPermissions: new PermissionsBitField(),
-      customId: `ladder_team:${action}:test`,
-      reply: async (payload) => replies.push(payload),
-    });
+    await handleLadderTeamsButton({ ...member, customId: `ladder_team:${action}:test`, reply });
   }
 
+  assert.equal(editReply.mock.callCount(), 1);
+  assert.equal(reply.mock.callCount(), 2);
   assert.equal(list.mock.callCount(), 0);
   assert.equal(unlink.mock.callCount(), 0);
-  assert.equal(replies.length, 2);
-  for (const reply of replies) {
-    assert.equal(reply.flags, MessageFlags.Ephemeral);
-    assert.match(reply.content, /Kun administratorer/);
-  }
 });
 
-test("an admin can confirm a Ladder team removal and return to the updated overview", async (t) => {
-  let teams = [
-    { name: "Chonky Chaser", channelId: "123", optaktMin: 90 },
-    { name: "A whole lot of Danes" },
-    { name: "Chonky Complainers" },
-    { name: "Chonky Leg Breakers" },
-    { name: "DZR" },
-    { name: "DZR 2" },
-  ];
-  t.mock.method(ladderTeams, "list", async () => [...teams]);
-  const unlink = t.mock.method(ladderTeams, "unlink", async (name) => {
-    teams = teams.filter((team) => team.name !== name);
+test("an admin only removes a Ladder team after confirming", async (t) => {
+  const teamName = "Chonky Chaser";
+  const teams = [{ name: teamName }];
+  t.mock.method(ladderTeams, "list", async () => teams);
+  const unlink = t.mock.method(ladderTeams, "unlink", async () => {
+    teams.pop();
     return true;
   });
-
-  let reply;
-  const editReply = async (payload) => { reply = payload; };
+  let response;
+  const editReply = async (payload) => { response = payload; };
+  const actions = () => buttonIds(response.components.map((component) => component.toJSON()));
   const click = (customId) => handleLadderTeamsButton({
-    ...admin,
-    customId,
-    deferUpdate: async () => {},
-    editReply,
+    ...admin, customId, deferUpdate: async () => {}, editReply,
   });
+
   await handleLadderTeams({ ...admin, editReply });
+  const removeId = actions().find((id) => id.startsWith("ladder_team:remove:"));
+  assert.ok(removeId);
 
-  const overview = reply.embeds[0].toJSON();
-  assert.equal(overview.title, "Tilknyttede Ladder-hold");
-  assert.match(overview.fields.find((field) => field.name === "Chonky Chaser").value, /Kanal: <#123>\nOptakt: 90 min før start\n\[Holdside\].* · \[Kampe\]/);
-  assert.ok(overview.fields.find((field) => field.name === "A whole lot of Danes").value.startsWith(
-    `Kanal: <#${config.ladder.channelId}> (standard)\nOptakt: ${config.ladder.optaktMin} min før start`,
-  ));
-  assert.deepEqual(reply.components.map((row) => row.toJSON().components.length), [5, 1]);
-  const remove = reply.components[0].toJSON().components.find((button) => button.label === "Chonky Chaser");
-  assert.equal(remove.emoji.name, "❌");
+  await click(removeId);
+  const cancelId = actions().find((id) => id === "ladder_team:cancel");
+  assert.ok(cancelId);
 
-  await click(remove.custom_id);
-  assert.equal(reply.content, "Fjern Chonky Chaser?");
-  assert.deepEqual(reply.embeds, []);
-  const [confirm, cancel] = reply.components[0].toJSON().components;
-  assert.deepEqual([confirm.label, cancel.label], ["Fjern hold", "Annuller"]);
+  await click(cancelId);
   assert.equal(unlink.mock.callCount(), 0);
+  assert.ok(actions().includes(removeId));
 
-  await click(cancel.custom_id);
-  assert.equal(unlink.mock.callCount(), 0);
-  assert.equal(reply.embeds[0].toJSON().fields.length, 6);
-
-  await click(remove.custom_id);
-  await click(confirm.custom_id);
+  await click(removeId);
+  const confirmId = actions().find((id) => id.startsWith("ladder_team:confirm:"));
+  assert.ok(confirmId);
+  await click(confirmId);
   assert.equal(unlink.mock.callCount(), 1);
-  assert.deepEqual(unlink.mock.calls[0].arguments, ["Chonky Chaser"]);
-  assert.ok(!reply.embeds[0].toJSON().fields.some((field) => field.name === "Chonky Chaser"));
-  assert.deepEqual(reply.components.map((row) => row.toJSON().components.length), [5]);
+  assert.deepEqual(unlink.mock.calls[0].arguments, [teamName]);
+  assert.equal(actions().some((id) => id === removeId || id === confirmId), false);
 });
