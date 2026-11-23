@@ -12,11 +12,12 @@ const { ephemeralReplyWithPublish } = require("../utils/ephemeralStore");
 
 const LADDER_TEAM_BUTTON_PREFIX = "ladder_team:";
 
-// The team from the option, else the team added from this channel, else the only added team.
+// Prefer the explicit team, then the linked channel's team, then the only linked team.
 async function resolveTeam(interaction) {
   const input = interaction.options.getString("team");
   if (input) return ladderTeams.parseTeamName(input);
-  const inChannel = await ladderTeams.findByChannel(interaction.channelId);
+  const { channel, channelId } = interaction;
+  const inChannel = await ladderTeams.findByChannel(channel?.isThread() ? channel.parentId : channelId);
   if (inChannel) return inChannel.name;
   const teams = await ladderTeams.list();
   return teams.length === 1 ? teams[0].name : null;
