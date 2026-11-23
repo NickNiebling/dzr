@@ -801,6 +801,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("ladder_link")
     .setDescription("Tilknyt eller fjern et Ladder-hold for optakt og løbsdagsbeskeder")
+    .setDMPermission(false)
     .addStringOption(option =>
       option
         .setName("team")
@@ -810,13 +811,13 @@ const commands = [
     .addBooleanOption(option =>
       option
         .setName("remove")
-        .setDescription("Fjern det tilknyttede hold")
+        .setDescription("Fjern det tilknyttede hold (kun administratorer)")
         .setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName("minutes")
-        .setDescription("Antal minutter før start, hvor optakten sendes")
+        .setDescription("Minutter før start. For eksisterende hold kan kun administratorer ændre tiden.")
         .setMinValue(5)
         .setMaxValue(1440)
         .setRequired(false)

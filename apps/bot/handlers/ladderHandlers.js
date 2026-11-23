@@ -160,6 +160,12 @@ async function handleLadderTeamsButton(interaction) {
 }
 
 async function handleLadderLink(interaction) {
+  if (interaction.guildId !== config.discord.guildId) {
+    await interaction.editReply({ content: "Denne kommando kan kun bruges på DZR-serveren." });
+    return;
+  }
+
+  const canManage = canManageLadderTeams(interaction);
   try {
     const teamName = ladderTeams.parseTeamName(interaction.options.getString("team", true));
     if (!teamName) {
@@ -168,6 +174,10 @@ async function handleLadderLink(interaction) {
     }
 
     if (interaction.options.getBoolean("remove")) {
+      if (!canManage) {
+        await interaction.editReply({ content: "Kun administratorer kan fjerne Ladder-hold." });
+        return;
+      }
       const removed = await ladderTeams.unlink(teamName);
       await interaction.editReply({ content: removed ? `${teamName} er fjernet fra Ladder-oversigten.` : `${teamName} var ikke tilføjet.`, allowedMentions: { parse: [] } });
       return;
@@ -181,14 +191,19 @@ async function handleLadderLink(interaction) {
     }
 
     const optaktMin = interaction.options.getInteger("minutes");
-    if (!(await ladderTeams.link(teamName, channelId, optaktMin))) {
-      await interaction.editReply({ content: `Der kan højst tilføjes ${ladderTeams.MAX_TEAMS} hold. Fjern et hold først.` });
+    const { team, error } = await ladderTeams.link(teamName, channelId, optaktMin, canManage);
+    if (error) {
+      const messages = {
+        admin_required: "Kun administratorer kan ændre kanal eller optakttid for et eksisterende Ladder-hold.",
+        channel_taken: "Kanalen er allerede tilknyttet et andet Ladder-hold.",
+        team_limit: `Der kan højst tilføjes ${ladderTeams.MAX_TEAMS} hold. En administrator kan fjerne et hold.`,
+      };
+      await interaction.editReply({ content: messages[error] });
       return;
     }
-    const team = await ladderTeams.getTeam(teamName);
-    const effectiveOptaktMin = team?.optaktMin || config.ladder.optaktMin;
+    const effectiveOptaktMin = team.optaktMin || config.ladder.optaktMin;
     await interaction.editReply({
-      content: `✅ ${escapeMarkdown(teamName)} er tilknyttet <#${channelId}>.\n\nOptakt og løbsdagsbeskeder sendes til denne kanal.\n\nOptakt: ${effectiveOptaktMin} min før start.`,
+      content: `✅ ${escapeMarkdown(team.name)} er tilknyttet <#${team.channelId}>.\n\nOptakt og løbsdagsbeskeder sendes til denne kanal.\n\nOptakt: ${effectiveOptaktMin} min før start.`,
       allowedMentions: { parse: [] },
     });
   } catch (error) {

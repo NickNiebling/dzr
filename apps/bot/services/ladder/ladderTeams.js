@@ -29,22 +29,34 @@ function parseTeamName(input) {
 }
 
 // Commands run in the linked channel default to this team.
-// Returns false when the team is new and the team limit has been reached.
-async function link(teamName, channelId, optaktMin) {
+async function link(teamName, channelId, optaktMin, canManage = false) {
   const teams = await store.load();
   const teamKey = key(teamName);
-  if (!teams[teamKey] && Object.keys(teams).length >= MAX_TEAMS) return false;
-  const team = { ...teams[teamKey], name: teamName.trim() };
+  const existing = teams[teamKey];
+  const linkedChannelId = channelId ? String(channelId) : existing?.channelId;
+
+  if (existing && !canManage) {
+    if (linkedChannelId !== existing.channelId || (optaktMin != null && optaktMin !== existing.previewMinutes)) {
+      return { error: "admin_required" };
+    }
+    return { team: toTeam(existing) };
+  }
+  if (!existing && Object.keys(teams).length >= MAX_TEAMS) return { error: "team_limit" };
+
+  const team = { ...existing, name: teamName.trim() };
   if (channelId) {
-    team.channelId = String(channelId);
+    team.channelId = linkedChannelId;
     for (const other of Object.values(teams)) {
-      if (other.channelId === team.channelId) delete other.channelId;
+      if (other !== existing && other.channelId === linkedChannelId) {
+        if (!canManage) return { error: "channel_taken" };
+        delete other.channelId;
+      }
     }
   }
   if (optaktMin != null) team.previewMinutes = optaktMin;
   teams[teamKey] = team;
   store.persist();
-  return true;
+  return { team: toTeam(team) };
 }
 
 async function findByChannel(channelId) {
