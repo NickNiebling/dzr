@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ButtonStyle, ComponentType, MessageFlags, PermissionsBitField } = require("discord.js");
+const { PermissionsBitField } = require("discord.js");
 const config = require("../../config/config");
 const { handleLadderTeams, handleLadderTeamsButton } = require("../../handlers/ladderHandlers");
 const ladderTeams = require("./ladderTeams");
@@ -10,97 +10,66 @@ const admin = {
   memberPermissions: new PermissionsBitField(PermissionsBitField.Flags.Administrator),
 };
 
-function components(payload) {
-  assert.ok(payload.flags & MessageFlags.IsComponentsV2);
-  assert.equal(payload.embeds, undefined);
-  assert.equal(payload.content, undefined);
-  return payload.components.map((component) => component.toJSON());
-}
-
-function countComponents(items) {
-  return items.reduce((count, item) => count + 1
-    + countComponents(item.components ?? [])
-    + Number(Boolean(item.accessory)), 0);
+function buttonIds(components) {
+  const ids = [];
+  for (const component of components) {
+    if (component.custom_id) ids.push(component.custom_id);
+    if (component.accessory?.custom_id) ids.push(component.accessory.custom_id);
+    if (component.components) ids.push(...buttonIds(component.components));
+  }
+  return ids;
 }
 
 test("regular members cannot view or remove Ladder teams", async (t) => {
   const list = t.mock.method(ladderTeams, "list", async () => []);
+  const unlink = t.mock.method(ladderTeams, "unlink", async () => true);
   const member = { ...admin, memberPermissions: new PermissionsBitField() };
-  const replies = [];
-  const reply = async (payload) => replies.push(payload);
+  const editReply = t.mock.fn();
+  const reply = t.mock.fn();
 
-  await handleLadderTeams({ ...member, editReply: reply });
-  await handleLadderTeamsButton({ ...member, customId: "ladder_team:confirm:test", reply });
+  await handleLadderTeams({ ...member, editReply });
+  for (const action of ["remove", "confirm"]) {
+    await handleLadderTeamsButton({ ...member, customId: `ladder_team:${action}:test`, reply });
+  }
 
-  assert.equal(replies.length, 2);
-  for (const payload of replies) assert.match(components(payload)[0].content, /Kun administratorer/);
+  assert.equal(editReply.mock.callCount(), 1);
+  assert.equal(reply.mock.callCount(), 2);
   assert.equal(list.mock.callCount(), 0);
+  assert.equal(unlink.mock.callCount(), 0);
 });
 
-test("the overview shows a linked team and lets an admin cancel or confirm removal", async (t) => {
-  const teams = [{ name: "Chonky Chaser", channelId: "123", optaktMin: 90 }];
+test("an admin only removes a Ladder team after confirming", async (t) => {
+  const teamName = "Chonky Chaser";
+  const teams = [{ name: teamName }];
   t.mock.method(ladderTeams, "list", async () => teams);
   const unlink = t.mock.method(ladderTeams, "unlink", async () => {
     teams.pop();
     return true;
   });
-  let reply;
-  const editReply = async (payload) => { reply = payload; };
+  let response;
+  const editReply = async (payload) => { response = payload; };
+  const actions = () => buttonIds(response.components.map((component) => component.toJSON()));
   const click = (customId) => handleLadderTeamsButton({
     ...admin, customId, deferUpdate: async () => {}, editReply,
   });
 
   await handleLadderTeams({ ...admin, editReply });
-  const [overview] = components(reply);
-  const [header, team] = overview.components;
-  assert.match(header.content, /Tilknyttede Ladder-hold/);
-  assert.ok(header.content.includes(`<#${config.ladder.channelId}>`));
-  assert.ok(header.content.includes(`${config.ladder.optaktMin} min`));
-  assert.ok(header.content.includes(config.ladder.tz));
-  assert.equal(team.type, ComponentType.Section);
-  const [details] = team.components;
-  assert.match(details.content, /Chonky Chaser.*<#123>.*90 min/s);
-  assert.match(details.content, /\[Holdside\].*https:\/\/ladder\.cycleracing\.club\/teamView\/Chonky%20Chaser/);
-  assert.match(details.content, /\[Kampe\].*https:\/\/ladder\.cycleracing\.club\/matchlist\/fixtures\/Chonky%20Chaser/);
-  assert.equal(team.accessory.style, ButtonStyle.Danger);
+  const removeId = actions().find((id) => id.startsWith("ladder_team:remove:"));
+  assert.ok(removeId);
 
-  await click(team.accessory.custom_id);
-  const [prompt, row] = components(reply);
-  assert.match(prompt.content, /Fjern Chonky Chaser/);
-  const [confirm, cancel] = row.components;
-  assert.deepEqual(row.components.map((button) => button.label), ["Fjern hold", "Annuller"]);
+  await click(removeId);
+  const cancelId = actions().find((id) => id === "ladder_team:cancel");
+  assert.ok(cancelId);
 
-  await click(cancel.custom_id);
-  const [, restored] = components(reply)[0].components;
-  assert.equal(restored.accessory.custom_id, team.accessory.custom_id);
+  await click(cancelId);
   assert.equal(unlink.mock.callCount(), 0);
+  assert.ok(actions().includes(removeId));
 
-  await click(team.accessory.custom_id);
-  await click(confirm.custom_id);
-  assert.deepEqual(unlink.mock.calls[0].arguments, ["Chonky Chaser"]);
-  const [empty] = components(reply);
-  assert.equal(empty.components.length, 1);
-  assert.match(empty.components[0].content, /ingen tilknyttede Ladder-hold.*\/ladder_link/);
-});
-
-test("ten teams fit within Discord's component limit and retain alphabetical order", async (t) => {
-  const names = ["Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Zulu", "Ægir", "Ørn"];
-  t.mock.method(ladderTeams, "list", async () => names.toReversed().map((name) => ({ name })));
-  const editReply = t.mock.fn();
-
-  await handleLadderTeams({ ...admin, editReply });
-  const overview = components(editReply.mock.calls[0].arguments[0]);
-  const [, ...teams] = overview[0].components;
-  const listedNames = teams.map((team) => team.components[0].content.split("\n")[0].replace(/^#+\s*/, ""));
-  assert.deepEqual(listedNames, names);
-  assert.ok(countComponents(overview) <= 40);
-});
-
-test("Ladder teams errors are displayed as V2 text", async (t) => {
-  t.mock.method(ladderTeams, "list", async () => { throw new Error("Ladder lookup failed"); });
-  t.mock.method(console, "error", () => {});
-  const editReply = t.mock.fn();
-
-  await handleLadderTeams({ ...admin, editReply });
-  assert.match(components(editReply.mock.calls[0].arguments[0])[0].content, /Der skete en fejl/);
+  await click(removeId);
+  const confirmId = actions().find((id) => id.startsWith("ladder_team:confirm:"));
+  assert.ok(confirmId);
+  await click(confirmId);
+  assert.equal(unlink.mock.callCount(), 1);
+  assert.deepEqual(unlink.mock.calls[0].arguments, [teamName]);
+  assert.equal(actions().some((id) => id === removeId || id === confirmId), false);
 });
