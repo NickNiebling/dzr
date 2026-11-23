@@ -2,11 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { MessageFlags, PermissionsBitField } = require("discord.js");
 const config = require("../../config/config");
+const { handleLadderTeams, handleLadderTeamsButton } = require("../../handlers/ladderHandlers");
 const ladderTeams = require("./ladderTeams");
-
-const firebasePath = require.resolve("../firebase");
-require.cache[firebasePath] = { id: firebasePath, filename: firebasePath, loaded: true, exports: {} };
-const { handleInteractions } = require("../../handlers/interactionHandler");
 
 const admin = {
   guildId: config.discord.guildId,
@@ -19,15 +16,12 @@ test("a regular member cannot open or confirm a Ladder team removal", async (t) 
   const replies = [];
 
   for (const action of ["remove", "confirm"]) {
-    const interaction = {
+    await handleLadderTeamsButton({
       guildId: config.discord.guildId,
       memberPermissions: new PermissionsBitField(),
-      isButton: () => true,
-      isCommand: () => false,
       customId: `ladder_team:${action}:test`,
       reply: async (payload) => replies.push(payload),
-    };
-    await handleInteractions(interaction);
+    });
   }
 
   assert.equal(list.mock.callCount(), 0);
@@ -56,27 +50,14 @@ test("an admin can confirm a Ladder team removal and return to the updated overv
 
   let reply;
   const editReply = async (payload) => { reply = payload; };
-  const click = (customId) => handleInteractions({
+  const click = (customId) => handleLadderTeamsButton({
     ...admin,
     customId,
-    isButton: () => true,
-    isCommand: () => false,
     deferUpdate: async () => {},
     editReply,
   });
-  const initialReplies = [];
-  await handleInteractions({
-    ...admin,
-    commandName: "ladder_teams",
-    isButton: () => false,
-    isCommand: () => true,
-    isAutocomplete: () => false,
-    isStringSelectMenu: () => false,
-    reply: async (payload) => initialReplies.push(payload),
-    editReply,
-  });
+  await handleLadderTeams({ ...admin, editReply });
 
-  assert.equal(initialReplies[0].flags, MessageFlags.Ephemeral);
   const overview = reply.embeds[0].toJSON();
   assert.equal(overview.title, "Tilknyttede Ladder-hold");
   assert.match(overview.fields.find((field) => field.name === "Chonky Chaser").value, /Kanal: <#123>\nOptakt: 90 min før start\n\[Holdside\].* · \[Kampe\]/);

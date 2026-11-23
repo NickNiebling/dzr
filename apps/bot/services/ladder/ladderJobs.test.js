@@ -86,7 +86,7 @@ test("scheduled posts use the team channel and fall back only for missing or del
   }));
   t.mock.method(ladderClient, "refreshFixture", async (fixture) => fixture);
   t.mock.method(ladderState, "isPosted", async () => false);
-  t.mock.method(ladderState, "markPosted", async (type, id) => deliveries.push([id, "marked", type]));
+  t.mock.method(ladderState, "markPosted", async (type, key) => deliveries.push([key, "marked", type]));
 
   const client = {
     channels: {
@@ -108,14 +108,69 @@ test("scheduled posts use the team channel and fall back only for missing or del
 
   await maybeRunLadderJobs(client, new Date("2026-10-16T17:00:00Z"));
 
-  const expectedChannels = [["1", "team-channel"], ["2", defaultChannelId], ["3", defaultChannelId], ["4", defaultChannelId]];
-  assert.deepEqual(deliveries, expectedChannels.flatMap(([id, channelId]) => [
+  const expectedChannels = [
+    ["1", "linked", "team-channel"],
+    ["2", "unlinked", defaultChannelId],
+    ["3", "deleted", defaultChannelId],
+    ["4", "stale", defaultChannelId],
+  ];
+  assert.deepEqual(deliveries, expectedChannels.flatMap(([id, team, channelId]) => [
     [id, "sent", "reminder", channelId],
-    [id, "marked", "postedLadderDayReminder"],
+    [`${id}:${team}`, "marked", "postedLadderDayReminder"],
     [id, "sent", "optakt", channelId],
-    [id, "marked", "postedLadderPreview"],
+    [`${id}:${team}`, "marked", "postedLadderPreview"],
   ]));
   assert.ok(errorLog.mock.calls.some(({ arguments: args }) => args[1] === "Missing Permissions"));
+});
+
+test("each linked team in the same match receives its own scheduled posts once", async (t) => {
+  const originalConfig = config.ladder;
+  t.after(() => { config.ladder = originalConfig; });
+  config.ladder = { channelId: "default-channel", optaktMin: 65, tz: TZ };
+  const teams = [
+    { name: "Home Team", channelId: "home-channel" },
+    { name: "Away Team", channelId: "away-channel" },
+  ];
+  const fixture = {
+    id: "42",
+    start: "2026-10-17T18:00:00Z",
+    home: { name: teams[0].name, riders: [] },
+    away: { name: teams[1].name, riders: [] },
+  };
+  const posted = new Set();
+  t.mock.method(ladderTeams, "list", async () => teams);
+  const getFixtures = t.mock.method(ladderClient, "getFixtures", async () => [fixture]);
+  t.mock.method(ladderClient, "getFixtureStart", async () => fixture.start);
+  t.mock.method(ladderClient, "getFixture", async () => fixture);
+  t.mock.method(ladderClient, "refreshFixture", async () => fixture);
+  t.mock.method(ladderState, "isPosted", async (type, key) => posted.has(`${type}:${key}`));
+  t.mock.method(ladderState, "markPosted", async (type, key) => posted.add(`${type}:${key}`));
+
+  const deliveries = [];
+  const client = {
+    channels: {
+      async fetch(channelId) {
+        return {
+          async send({ embeds }) {
+            deliveries.push([channelId, embeds[0].data.title.startsWith("Løbsdag:") ? "reminder" : "optakt"]);
+          },
+        };
+      },
+    },
+  };
+
+  await maybeRunLadderJobs(client, new Date("2026-10-17T17:00:00Z"));
+  assert.deepEqual(deliveries, [
+    ["home-channel", "reminder"],
+    ["home-channel", "optakt"],
+    ["away-channel", "reminder"],
+    ["away-channel", "optakt"],
+  ]);
+
+  teams[0].name = "HOME TEAM";
+  await maybeRunLadderJobs(client, new Date("2026-10-17T17:10:00Z"));
+  assert.equal(getFixtures.mock.callCount(), 4);
+  assert.equal(deliveries.length, 4);
 });
 
 test("parseTeamName accepts plain names and ladder links", () => {

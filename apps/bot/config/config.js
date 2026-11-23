@@ -93,7 +93,7 @@ module.exports = {
   ladder: {
     // Default channel for optakt and match-day reminders.
     channelId: process.env.LADDER_CHANNEL_ID || "1382817917984313404",
-    optaktMin: Number.parseInt(process.env.LADDER_OPTAKT_MIN || "65", 10),
+    optaktMin: Number.parseInt(process.env.LADDER_PREVIEW_MINUTES || "65", 10),
     tz: process.env.LADDER_TZ || "Europe/Copenhagen",
   },
   quiz: {

@@ -9,7 +9,7 @@ const { describeProfile, loadMatchProfile } = require("./routeInfo");
 
 const TICK_MS = 10 * 60 * 1000;
 const REMINDER_HOUR = 12;
-const OPTAKT_STATE_KEY = "postedLadderPreview"; // Preserve the stored delivery history.
+const OPTAKT_STATE_KEY = "postedLadderPreview"; // Existing key in the saved delivery state.
 
 let lastRun = 0;
 let running = false;
@@ -59,6 +59,7 @@ function dayEmbed(fixture, ourTeam, info = null) {
 
 async function syncTeam(client, team, now) {
   const fixtures = await ladderClient.getFixtures(team.name);
+  const teamKey = team.name.trim().toLowerCase();
   const defaultChannelId = config.ladder.channelId;
   let channelId = team.channelId || defaultChannelId;
   const optaktMin = team.optaktMin || config.ladder.optaktMin;
@@ -76,8 +77,9 @@ async function syncTeam(client, team, now) {
   }
 
   for (const { id } of fixtures) {
-    const wantOptakt = !(await ladderState.isPosted(OPTAKT_STATE_KEY, id));
-    const wantReminder = !(await ladderState.isPosted("postedLadderDayReminder", id));
+    const deliveryKey = `${id}:${teamKey}`;
+    const wantOptakt = !(await ladderState.isPosted(OPTAKT_STATE_KEY, deliveryKey));
+    const wantReminder = !(await ladderState.isPosted("postedLadderDayReminder", deliveryKey));
     if (!wantOptakt && !wantReminder) continue;
 
     try {
@@ -87,13 +89,13 @@ async function syncTeam(client, team, now) {
         const fixture = await ladderClient.getFixture(id);
         const info = describeProfile(await loadMatchProfile(fixture));
         await send({ embeds: [dayEmbed(fixture, team.name, info)] });
-        await ladderState.markPosted("postedLadderDayReminder", id);
+        await ladderState.markPosted("postedLadderDayReminder", deliveryKey);
       }
       if (wantOptakt && isOptaktDue(start, optaktMin, now)) {
         // Re-fetch inside the window so signups are current; this also presses the ladder's refresh button.
         const fixture = await ladderClient.refreshFixture(await ladderClient.getFixture(id));
         await send(await buildLadderOptaktMessage(fixture, team.name));
-        await ladderState.markPosted(OPTAKT_STATE_KEY, id);
+        await ladderState.markPosted(OPTAKT_STATE_KEY, deliveryKey);
       }
     } catch (err) {
       if (ladderClient.isAuthUnavailable(err)) throw err;
