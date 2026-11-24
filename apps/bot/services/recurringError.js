@@ -1,7 +1,7 @@
-const ERROR_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ERROR_WINDOW_MS = 60 * 60 * 1000;
 const nextErrorAtByKey = new Map();
 
-/** Report a recurring failure at error level once per 24 hours. Null reports immediately. */
+/** Report a recurring failure at error level once per hour. Null reports immediately. */
 function reportRecurringError(key, ...args) {
   if (key === null) {
     console.error(...args);

@@ -2,9 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { reportRecurringError } = require("./recurringError");
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
-test("recurring errors warn until 24 hours after the last error", (t) => {
+test("recurring errors warn until one hour after the last error", (t) => {
   let now = 0;
   t.mock.method(performance, "now", () => now);
   const calls = [];
@@ -15,9 +15,9 @@ test("recurring errors warn until 24 hours after the last error", (t) => {
   const args = ["Could not send scheduled message:", failure, context];
 
   reportRecurringError("scheduled-send:123", ...args);
-  now = DAY_MS - 1;
+  now = HOUR_MS - 1;
   reportRecurringError("scheduled-send:123", ...args);
-  now = DAY_MS;
+  now = HOUR_MS;
   reportRecurringError("scheduled-send:123", ...args);
   now += 1;
   reportRecurringError("scheduled-send:123", ...args);
@@ -40,7 +40,7 @@ test("each failure key has its own error window", (t) => {
   reportRecurringError("due-lookup", "Due lookup failed");
   now += 1;
   reportRecurringError("mark-sent:123", "Mark as sent failed");
-  now = DAY_MS;
+  now = HOUR_MS;
   reportRecurringError("due-lookup", "Due lookup failed again");
   reportRecurringError("mark-sent:123", "Mark as sent failed again");
 
@@ -57,11 +57,11 @@ test("manual failures always report at error severity without changing the backg
   const warn = t.mock.method(console, "warn", () => {});
 
   reportRecurringError("kms-update", "Background update failed");
-  now = DAY_MS - 1;
+  now = HOUR_MS - 1;
   reportRecurringError(null, "Manual update failed");
   reportRecurringError(null, "Manual update failed again");
   reportRecurringError("kms-update", "Background update still failing");
-  now = DAY_MS;
+  now = HOUR_MS;
   reportRecurringError("kms-update", "Background update failed again");
 
   assert.deepEqual(error.mock.calls.map((call) => call.arguments[0]), [
