@@ -119,7 +119,7 @@ async function buildLadderOptaktMessage(fixture, ourTeam = null) {
     if (!routeImage) embed.setImage("attachment://optakt.png");
     return { embeds: [embed], files };
   } catch (err) {
-    console.error("[ladderEmbed] Chart rendering failed, using text embed:", err.message);
+    console.warn("[ladderEmbed] Chart rendering failed, using text embed:", err.message);
     return { embeds: [buildLadderOptaktEmbed(fixture, { ourTeam, info })] };
   }
 }

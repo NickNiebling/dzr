@@ -104,6 +104,8 @@ jobs:
       # In-memory transport: no Firebase credentials or external Sentry delivery.
       - run: python -m unittest discover -s apps/api/tests -p test_observability.py
       - run: python -m unittest discover -s apps/api/tests -p test_ladder.py
+      - run: python -m unittest tests.test_zwift_profile
+        working-directory: apps/api
 
   shared-sync:
     name: Shared copies are in sync

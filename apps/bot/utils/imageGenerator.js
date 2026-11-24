@@ -46,7 +46,7 @@ async function generateSingleRiderStatsImage(rider) {
     const image = await loadImage("zwifters.png");
     ctx.drawImage(image, width * 0.1, topMargin, width * 0.8, width * 0.8);
   } catch (err) {
-    console.error("Failed to load image:", err);
+    console.warn("Failed to load image:", err);
   }
   ctx.globalAlpha = 1.0;
 
@@ -127,7 +127,7 @@ async function generateTeamStatsImage(ridersArray) {
     const imgWidth = height * 0.7;
     ctx.drawImage(image, width / 2 - imgWidth / 2, topMargin + 10, imgWidth, imgWidth);
   } catch (err) {
-    console.error("Failed to load image:", err);
+    console.warn("Failed to load image:", err);
   }
   ctx.globalAlpha = 1.0;
 
@@ -229,7 +229,7 @@ async function generateEventResultsImage(events) {
     const image = await loadImage("zwifters.png");
     ctx.drawImage(image, width * 0.1, topMargin, width * 0.8, width * 0.8);
   } catch (err) {
-    console.error("Failed to load image:", err);
+    console.warn("Failed to load image:", err);
   }
   ctx.globalAlpha = 1.0;
 

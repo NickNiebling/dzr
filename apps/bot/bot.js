@@ -126,7 +126,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
       }
     }
   } catch (error) {
-    console.error("Error handling approval reaction:", error);
+    console.error("Error handling approval reaction:", error, {
+      messageId: reaction.message?.id,
+      emoji: reaction.emoji?.name
+    });
   }
 });
 
