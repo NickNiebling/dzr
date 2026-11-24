@@ -23,6 +23,7 @@ logger = logging.getLogger('ZwiftAPI')
 
 RELAY = "https://us-or-rly101.zwift.com"
 GAME_DICTIONARY_URL = "https://www.zwift.com/zwift-web-pages/gamedictionaryextended"
+_NOT_FOUND = object()
 
 # Game-dictionary world name -> Zwift mapId. Used when a route change has to
 # keep the event on the route's world and a valid start paddock.
@@ -141,7 +142,7 @@ class ZwiftAPI:
             self.refresh_token = self.auth_token.get('refresh_token', self.refresh_token)
             self.token_expiry_time = time.time() + self.auth_token.get('expires_in', 60) - 60
         else:
-            logger.error(f"Token refresh failed: {response.text}")
+            logger.warning(f"Token refresh failed: {response.text}")
             # If refresh fails, try to authenticate again
             logger.info("Attempting to re-authenticate...")
             self.authenticate()
@@ -158,9 +159,10 @@ class ZwiftAPI:
     def is_authenticated(self):
         return self.auth_token is not None and 'access_token' in self.auth_token
     
-    def fetch_json_with_retry(self, url, headers, params):
+    def fetch_json_with_retry(self, url, headers, params, *, not_found_ok=False):
         """Fetch JSON data with retries and tolerant parsing.
         - Ensures Accept/User-Agent headers are present
+        - Returns a sentinel for 404 when the caller opts in
         - Handles 204/empty body
         - Validates content-type before parsing JSON
         """
@@ -171,6 +173,8 @@ class ZwiftAPI:
         @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5)
         def _fetch():
             response = requests.get(url, headers=req_headers, params=params, timeout=20)
+            if not_found_ok and response.status_code == 404:
+                return _NOT_FOUND
             response.raise_for_status()
 
             # Handle no content / empty body
@@ -200,13 +204,8 @@ class ZwiftAPI:
   
         # Avoid double slash and use tolerant fetcher
         url = f'https://us-or-rly101.zwift.com/api/profiles/{id}'
-        try:
-            data = self.fetch_json_with_retry(url, headers=headers, params=None)
-            return data or {}
-        except requests.HTTPError as e:
-            if getattr(e, 'response', None) is not None and e.response.status_code == 404:
-                return None
-            raise
+        data = self.fetch_json_with_retry(url, headers=headers, params=None, not_found_ok=True)
+        return None if data is _NOT_FOUND else (data or {})
 
     def get_club_roster(
         self,

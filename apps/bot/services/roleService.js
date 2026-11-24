@@ -371,7 +371,7 @@ class RoleService {
             throw new Error("Member fetch returned null/undefined");
           }
         } catch (error) {
-          console.error(`❌ Could not fetch team captain ${role.teamCaptainId}:`, error.message);
+          console.warn(`⚠️ Could not fetch team captain ${role.teamCaptainId}:`, error.message);
 
           // Try to get from cache as last resort
           const cachedMember = panelConfig.guild.members.cache.get(role.teamCaptainId);
