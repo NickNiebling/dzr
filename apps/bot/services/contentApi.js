@@ -51,7 +51,8 @@ async function getDueScheduledMessages() {
     return response.data;
   } catch (error) {
     console.error("❌ API Error fetching scheduled messages:", error.message, {
-      status: error.response?.status
+      status: error.response?.status,
+      responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined
     });
     return [];
   }
@@ -90,7 +91,8 @@ async function getProbabilitySelectedMessages() {
     return response.data.messages_to_send;
   } catch (error) {
     console.error("❌ API Error checking probability messages:", error.message, {
-      status: error.response?.status
+      status: error.response?.status,
+      responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined
     });
     return [];
   }
@@ -113,8 +115,10 @@ async function markScheduledMessageSent(scheduleId) {
     console.log(`   Response data:`, response.data);
     
   } catch (error) {
+    const responseError = error.response?.data?.error;
     console.error(`❌ API Error marking schedule ${scheduleId} as sent:`, error.message, {
-      status: error.response?.status
+      status: error.response?.status,
+      responseError: ["Unauthorized", "Schedule not found"].includes(responseError) ? responseError : undefined
     });
   }
 }
