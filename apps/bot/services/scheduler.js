@@ -542,9 +542,11 @@ async function sendScheduledMessage(client, scheduledMessage) {
     console.log(`🎉 Completed scheduled message: ${scheduledMessage.title}`);
 
   } catch (error) {
-    console.error(`❌ Error sending scheduled message "${scheduledMessage.title}":`, error);
-    console.error(`   Message ID: ${scheduledMessage.id}`);
-    console.error(`   Channel ID: ${scheduledMessage.channel_id}`);
+    console.error(`❌ Error sending scheduled message "${scheduledMessage.title}":`, error?.message ?? String(error), {
+      status: error?.status,
+      messageId: scheduledMessage.id,
+      channelId: scheduledMessage.channel_id
+    });
   }
 }
 
