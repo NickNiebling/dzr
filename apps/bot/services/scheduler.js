@@ -10,10 +10,15 @@ const { maybeRunLadderJobs } = require("./ladder/ladderJobs");
 const { maybeSyncAnnouncements } = require("./announcementIndex");
 const { maybeRunAnnouncer } = require("./announcer");
 
+let schedulerRunning = false;
+
 /**
  * Check for and send scheduled messages, and run the other periodic jobs
  */
 async function checkScheduledMessages(client) {
+  if (schedulerRunning) return;
+  schedulerRunning = true;
+
   try {
     console.log("🔍 Checking for scheduled messages...");
     
@@ -56,6 +61,8 @@ async function checkScheduledMessages(client) {
     
   } catch (error) {
     console.error("❌ Error checking scheduled messages:", error);
+  } finally {
+    schedulerRunning = false;
   }
 }
 
