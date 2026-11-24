@@ -141,7 +141,7 @@ class ZwiftAPI:
             self.refresh_token = self.auth_token.get('refresh_token', self.refresh_token)
             self.token_expiry_time = time.time() + self.auth_token.get('expires_in', 60) - 60
         else:
-            logger.error(f"Token refresh failed: {response.text}")
+            logger.warning(f"Token refresh failed: {response.text}")
             # If refresh fails, try to authenticate again
             logger.info("Attempting to re-authenticate...")
             self.authenticate()
