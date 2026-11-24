@@ -19,7 +19,9 @@ def response(status_code, body=b""):
 class ZwiftProfileTest(unittest.TestCase):
     def setUp(self):
         self.zwift = ZwiftAPI("test-user", "test-password")
-        self.zwift.auth_token = {"access_token": "test-token"}
+        self.enterContext(patch("zwift.requests.post", return_value=response(
+            200, b'{"access_token":"test-token","expires_in":300}'
+        )))
         self.get = self.enterContext(patch("zwift.requests.get"))
         self.enterContext(patch("backoff._sync.time.sleep"))
 
