@@ -98,15 +98,15 @@ class ObservabilityTest(unittest.TestCase):
             import main
         from zwift import AUTH_RETRY_INITIAL, ZwiftAPI
 
-        roster = ZwiftAPI("roster-test", "test-password", account="roster")
+        default_client = ZwiftAPI("default-test", "test-password")
         organizer = ZwiftAPI("organizer-test", "test-password", account="organizer")
         db = Mock()
         queue = db.collection.return_value.document.return_value
         queue.get.return_value = Mock(exists=True, to_dict=lambda: {"pendingRiders": [{"riderId": 42}]})
         rejection = Mock(status_code=401, text="private upstream response")
         with (
-            patch.object(main, "roster_zwift", roster),
-            patch.object(main, "organizer_zwift", organizer),
+            patch.object(main, "zwift_api", default_client),
+            patch.object(main, "organizer_zwift_api", organizer),
             patch.object(main, "CONTENT_API_KEY", "test-content-key"),
             patch.object(main, "ZWIFT_CLUB_ID", "123"),
             patch.object(main.firebase, "db", db),
@@ -130,7 +130,7 @@ class ObservabilityTest(unittest.TestCase):
                     self.assertEqual(response.headers["Retry-After"], str(AUTH_RETRY_INITIAL))
                     self.assertNotIn("private upstream response", response.get_data(as_text=True))
 
-        self.assertEqual([call.kwargs["data"]["username"] for call in post.call_args_list], ["roster-test", "organizer-test"])
+        self.assertEqual([call.kwargs["data"]["username"] for call in post.call_args_list], ["default-test", "organizer-test"])
         queue.update.assert_not_called()
         self.assertEqual([event["logger"] for event in self.events], ["ZwiftAPI", "ZwiftAPI"])
         self.assertNotIn("private upstream response", str(self.events))

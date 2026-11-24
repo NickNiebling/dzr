@@ -75,11 +75,12 @@ SESSION_VALIDITY = 3600  # seconds (how long the session is expected to be valid
 
 ZWIFT_USERNAME = os.getenv("ZWIFT_USERNAME", "your_username")
 ZWIFT_PASSWORD = os.getenv("ZWIFT_PASSWORD", "your_password")
-# Event inspect and edits. Kept off the roster account on purpose.
+zwift_api = ZwiftAPI(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+
+# Separate credentials for inspecting and editing events.
 ZWIFT_ORGANIZER_USERNAME = os.getenv("ZWIFT_ORGANIZER_USERNAME", "").strip()
 ZWIFT_ORGANIZER_PASSWORD = os.getenv("ZWIFT_ORGANIZER_PASSWORD", "")
-roster_zwift = ZwiftAPI(ZWIFT_USERNAME, ZWIFT_PASSWORD, account="roster")
-organizer_zwift = ZwiftAPI(ZWIFT_ORGANIZER_USERNAME, ZWIFT_ORGANIZER_PASSWORD, account="organizer")
+organizer_zwift_api = ZwiftAPI(ZWIFT_ORGANIZER_USERNAME, ZWIFT_ORGANIZER_PASSWORD, account="organizer")
 
 OPENAI_KEY = os.getenv("OPENAI_KEY", "your_openai_key")
 
@@ -413,7 +414,7 @@ def overwrite_zwiftpower_club_members_in_firestore(members: list[dict]) -> dict:
 
 def _refresh_companion_club_roster(club_id: str, limit: int = 100, paginate: bool = True) -> dict:
     """Fetch roster from Zwift and overwrite Firestore collection companion_club_members."""
-    roster = roster_zwift.get_club_roster(str(club_id), limit=limit, paginate=paginate)
+    roster = zwift_api.get_club_roster(str(club_id), limit=limit, paginate=paginate)
     simplified = ZwiftAPI.simplify_club_roster(roster or [])
 
     result = overwrite_companion_club_members_in_firestore(simplified)
@@ -640,7 +641,7 @@ def _fix_due_fifty_results() -> dict:
         event_id = str(row.get("id") or "").strip()
         if not event_id.isdigit():
             continue
-        start = _event_start(organizer_zwift.inspect_event(int(event_id)))
+        start = _event_start(organizer_zwift_api.inspect_event(int(event_id)))
         if start + timedelta(minutes=90) <= now < start + timedelta(hours=4):
             due.append(int(event_id))
         elif row.get("resultsFix"):
@@ -779,7 +780,7 @@ def _fix_due_fifty_sprints() -> dict:
         event_id = str(row.get("id") or "").strip()
         if not event_id.isdigit():
             continue
-        inspected = organizer_zwift.inspect_event(int(event_id))
+        inspected = organizer_zwift_api.inspect_event(int(event_id))
         start = _event_start(inspected)
         if start <= now:
             continue
@@ -842,7 +843,7 @@ def zwift_inspect_event(event_id: int):
     if unauthorized:
         return unauthorized
     try:
-        return _zwift_event_response(organizer_zwift.inspect_event(event_id))
+        return _zwift_event_response(organizer_zwift_api.inspect_event(event_id))
     except Exception as exc:
         return _zwift_event_error(exc)
 
@@ -858,7 +859,7 @@ def zwift_add_event_tags(event_id: int):
     if not isinstance(tags, list):
         return jsonify({"error": "tags must be a list"}), 400
     try:
-        return _zwift_event_response(organizer_zwift.add_event_tags(event_id, tags))
+        return _zwift_event_response(organizer_zwift_api.add_event_tags(event_id, tags))
     except Exception as exc:
         return _zwift_event_error(exc)
 
@@ -887,7 +888,7 @@ def zwift_update_event_course(event_id: int):
                     subgroup_routes.append({"id": int(item.get("id")), "routeId": int(item.get("routeId"))})
                 except (TypeError, ValueError):
                     raise ValueError("Each category needs an id and a routeId")
-        updated = organizer_zwift.update_event_course(
+        updated = organizer_zwift_api.update_event_course(
             event_id,
             new_route_id=route_id,
             new_distance_meters=distance,
@@ -1140,7 +1141,7 @@ def zwift_profile(rider_id: int):
         unauthorized = require_api_or_401()
         if unauthorized:
             return unauthorized
-        return jsonify(_profile_identity(roster_zwift.get_profile(rider_id)))
+        return jsonify(_profile_identity(zwift_api.get_profile(rider_id)))
     except ZwiftAuthError:
         raise
     except Exception as e:
@@ -1883,7 +1884,7 @@ def process_rider_queue():
             
             try:
                 # Get the rider's profile
-                profile = roster_zwift.get_profile(rider_id)
+                profile = zwift_api.get_profile(rider_id)
                 
                 # Add racing score if available
                 if profile and "competitionMetrics" in profile and "racingScore" in profile["competitionMetrics"]:
