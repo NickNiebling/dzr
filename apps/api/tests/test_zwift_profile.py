@@ -1,11 +1,13 @@
 """Run from apps/api: python -m unittest tests.test_zwift_profile -v."""
 
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 
 from requests import HTTPError, Response
 
-from zwift import ZwiftAPI
+from zwift import AUTH_RETRY_INITIAL, ZwiftAPI, ZwiftAuthError
 
 
 def response(status_code, body=b""):
@@ -19,8 +21,8 @@ def response(status_code, body=b""):
 class ZwiftProfileTest(unittest.TestCase):
     def setUp(self):
         self.zwift = ZwiftAPI("test-user", "test-password")
-        self.enterContext(patch("zwift.requests.post", return_value=response(
-            200, b'{"access_token":"test-token","expires_in":300}'
+        self.post = self.enterContext(patch("zwift.requests.post", return_value=response(
+            200, b'{"access_token":"test-token","refresh_token":"test-refresh","expires_in":300}'
         )))
         self.get = self.enterContext(patch("zwift.requests.get"))
         self.enterContext(patch("backoff._sync.time.sleep"))
@@ -42,6 +44,71 @@ class ZwiftProfileTest(unittest.TestCase):
 
         self.assertEqual(self.zwift.get_profile("123"), {"id": 123})
         self.assertEqual(self.get.call_count, 2)
+
+    def test_simultaneous_profile_401s_share_one_token_refresh(self):
+        self.zwift.ensure_valid_token()
+        self.post.side_effect = [response(200, b'{"access_token":"new-token","expires_in":300}')]
+        both_rejected = Barrier(2)
+
+        def get(url, *, headers, **kwargs):
+            if headers["Authorization"] == "Bearer test-token":
+                both_rejected.wait(timeout=5)
+                return response(401)
+            self.assertEqual(headers["Authorization"], "Bearer new-token")
+            return response(200, b'{"id": 123}')
+
+        self.get.side_effect = get
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            calls = [pool.submit(self.zwift.get_profile, "123") for _ in range(2)]
+            self.assertEqual([call.result(timeout=6) for call in calls], [{"id": 123}] * 2)
+
+        self.assertEqual(self.get.call_count, 4)
+        self.assertEqual(
+            [call.kwargs["data"]["grant_type"] for call in self.post.call_args_list],
+            ["password", "refresh_token"],
+        )
+
+    def test_profile_401_replay_stops_after_one_attempt(self):
+        for status in (401, 503):
+            with self.subTest(status=status):
+                client = ZwiftAPI("test-user", "test-password")
+                self.post.reset_mock()
+                self.get.reset_mock()
+                self.post.side_effect = [
+                    response(200, b'{"access_token":"test-token","refresh_token":"test-refresh","expires_in":300}'),
+                    response(200, b'{"access_token":"new-token","expires_in":300}'),
+                ]
+                self.get.side_effect = [response(401), response(status)]
+
+                with self.assertRaises(HTTPError) as failure:
+                    client.get_profile("123")
+
+                self.assertEqual(failure.exception.response.status_code, status)
+                self.assertEqual(self.get.call_count, 2)
+                self.assertEqual(self.post.call_count, 2)
+
+    def test_profile_stops_when_401_recovery_enters_cooldown(self):
+        self.zwift.ensure_valid_token()
+        self.post.side_effect = [response(429)]
+        self.get.return_value = response(401)
+
+        with self.assertLogs("ZwiftAPI", "ERROR"), self.assertRaises(ZwiftAuthError) as failure:
+            self.zwift.get_profile("123")
+
+        self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
+        self.get.assert_called_once()
+        self.assertEqual(self.post.call_count, 2)
+
+    def test_roster_pagination_uses_refreshed_token_for_later_pages(self):
+        self.zwift.ensure_valid_token()
+        self.post.side_effect = [response(200, b'{"access_token":"new-token","expires_in":300}')]
+        self.get.side_effect = [response(401), response(200, b'[{"id": 123}]'), response(200, b'[]')]
+
+        self.assertEqual(self.zwift.get_club_roster("42", limit=1), [{"id": 123}])
+        self.assertEqual(
+            [call.kwargs["headers"]["Authorization"] for call in self.get.call_args_list],
+            ["Bearer test-token", "Bearer new-token", "Bearer new-token"],
+        )
 
     def test_other_endpoint_still_retries_and_raises_not_found(self):
         self.get.return_value = response(404)

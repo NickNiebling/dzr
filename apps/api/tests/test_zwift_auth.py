@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from requests import ConnectionError
 
-from zwift import AUTH_RETRY_INITIAL, AUTH_RETRY_MAX, ZwiftAPI, ZwiftAuthError
+from zwift import AUTH_RETRY_INITIAL, AUTH_RETRY_MAX, ZwiftAPI, ZwiftAuthError, ZwiftError
 
 
 def token_response(access_token, refresh_token=None, *, expires_in=300):
@@ -83,7 +83,7 @@ class ZwiftAuthTest(unittest.TestCase):
     def test_refresh_rejection_falls_back_and_refresh_retains_token_when_omitted(self):
         self.post.side_effect = [
             token_response("first-access", "first-refresh"),
-            Mock(status_code=401),
+            Mock(status_code=400, json=Mock(return_value={"error": "invalid_grant"})),
             token_response("second-access", "second-refresh"),
             token_response("third-access"),
             token_response("fourth-access", "fourth-refresh"),
@@ -108,6 +108,57 @@ class ZwiftAuthTest(unittest.TestCase):
             [grant["refresh_token"] for grant in grants if grant["grant_type"] == "refresh_token"],
             ["first-refresh", "second-refresh", "second-refresh"],
         )
+
+    def test_refresh_failure_without_token_rejection_uses_cooldown(self):
+        for status, error in (
+            (429, "too_many_requests"),
+            (503, "invalid_grant"),
+            (401, "invalid_client"),
+            (400, "invalid_request"),
+        ):
+            with self.subTest(status=status, error=error):
+                client = ZwiftAPI("test-user", "test-password")
+                self.post.reset_mock()
+                self.post.side_effect = [
+                    token_response("cached-access", "cached-refresh"),
+                    Mock(status_code=status, json=Mock(return_value={"error": error})),
+                ]
+                self.assertEqual(client.ensure_valid_token(), "cached-access")
+                self.clock.return_value += 240
+                with self.assertLogs("ZwiftAPI", "ERROR") as logs:
+                    with self.assertRaises(ZwiftAuthError) as failure:
+                        client.ensure_valid_token()
+                    self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
+                    self.clock.return_value += 1
+                    with self.assertRaises(ZwiftAuthError) as paused:
+                        client.ensure_valid_token()
+                    self.assertEqual(paused.exception.retry_after, AUTH_RETRY_INITIAL - 1)
+                self.assertIn(f"HTTP {status}", logs.output[0])
+                self.assertEqual(len(logs.records), 1)
+                self.assertEqual(
+                    [call.kwargs["data"]["grant_type"] for call in self.post.call_args_list],
+                    ["password", "refresh_token"],
+                )
+
+    def test_event_put_replays_once_with_refreshed_token(self):
+        self.post.side_effect = [
+            token_response("old-access", "old-refresh"),
+            token_response("new-access", "new-refresh"),
+        ]
+        with patch("zwift.requests.put", side_effect=[
+            Mock(status_code=401, ok=False),
+            Mock(status_code=401, ok=False, reason="Unauthorized", text="rejected again"),
+        ]) as put:
+            with self.assertRaises(ZwiftError) as failure:
+                self.client.save_event(42, {"title": "Fixture"}, event_template_id=100)
+
+        self.assertEqual(failure.exception.status_code, 401)
+        self.assertEqual(self.post.call_count, 2)
+        self.assertEqual(
+            [call.kwargs["headers"]["Authorization"] for call in put.call_args_list],
+            ["Bearer old-access", "Bearer new-access"],
+        )
+        self.assertEqual(put.call_args_list[0].kwargs["json"], put.call_args_list[1].kwargs["json"])
 
     def test_failed_attempt_is_shared_and_other_account_can_still_authenticate(self):
         with self.assertLogs("ZwiftAPI", "ERROR") as logs:

@@ -128,9 +128,19 @@ class ZwiftAPI:
         if self._refresh_token:
             response = self._request_token(grant_type="refresh_token", refresh_token=self._refresh_token)
             if response.status_code != 200:
+                status = response.status_code
+                error = None
+                if status in (400, 401, 403):
+                    try:
+                        error = response.json()
+                    except ValueError:
+                        pass
+                if not isinstance(error, dict) or error.get("error") not in ("invalid_grant", "invalid_token"):
+                    raise ZwiftError(f"Token refresh returned HTTP {status}")
                 logger.warning(
-                    "Zwift %s token refresh failed (HTTP %s); signing in again", self._account, response.status_code
+                    "Zwift %s refresh token was rejected (HTTP %s); signing in again", self._account, status
                 )
+                self._refresh_token = None
                 response = None
         refreshing = response is not None
         if response is None:
@@ -183,6 +193,11 @@ class ZwiftAPI:
             self._auth_retry_delay = AUTH_RETRY_INITIAL
             return token
 
+    def _invalidate_rejected_token(self, authorization: str) -> None:
+        with self._auth_lock:
+            if self._access_token is not None and authorization == f"Bearer {self._access_token}":
+                self._access_token = None
+
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.ensure_valid_token()}"}
     
@@ -196,10 +211,21 @@ class ZwiftAPI:
         req_headers = dict(headers or {})
         req_headers.setdefault('Accept', 'application/json, text/plain, */*')
         req_headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+        authorization = req_headers.get("Authorization")
+        auth_replayed = False
 
-        @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5)
+        # A request replayed after a 401 gets one attempt with its new token.
+        @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5, giveup=lambda _: auth_replayed)
         def _fetch():
+            nonlocal auth_replayed
             response = requests.get(url, headers=req_headers, params=params, timeout=20)
+            if response.status_code == 401 and isinstance(authorization, str) and authorization.startswith("Bearer "):
+                auth_replayed = True
+                self._invalidate_rejected_token(authorization)
+                retry_headers = {**req_headers, **self._auth_headers()}
+                response = requests.get(url, headers=retry_headers, params=params, timeout=20)
+                if response.status_code == 401:
+                    self._invalidate_rejected_token(retry_headers["Authorization"])
             if not_found_ok and response.status_code == 404:
                 return _NOT_FOUND
             response.raise_for_status()
@@ -243,8 +269,6 @@ class ZwiftAPI:
 
         Some Zwift deployments paginate with `start`; some ignore it. We handle both.
         """
-        headers = {**self._auth_headers(), "Accept": "application/json"}
-
         url = f"https://us-or-rly101.zwift.com/api/clubs/club/{club_id}/roster"
 
         all_rows: List[Dict[str, Any]] = []
@@ -256,6 +280,7 @@ class ZwiftAPI:
             if cur_start:
                 params["start"] = cur_start
 
+            headers = {**self._auth_headers(), "Accept": "application/json"}
             data = self.fetch_json_with_retry(url, headers=headers, params=params)
 
             # Response shape can be a list or a wrapper dict depending on backend version.
@@ -368,13 +393,20 @@ class ZwiftAPI:
             "eventData": event,
         }
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
-        response = requests.put(
-            url,
-            headers=self._event_headers(),
-            params={"skipDefaults": "true"},
-            json=payload,
-            timeout=30,
-        )
+        headers = self._event_headers()
+        for attempt in range(2):
+            response = requests.put(
+                url,
+                headers=headers,
+                params={"skipDefaults": "true"},
+                json=payload,
+                timeout=30,
+            )
+            if response.status_code != 401:
+                break
+            self._invalidate_rejected_token(headers["Authorization"])
+            if attempt == 0:
+                headers = {**headers, **self._auth_headers()}
         if not response.ok:
             raise ZwiftError(
                 f"Failed to update event {event_id}: "
