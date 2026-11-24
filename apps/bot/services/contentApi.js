@@ -1,5 +1,6 @@
 const axios = require("axios");
 const config = require("../config/config");
+const { reportRecurringError } = require("./recurringError");
 
 const API_BASE_URL = config.contentApi.baseUrl;
 const API_KEY = config.contentApi.apiKey;
@@ -50,10 +51,12 @@ async function getDueScheduledMessages() {
     
     return response.data;
   } catch (error) {
-    console.error("❌ API Error fetching scheduled messages:", error.message, {
-      status: error.response?.status,
-      responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined
-    });
+    const status = error.response?.status;
+    reportRecurringError(
+      `contentApi.dueScheduledMessages:${status ?? error.code ?? "unknown"}`,
+      "❌ API Error fetching scheduled messages:", error.message,
+      { status, responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined }
+    );
     return [];
   }
 }
@@ -90,10 +93,12 @@ async function getProbabilitySelectedMessages() {
     
     return response.data.messages_to_send;
   } catch (error) {
-    console.error("❌ API Error checking probability messages:", error.message, {
-      status: error.response?.status,
-      responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined
-    });
+    const status = error.response?.status;
+    reportRecurringError(
+      `contentApi.probabilitySelectedMessages:${status ?? error.code ?? "unknown"}`,
+      "❌ API Error checking probability messages:", error.message,
+      { status, responseError: error.response?.data?.error === "Unauthorized" ? "Unauthorized" : undefined }
+    );
     return [];
   }
 }
@@ -115,11 +120,13 @@ async function markScheduledMessageSent(scheduleId) {
     console.log(`   Response data:`, response.data);
     
   } catch (error) {
+    const status = error.response?.status;
     const responseError = error.response?.data?.error;
-    console.error(`❌ API Error marking schedule ${scheduleId} as sent:`, error.message, {
-      status: error.response?.status,
-      responseError: ["Unauthorized", "Schedule not found"].includes(responseError) ? responseError : undefined
-    });
+    reportRecurringError(
+      `contentApi.markScheduledMessageSent:${scheduleId}:${status ?? error.code ?? "unknown"}`,
+      `❌ API Error marking schedule ${scheduleId} as sent:`, error.message,
+      { status, responseError: ["Unauthorized", "Schedule not found"].includes(responseError) ? responseError : undefined }
+    );
   }
 }
 

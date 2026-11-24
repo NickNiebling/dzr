@@ -16,6 +16,7 @@
  */
 const crypto = require("crypto");
 const shared = require("../constants.json");
+const { reportRecurringError } = require("./recurringError");
 
 const CHANNEL_ID = shared.discord.channels.announcements;
 const ADMIN_ROLE_ID = shared.discord.roles.admin;
@@ -330,7 +331,7 @@ async function maybeSyncAnnouncements(client, deps = defaultDeps(), now = Date.n
     console.log(`📣 Announcement index synced: ${result.messages} messages, ${result.written} embedded, ${result.removed} removed`);
     return result;
   } catch (error) {
-    console.error("Announcement index sync failed:", error?.message || error);
+    reportRecurringError("announcementIndex.sync", "Announcement index sync failed:", error?.message || error);
     return null;
   } finally {
     syncRunning = false;

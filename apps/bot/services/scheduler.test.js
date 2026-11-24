@@ -27,6 +27,7 @@ function loadScheduler(contentApi, maybePostScheduledQuiz = noop) {
     "./ladder/ladderJobs": { maybeRunLadderJobs: noop },
     "./announcementIndex": { maybeSyncAnnouncements: noop },
     "./announcer": { maybeRunAnnouncer: noop },
+    "./recurringError": { reportRecurringError: noop },
   }, {
     console: { log() {}, error() {} },
     process: { env: {} },

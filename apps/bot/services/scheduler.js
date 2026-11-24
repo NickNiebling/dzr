@@ -9,6 +9,7 @@ const { maybeSendCoachFollowUps } = require("./coachFollowUp");
 const { maybeRunLadderJobs } = require("./ladder/ladderJobs");
 const { maybeSyncAnnouncements } = require("./announcementIndex");
 const { maybeRunAnnouncer } = require("./announcer");
+const { reportRecurringError } = require("./recurringError");
 
 let schedulerRunning = false;
 
@@ -28,7 +29,7 @@ async function checkScheduledMessages(client) {
     // Sweep New Member role assignments once per hour
     await checkNewMemberSweeps(client);
     // Update KMS status message periodically
-    await updateKmsStatus(client);
+    await updateKmsStatus(client, { scheduled: true });
 
     // Refresh Zwift club roster once per day (via backend Content API)
     await checkClubRosterRefresh();
@@ -60,7 +61,7 @@ async function checkScheduledMessages(client) {
     maybeRunAnnouncer(client);
     
   } catch (error) {
-    console.error("❌ Error checking scheduled messages:", error);
+    reportRecurringError("scheduler.tick", "❌ Error checking scheduled messages:", error);
   } finally {
     schedulerRunning = false;
   }
@@ -114,7 +115,7 @@ async function checkZpRoleSync(client) {
       console.log("✅ ZP pace role sync completed:", result);
     }
   } catch (error) {
-    console.error("❌ Error syncing ZP pace roles:", error?.message || error);
+    reportRecurringError("scheduler.zpRoles", "❌ Error syncing ZP pace roles:", error?.message || error);
   }
 }
 
@@ -155,7 +156,7 @@ async function checkClubRosterRefresh() {
 
     console.log("✅ Club roster refresh completed:", result);
   } catch (error) {
-    console.error("❌ Error refreshing club roster:", error?.message || error);
+    reportRecurringError("scheduler.clubRoster", "❌ Error refreshing club roster:", error?.message || error);
   }
 }
 
@@ -194,7 +195,7 @@ async function checkZwiftPowerRosterRefresh() {
 
     console.log("✅ ZwiftPower roster refresh completed:", result);
   } catch (error) {
-    console.error("❌ Error refreshing ZwiftPower roster:", error?.message || error);
+    reportRecurringError("scheduler.zwiftPowerRoster", "❌ Error refreshing ZwiftPower roster:", error?.message || error);
   }
 }
 
@@ -209,7 +210,7 @@ function onTheHalfHour() {
 async function dmEventEditor(client, text) {
   const id = String(process.env.ZWIFT_EVENT_EDITOR_DISCORD_ID || "").trim();
   if (!id) {
-    console.error("❌ ZWIFT_EVENT_EDITOR_DISCORD_ID is not set");
+    reportRecurringError("scheduler.eventEditorNotConfigured", "❌ ZWIFT_EVENT_EDITOR_DISCORD_ID is not set");
     return false;
   }
   const user = await client.users.fetch(id);
@@ -256,9 +257,9 @@ async function checkWeeklySeriesApply(client) {
     }
   } catch (error) {
     const message = jobErrorMessage(error);
-    console.error("❌ Error applying weekly series routes:", message);
+    reportRecurringError("scheduler.weeklySeries", "❌ Error applying weekly series routes:", message);
     await dmOnce(client, "weekly_route_error", `Weekly series route update failed: ${message}`).catch((dmError) => {
-      console.error("❌ Could not DM the event editor:", dmError?.message || dmError);
+      reportRecurringError("scheduler.weeklySeriesEditorDm", "❌ Could not DM the event editor:", dmError?.message || dmError);
     });
   }
 }
@@ -318,9 +319,9 @@ async function checkFiftyResultsFix(client) {
     }
   } catch (error) {
     const message = jobErrorMessage(error);
-    console.error("❌ Error fixing Zwifty Fifty categories:", message);
+    reportRecurringError("scheduler.fiftyResults", "❌ Error fixing Zwifty Fifty categories:", message);
     await dmOnce(client, "weekly_fix_due_error", `The Zwifty Fifty ZwiftPower update failed: ${message}`).catch((dmError) => {
-      console.error("❌ Could not DM the event editor:", dmError?.message || dmError);
+      reportRecurringError("scheduler.fiftyResultsEditorDm", "❌ Could not DM the event editor:", dmError?.message || dmError);
     });
   }
 }
@@ -345,7 +346,7 @@ async function checkTimeBasedMessages(client) {
       await sendScheduledMessage(client, scheduledMessage);
     }
   } catch (error) {
-    console.error("❌ Error checking time-based scheduled messages:", error);
+    reportRecurringError("scheduler.timeBasedMessages", "❌ Error checking time-based scheduled messages:", error);
   }
 }
 
@@ -382,12 +383,12 @@ async function checkNewMemberSweeps(client) {
       await sweepGuildForNewMembers(guild);
     }
   } catch (error) {
-    console.error("❌ Error running New Member sweep:", error);
+    reportRecurringError("scheduler.newMemberSweep", "❌ Error running New Member sweep:", error);
   }
 }
 
 // KMS status updater (countdown + signup count)
-async function updateKmsStatus(client) {
+async function updateKmsStatus(client, { scheduled = false } = {}) {
   try {
     const channelId = config.kms?.channelId || process.env.KMS_CHANNEL_ID || "1413820948536365190";
     const roleId = config.kms?.roleId || process.env.KMS_ROLE_ID || "1413793742808416377";
@@ -475,11 +476,11 @@ async function updateKmsStatus(client) {
         rememberKmsMessageId(stateKey, messageId);
       } catch (sendErr) {
         cachedKmsMessage = null;
-        console.error("❌ Failed to send KMS status message:", sendErr.message);
+        reportRecurringError(scheduled ? "scheduler.kmsSend" : null, "❌ Failed to send KMS status message:", sendErr.message);
       }
     }
   } catch (error) {
-    console.error("❌ Error updating KMS status:", error);
+    reportRecurringError(scheduled ? "scheduler.kmsUpdate" : null, "❌ Error updating KMS status:", error);
   }
 }
 
@@ -492,7 +493,10 @@ async function sendScheduledMessage(client, scheduledMessage) {
     
     const channel = client.channels.cache.get(scheduledMessage.channel_id);
     if (!channel) {
-      console.error(`❌ Channel ${scheduledMessage.channel_id} not found for scheduled message ${scheduledMessage.id}`);
+      reportRecurringError(
+        `scheduler.scheduledMessageChannel:${scheduledMessage.id}:${scheduledMessage.channel_id}`,
+        `❌ Channel ${scheduledMessage.channel_id} not found for scheduled message ${scheduledMessage.id}`
+      );
       return;
     }
 
@@ -542,11 +546,15 @@ async function sendScheduledMessage(client, scheduledMessage) {
     console.log(`🎉 Completed scheduled message: ${scheduledMessage.title}`);
 
   } catch (error) {
-    console.error(`❌ Error sending scheduled message "${scheduledMessage.title}":`, error?.message ?? String(error), {
-      status: error?.status,
-      messageId: scheduledMessage.id,
-      channelId: scheduledMessage.channel_id
-    });
+    const { id, channel_id: channelId } = scheduledMessage;
+    const status = error?.status;
+    const code = error?.code ?? status ?? "unknown";
+    reportRecurringError(
+      `scheduler.sendScheduledMessage:${id}:${channelId}:${code}`,
+      `❌ Error sending scheduled message "${scheduledMessage.title}":`,
+      error?.message ?? String(error),
+      { status, messageId: id, channelId }
+    );
   }
 }
 
