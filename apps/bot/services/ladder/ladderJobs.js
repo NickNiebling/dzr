@@ -6,6 +6,7 @@ const ladderClient = require("./ladderClient");
 const ladderState = require("./ladderState");
 const { buildLadderOptaktMessage, accentColor } = require("./ladderEmbed");
 const { describeProfile, loadMatchProfile } = require("./routeInfo");
+const { reportRecurringError } = require("../recurringError");
 
 const TICK_MS = 10 * 60 * 1000;
 const REMINDER_HOUR = 12;
@@ -99,7 +100,7 @@ async function syncTeam(client, team, now) {
       }
     } catch (err) {
       if (ladderClient.isAuthUnavailable(err)) throw err;
-      console.error(`[ladder] Match ${id} (${team.name}) failed:`, err.message);
+      reportRecurringError(`ladder.match:${deliveryKey}`, `[ladder] Match ${id} (${team.name}) failed:`, err.message);
     }
   }
 }
@@ -118,11 +119,11 @@ async function maybeRunLadderJobs(client, now = new Date()) {
           console.warn("[ladder] Job paused:", err.message);
           return;
         }
-        console.error(`[ladder] Team ${team.name} failed:`, err.message);
+        reportRecurringError(`ladder.team:${String(team.name).trim().toLowerCase()}`, `[ladder] Team ${team.name} failed:`, err.message);
       }
     }
   } catch (err) {
-    console.error("[ladder] Job failed:", err.message);
+    reportRecurringError("ladder.job", "[ladder] Job failed:", err.message);
   } finally {
     running = false;
   }

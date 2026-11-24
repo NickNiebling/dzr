@@ -15,6 +15,7 @@ const { gatherCandidates, pickCandidate } = require("./signals");
 const drafts = require("./drafts");
 const { defaultSources, readFeatureCatalog } = require("./sources");
 const dmReminders = require("./dmReminders");
+const { reportRecurringError } = require("../recurringError");
 
 const QUEUE_CHECK_MS = 15 * 60 * 1000;
 const CATALOG_PUBLISH_MS = 6 * 60 * 60 * 1000;
@@ -39,7 +40,7 @@ async function readState(db) {
  * @param {{ dryRun?: boolean }} options dryRun: report candidates and the pick, write nothing.
  * @returns {Promise<{ candidates: object[], picked: object|null, draftId?: string, skipped?: string }>}
  */
-async function runDaily(client, { dryRun = false, deps = drafts.defaultDeps(), sources } = {}) {
+async function runDaily(client, { dryRun = false, deps = drafts.defaultDeps(), sources, scheduled = false } = {}) {
   const settings = await loadSettings(deps.db);
   const now = deps.now();
   const state = await readState(deps.db);
@@ -71,7 +72,10 @@ async function runDaily(client, { dryRun = false, deps = drafts.defaultDeps(), s
     } catch (error) {
       // The moderators channel could not be reached: try again tomorrow, with the commit log
       // where it was, so no feature news is lost.
-      console.error(`Announcer could not post the draft for ${candidate.key}:`, error?.message || error);
+      reportRecurringError(
+        scheduled ? "announcer.draftPost" : null,
+        `Announcer could not post the draft for ${candidate.key}:`, error?.message || error
+      );
       return { ...report, skipped: "draft_post_failed" };
     }
     if (candidate.meta?.headSha) {
@@ -96,7 +100,7 @@ async function maybeRunAnnouncer(client) {
       const state = await readState(deps.db);
       if (state.lastRunDate !== local.dateKey) {
         await drafts.stateRef(deps.db).set({ lastRunDate: local.dateKey }, { merge: true });
-        const result = await runDaily(client, { deps });
+        const result = await runDaily(client, { deps, scheduled: true });
         console.log(`📣 Announcer: ${result.draftId ? `drafted ${result.picked.key}` : `no draft (${result.skipped})`}; ${result.candidates.length} candidate(s)`);
       }
     }
@@ -115,7 +119,7 @@ async function maybeRunAnnouncer(client) {
 
     await dmReminders.processDue(client);
   } catch (error) {
-    console.error("❌ Announcer tick failed:", error?.message || error);
+    reportRecurringError("announcer.tick", "❌ Announcer tick failed:", error?.message || error);
   } finally {
     running = false;
   }

@@ -21,6 +21,7 @@ const {
 } = require("./coachChatNotes");
 const { formatCalendarForPrompt } = require("./memberCalendar");
 const { extractTokenUsage } = require("./coachUsage");
+const { reportRecurringError } = require("./recurringError");
 const {
   COACH_MODEL,
   COACH_BASE_EFFORT,
@@ -264,7 +265,7 @@ async function runFollowUpSweep(now) {
       due.push(profile);
     }
   } catch (err) {
-    console.error("listCoachProfiles failed:", err?.message || err);
+    reportRecurringError("coachFollowUp.listProfiles", "listCoachProfiles failed:", err?.message || err);
     return { skipped: "list_failed" };
   }
 
@@ -274,7 +275,7 @@ async function runFollowUpSweep(now) {
       await sendOneFollowUp(profile);
       sent += 1;
     } catch (err) {
-      console.error("coach follow-up failed:", profile?.discordId, err?.message || err);
+      reportRecurringError(`coachFollowUp.send:${profile?.discordId}`, "coach follow-up failed:", profile?.discordId, err?.message || err);
       try {
         await markCoachFollowUpSent(profile.discordId);
       } catch {
