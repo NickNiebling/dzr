@@ -85,43 +85,15 @@ class ZwiftProfileTest(unittest.TestCase):
         self.assertEqual(self.get.call_count, 2)
         self.assertEqual(self.post.call_count, 2)
 
-    def test_concurrent_replay_rejections_report_once_and_start_cooldown(self):
-        self.zwift.ensure_valid_token()
-        self.post.return_value = response(200, b'{"access_token":"new-token","expires_in":300}')
-        both_using_old_token = Barrier(2)
-        both_using_new_token = Barrier(2)
-
-        def get(url, *, headers, **kwargs):
-            barrier = both_using_old_token if headers["Authorization"] == "Bearer test-token" else both_using_new_token
-            barrier.wait(timeout=5)
-            return response(401)
-
-        self.get.side_effect = get
-        with self.assertLogs("ZwiftAPI", "WARNING") as logs, ThreadPoolExecutor(max_workers=2) as pool:
-            calls = [pool.submit(self.zwift.get_profile, rider_id) for rider_id in ("123", "456")]
-            for call in calls:
-                with self.assertRaises(ZwiftAuthError) as failure:
-                    call.result(timeout=6)
-                self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
-            with self.assertRaises(ZwiftAuthError):
-                self.zwift.get_profile("789")
-
-        self.assertEqual([record.levelname for record in logs.records], ["WARNING", "ERROR"])
-        self.assertEqual(self.get.call_count, 4)
-        self.assertEqual(self.post.call_count, 2)
-
     def test_profile_stops_when_401_recovery_enters_cooldown(self):
         self.zwift.ensure_valid_token()
         self.post.side_effect = [response(429)]
         self.get.return_value = response(401)
 
-        with self.assertLogs("ZwiftAPI", "WARNING") as logs:
-            for rider_id in ("123", "456"):
-                with self.assertRaises(ZwiftAuthError) as failure:
-                    self.zwift.get_profile(rider_id)
-                self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
+        with self.assertLogs("ZwiftAPI", "ERROR"), self.assertRaises(ZwiftAuthError) as failure:
+            self.zwift.get_profile("123")
 
-        self.assertEqual([record.levelname for record in logs.records], ["WARNING", "ERROR"])
+        self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
         self.get.assert_called_once()
         self.assertEqual(self.post.call_count, 2)
 

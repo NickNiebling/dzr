@@ -180,9 +180,12 @@ class ZwiftAPI:
         )
         return ZwiftAuthError(retry_after)
 
-    def ensure_valid_token(self) -> str:
+    def ensure_valid_token(self, *, rejected_token: str | None = None) -> str:
         """Return a token, sharing renewal and its cooldown across requests for this account."""
         with self._auth_lock:
+            if rejected_token is not None and rejected_token == self._access_token:
+                self._access_token = None
+                logger.warning("Zwift %s access token rejected (HTTP 401); renewing", self._account)
             now = time.monotonic()
             if self._access_token is not None and now < self._token_expires_at:
                 return self._access_token
@@ -201,20 +204,13 @@ class ZwiftAPI:
 
     def _replay_after_401(self, send, headers):
         """Replay an eligible request once, renewing only the rejected token."""
-        with self._auth_lock:
-            if headers["Authorization"] == f"Bearer {self._access_token}":
-                self._access_token = None
-                logger.warning("Zwift %s access token rejected (HTTP 401); renewing", self._account)
-
-        retry_headers = {**headers, **self._auth_headers()}
-        response = send(headers=retry_headers)
+        token = self.ensure_valid_token(rejected_token=headers["Authorization"].removeprefix("Bearer "))
+        response = send(headers={**headers, "Authorization": f"Bearer {token}"})
         if response.status_code == 401:
             with self._auth_lock:
-                if retry_headers["Authorization"] == f"Bearer {self._access_token}":
+                if token == self._access_token:
                     raise self._auth_failure("renewed access token rejected (HTTP 401)")
-                # Another caller has already invalidated or replaced this token.
-                retry_after = ceil(self._auth_retry_at - time.monotonic())
-                raise ZwiftAuthError(retry_after if retry_after > 0 else AUTH_RETRY_INITIAL)
+                raise ZwiftAuthError(max(0, ceil(self._auth_retry_at - time.monotonic())))
         return response
 
     def _auth_headers(self) -> Dict[str, str]:
@@ -364,16 +360,6 @@ class ZwiftAPI:
             )
         return out
 
-    def _event_headers(self) -> Dict[str, str]:
-        return {
-            **self._auth_headers(),
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer": "https://www.zwift.com/",
-            "Origin": "https://www.zwift.com",
-        }
-
     def get_event(self, event_id: int):
         """Return (eventTemplateId, eventData) from the organizer events-core document."""
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
@@ -405,7 +391,14 @@ class ZwiftAPI:
             "eventData": event,
         }
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
-        headers = self._event_headers()
+        headers = {
+            **self._auth_headers(),
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://www.zwift.com/",
+            "Origin": "https://www.zwift.com",
+        }
         send = partial(requests.put, url, params={"skipDefaults": "true"}, json=payload, timeout=30)
         response = send(headers=headers)
         if response.status_code == 401:
