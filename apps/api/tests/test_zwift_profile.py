@@ -73,16 +73,18 @@ class ZwiftProfileTest(unittest.TestCase):
             ["password", "refresh_token"],
         )
 
-    def test_profile_does_not_retry_a_503_after_401_replay(self):
+    def test_profile_replay_401_leaves_renewed_token_available(self):
         self.zwift.ensure_valid_token()
         self.post.return_value = response(200, b'{"access_token":"new-token","expires_in":300}')
-        self.get.side_effect = [response(401), response(503)]
+        self.get.side_effect = [response(401), response(401), response(200, b'{"id": 456}')]
 
-        with self.assertRaises(HTTPError) as failure:
+        with self.assertRaises(ZwiftAuthError) as failure:
             self.zwift.get_profile("123")
 
-        self.assertEqual(failure.exception.response.status_code, 503)
+        self.assertIsNone(failure.exception.retry_after)
         self.assertEqual(self.get.call_count, 2)
+        self.assertEqual(self.zwift.get_profile("456"), {"id": 456})
+        self.assertEqual(self.get.call_args.kwargs["headers"]["Authorization"], "Bearer new-token")
         self.assertEqual(self.post.call_count, 2)
 
     def test_profile_stops_when_401_recovery_enters_cooldown(self):

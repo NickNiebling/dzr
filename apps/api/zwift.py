@@ -72,8 +72,11 @@ class ZwiftError(Exception):
 
 
 class ZwiftAuthError(Exception):
-    def __init__(self, retry_after: int):
-        super().__init__("Zwift authentication is temporarily unavailable")
+    def __init__(self, retry_after: int | None = None):
+        super().__init__(
+            "Zwift rejected the request after token renewal"
+            if retry_after is None else "Zwift authentication is temporarily unavailable"
+        )
         self.retry_after = retry_after
 
 
@@ -169,17 +172,6 @@ class ZwiftAPI:
         self._token_expires_at = time.monotonic() + expires_in - min(60, expires_in / 2)
         return access_token
 
-    def _auth_failure(self, reason: str) -> ZwiftAuthError:
-        """Start the account cooldown and report the failure while holding the auth lock."""
-        self._access_token = None
-        retry_after = self._auth_retry_delay
-        self._auth_retry_at = time.monotonic() + retry_after
-        self._auth_retry_delay = min(retry_after * 2, AUTH_RETRY_MAX)
-        logger.error(
-            "Zwift %s authentication failed (%s); retrying in %d seconds", self._account, reason, retry_after
-        )
-        return ZwiftAuthError(retry_after)
-
     def ensure_valid_token(self, *, rejected_token: str | None = None) -> str:
         """Return a token, sharing renewal and its cooldown across requests for this account."""
         with self._auth_lock:
@@ -195,8 +187,15 @@ class ZwiftAPI:
             try:
                 token = self._renew_token()
             except (RequestException, ValueError, ZwiftError) as error:
+                self._access_token = None
+                retry_after = self._auth_retry_delay
+                self._auth_retry_at = time.monotonic() + retry_after
+                self._auth_retry_delay = min(retry_after * 2, AUTH_RETRY_MAX)
                 reason = str(error) if isinstance(error, ZwiftError) else type(error).__name__
-                raise self._auth_failure(reason) from None
+                logger.error(
+                    "Zwift %s authentication failed (%s); retrying in %d seconds", self._account, reason, retry_after
+                )
+                raise ZwiftAuthError(retry_after) from None
 
             self._auth_retry_at = 0.0
             self._auth_retry_delay = AUTH_RETRY_INITIAL
@@ -207,10 +206,8 @@ class ZwiftAPI:
         token = self.ensure_valid_token(rejected_token=headers["Authorization"].removeprefix("Bearer "))
         response = send(headers={**headers, "Authorization": f"Bearer {token}"})
         if response.status_code == 401:
-            with self._auth_lock:
-                if token == self._access_token:
-                    raise self._auth_failure("renewed access token rejected (HTTP 401)")
-                raise ZwiftAuthError(max(0, ceil(self._auth_retry_at - time.monotonic())))
+            # The resource can reject a token that still works for other requests.
+            raise ZwiftAuthError()
         return response
 
     def _auth_headers(self) -> Dict[str, str]:
