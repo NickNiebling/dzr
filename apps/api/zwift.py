@@ -201,28 +201,28 @@ class ZwiftAPI:
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.ensure_valid_token()}"}
     
-    def fetch_json_with_retry(self, url, headers, params, *, not_found_ok=False):
-        """Fetch JSON data with retries and tolerant parsing.
-        - Ensures Accept/User-Agent headers are present
+    def _fetch_json_with_retry(self, url, params=None, *, accept="application/json", not_found_ok=False):
+        """Fetch authenticated JSON data with retries and tolerant parsing.
         - Returns a sentinel for 404 when the caller opts in
         - Handles 204/empty body
         - Validates content-type before parsing JSON
         """
-        req_headers = dict(headers or {})
-        req_headers.setdefault('Accept', 'application/json, text/plain, */*')
-        req_headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
-        authorization = req_headers.get("Authorization")
+        headers = {
+            **self._auth_headers(),
+            "Accept": accept,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
         auth_replayed = False
 
         # A request replayed after a 401 gets one attempt with its new token.
         @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5, giveup=lambda _: auth_replayed)
         def _fetch():
             nonlocal auth_replayed
-            response = requests.get(url, headers=req_headers, params=params, timeout=20)
-            if response.status_code == 401 and isinstance(authorization, str) and authorization.startswith("Bearer "):
+            response = requests.get(url, headers=headers, params=params, timeout=20)
+            if response.status_code == 401:
                 auth_replayed = True
-                self._invalidate_rejected_token(authorization)
-                retry_headers = {**req_headers, **self._auth_headers()}
+                self._invalidate_rejected_token(headers["Authorization"])
+                retry_headers = {**headers, **self._auth_headers()}
                 response = requests.get(url, headers=retry_headers, params=params, timeout=20)
                 if response.status_code == 401:
                     self._invalidate_rejected_token(retry_headers["Authorization"])
@@ -250,7 +250,7 @@ class ZwiftAPI:
     def get_profile(self, id):
         # Avoid double slash and use tolerant fetcher
         url = f'https://us-or-rly101.zwift.com/api/profiles/{id}'
-        data = self.fetch_json_with_retry(url, headers=self._auth_headers(), params=None, not_found_ok=True)
+        data = self._fetch_json_with_retry(url, accept="application/json, text/plain, */*", not_found_ok=True)
         return None if data is _NOT_FOUND else (data or {})
 
     def get_club_roster(
@@ -280,8 +280,7 @@ class ZwiftAPI:
             if cur_start:
                 params["start"] = cur_start
 
-            headers = {**self._auth_headers(), "Accept": "application/json"}
-            data = self.fetch_json_with_retry(url, headers=headers, params=params)
+            data = self._fetch_json_with_retry(url, params)
 
             # Response shape can be a list or a wrapper dict depending on backend version.
             if isinstance(data, list):
@@ -362,11 +361,8 @@ class ZwiftAPI:
     def get_event(self, event_id: int):
         """Return (eventTemplateId, eventData) from the organizer events-core document."""
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
-        headers = {**self._auth_headers(), "Accept": "application/json"}
         try:
-            payload = self.fetch_json_with_retry(
-                url, headers=headers, params={"skipDefaults": "true"}
-            )
+            payload = self._fetch_json_with_retry(url, {"skipDefaults": "true"})
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             body = exc.response.text if exc.response is not None else ""

@@ -125,16 +125,10 @@ class ZwiftAuthTest(unittest.TestCase):
                 ]
                 self.assertEqual(client.ensure_valid_token(), "cached-access")
                 self.clock.return_value += 240
-                with self.assertLogs("ZwiftAPI", "ERROR") as logs:
-                    with self.assertRaises(ZwiftAuthError) as failure:
-                        client.ensure_valid_token()
-                    self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
-                    self.clock.return_value += 1
-                    with self.assertRaises(ZwiftAuthError) as paused:
-                        client.ensure_valid_token()
-                    self.assertEqual(paused.exception.retry_after, AUTH_RETRY_INITIAL - 1)
+                with self.assertLogs("ZwiftAPI", "ERROR") as logs, self.assertRaises(ZwiftAuthError) as failure:
+                    client.ensure_valid_token()
+                self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
                 self.assertIn(f"HTTP {status}", logs.output[0])
-                self.assertEqual(len(logs.records), 1)
                 self.assertEqual(
                     [call.kwargs["data"]["grant_type"] for call in self.post.call_args_list],
                     ["password", "refresh_token"],

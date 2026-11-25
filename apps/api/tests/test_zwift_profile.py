@@ -2,7 +2,7 @@
 
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier, Event
 from unittest.mock import patch
 
 from requests import HTTPError, Response
@@ -45,21 +45,25 @@ class ZwiftProfileTest(unittest.TestCase):
         self.assertEqual(self.zwift.get_profile("123"), {"id": 123})
         self.assertEqual(self.get.call_count, 2)
 
-    def test_simultaneous_profile_401s_share_one_token_refresh(self):
+    def test_late_profile_401_reuses_token_refreshed_by_another_request(self):
         self.zwift.ensure_valid_token()
-        self.post.side_effect = [response(200, b'{"access_token":"new-token","expires_in":300}')]
-        both_rejected = Barrier(2)
+        self.post.return_value = response(200, b'{"access_token":"new-token","expires_in":300}')
+        both_using_old_token = Barrier(2)
+        first_replay = Event()
 
         def get(url, *, headers, **kwargs):
             if headers["Authorization"] == "Bearer test-token":
-                both_rejected.wait(timeout=5)
+                both_using_old_token.wait(timeout=5)
+                if url.endswith("/456"):
+                    self.assertTrue(first_replay.wait(timeout=5), "first request did not replay with the new token")
                 return response(401)
             self.assertEqual(headers["Authorization"], "Bearer new-token")
+            first_replay.set()
             return response(200, b'{"id": 123}')
 
         self.get.side_effect = get
         with ThreadPoolExecutor(max_workers=2) as pool:
-            calls = [pool.submit(self.zwift.get_profile, "123") for _ in range(2)]
+            calls = [pool.submit(self.zwift.get_profile, rider_id) for rider_id in ("123", "456")]
             self.assertEqual([call.result(timeout=6) for call in calls], [{"id": 123}] * 2)
 
         self.assertEqual(self.get.call_count, 4)
