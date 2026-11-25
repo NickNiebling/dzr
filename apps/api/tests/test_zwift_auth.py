@@ -143,16 +143,26 @@ class ZwiftAuthTest(unittest.TestCase):
             Mock(status_code=401, ok=False),
             Mock(status_code=401, ok=False, reason="Unauthorized", text="rejected again"),
         ]) as put:
-            with self.assertRaises(ZwiftError) as failure:
+            with self.assertRaises(ZwiftAuthError) as failure:
                 self.client.save_event(42, {"title": "Fixture"}, event_template_id=100)
 
-        self.assertEqual(failure.exception.status_code, 401)
+        self.assertEqual(failure.exception.retry_after, AUTH_RETRY_INITIAL)
         self.assertEqual(self.post.call_count, 2)
         self.assertEqual(
             [call.kwargs["headers"]["Authorization"] for call in put.call_args_list],
             ["Bearer old-access", "Bearer new-access"],
         )
         self.assertEqual(put.call_args_list[0].kwargs["json"], put.call_args_list[1].kwargs["json"])
+
+    def test_event_put_does_not_replay_a_server_error(self):
+        self.post.return_value = token_response("access", "refresh")
+        with patch("zwift.requests.put", return_value=Mock(status_code=503, ok=False)) as put:
+            with self.assertRaises(ZwiftError) as failure:
+                self.client.save_event(42, {"title": "Fixture"})
+
+        self.assertEqual(failure.exception.status_code, 503)
+        self.post.assert_called_once()
+        put.assert_called_once()
 
     def test_failed_attempt_is_shared_and_other_account_can_still_authenticate(self):
         with self.assertLogs("ZwiftAPI", "ERROR") as logs:

@@ -104,6 +104,8 @@ class ObservabilityTest(unittest.TestCase):
         queue = db.collection.return_value.document.return_value
         queue.get.return_value = Mock(exists=True, to_dict=lambda: {"pendingRiders": [{"riderId": 42}]})
         rejection = Mock(status_code=401, text="private upstream response")
+        initial_token = Mock(status_code=200, json=lambda: {"access_token": "initial", "refresh_token": "refresh", "expires_in": 300})
+        renewed_token = Mock(status_code=200, json=lambda: {"access_token": "renewed", "expires_in": 300})
         with (
             patch.object(main, "zwift_api", default_client),
             patch.object(main, "organizer_zwift_api", organizer),
@@ -112,7 +114,8 @@ class ObservabilityTest(unittest.TestCase):
             patch.object(main.firebase, "db", db),
             patch.object(main, "_fix_due_fifty_results", organizer.ensure_valid_token),
             patch("zwift.time.monotonic", return_value=1000),
-            patch("zwift.requests.post", return_value=rejection) as post,
+            patch("zwift.requests.post", side_effect=[initial_token, renewed_token, rejection]) as post,
+            patch("zwift.requests.get", return_value=rejection) as get,
         ):
             client = main.app.test_client()
             headers = {"Authorization": "Bearer test-content-key"}
@@ -130,7 +133,14 @@ class ObservabilityTest(unittest.TestCase):
                     self.assertEqual(response.headers["Retry-After"], str(AUTH_RETRY_INITIAL))
                     self.assertNotIn("private upstream response", response.get_data(as_text=True))
 
-        self.assertEqual([call.kwargs["data"]["username"] for call in post.call_args_list], ["default-test", "organizer-test"])
+        self.assertEqual(
+            [call.kwargs["data"].get("username") for call in post.call_args_list],
+            ["default-test", None, "organizer-test"],
+        )
+        self.assertEqual(
+            [call.kwargs["headers"]["Authorization"] for call in get.call_args_list],
+            ["Bearer initial", "Bearer renewed"],
+        )
         queue.update.assert_not_called()
         self.assertEqual([event["logger"] for event in self.events], ["ZwiftAPI", "ZwiftAPI"])
         self.assertNotIn("private upstream response", str(self.events))
