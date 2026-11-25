@@ -3,7 +3,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from flask import Flask, g
 import sentry_sdk
@@ -87,6 +87,53 @@ class ObservabilityTest(unittest.TestCase):
         logging.getLogger("dzr-test").error("test logged error")
         self.assertEqual(len(self.events), 1)
         self.assertEqual(self.events[0]["level"], "error")
+
+    def test_zwift_auth_cooldown_reports_once_per_account_across_routes(self):
+        with (
+            patch("firebase_admin.initialize_app"),
+            patch("firebase_admin.firestore.client"),
+            patch("dotenv.load_dotenv"),
+            patch("observability.init_sentry"),
+        ):
+            import main
+        from zwift import AUTH_RETRY_INITIAL, ZwiftAPI
+
+        default_client = ZwiftAPI("default-test", "test-password")
+        organizer = ZwiftAPI("organizer-test", "test-password", account="organizer")
+        db = Mock()
+        queue = db.collection.return_value.document.return_value
+        queue.get.return_value = Mock(exists=True, to_dict=lambda: {"pendingRiders": [{"riderId": 42}]})
+        rejection = Mock(status_code=401, text="private upstream response")
+        with (
+            patch.object(main, "zwift_api", default_client),
+            patch.object(main, "organizer_zwift_api", organizer),
+            patch.object(main, "CONTENT_API_KEY", "test-content-key"),
+            patch.object(main, "ZWIFT_CLUB_ID", "123"),
+            patch.object(main.firebase, "db", db),
+            patch.object(main, "_fix_due_fifty_results", organizer.ensure_valid_token),
+            patch("zwift.time.monotonic", return_value=1000),
+            patch("zwift.requests.post", return_value=rejection) as post,
+        ):
+            client = main.app.test_client()
+            headers = {"Authorization": "Bearer test-content-key"}
+            for method, path in [
+                ("GET", "/zwift_profile/42"),
+                ("POST", "/api/zwift/club/roster/refresh"),
+                ("POST", "/api/process_rider_queue"),
+                ("GET", "/api/zwift/events/42"),
+                ("POST", "/api/zwiftpower/results/fix-due"),
+            ]:
+                with self.subTest(path=path):
+                    response = client.open(path, method=method, headers=headers, json={})
+                    self.assertEqual(response.status_code, 503)
+                    self.assertEqual(response.json["code"], "zwift_auth_unavailable")
+                    self.assertEqual(response.headers["Retry-After"], str(AUTH_RETRY_INITIAL))
+                    self.assertNotIn("private upstream response", response.get_data(as_text=True))
+
+        self.assertEqual([call.kwargs["data"]["username"] for call in post.call_args_list], ["default-test", "organizer-test"])
+        queue.update.assert_not_called()
+        self.assertEqual([event["logger"] for event in self.events], ["ZwiftAPI", "ZwiftAPI"])
+        self.assertNotIn("private upstream response", str(self.events))
 
     def test_missing_dsn_disables_delivery(self):
         sentry_sdk.get_client().close()

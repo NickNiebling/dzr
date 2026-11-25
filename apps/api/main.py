@@ -17,7 +17,7 @@ init_sentry()
 
 import firebase
 from discord_api import DiscordAPI
-from zwift import ZwiftAPI, ZwiftError
+from zwift import ZwiftAPI, ZwiftAuthError, ZwiftError
 import pytz
 from bisect import bisect_right
 from typing import Optional
@@ -57,22 +57,30 @@ def log_request_path():
         "timestamp": time.time()
     })
 
-# Global variables to cache authenticated sessions
+@app.errorhandler(ZwiftAuthError)
+def _zwift_auth_unavailable(error: ZwiftAuthError):
+    # ZwiftAPI reports the failed attempt once for all requests in the cooldown.
+    g.skip_handled_failure_report = True
+    return jsonify({"error": str(error), "code": "zwift_auth_unavailable"}), 503, {
+        "Retry-After": str(error.retry_after)
+    }
+
+
+# Cached ZwiftPower sessions
 cached_session = None
 cached_session_timestamp = None 
-cached_zwift_api = None
-cached_zwift_api_timestamp = None
-cached_organizer_api = None
-cached_organizer_api_timestamp = None
 cached_organizer_zp = None
 cached_organizer_zp_timestamp = None
 SESSION_VALIDITY = 3600  # seconds (how long the session is expected to be valid)
 
 ZWIFT_USERNAME = os.getenv("ZWIFT_USERNAME", "your_username")
 ZWIFT_PASSWORD = os.getenv("ZWIFT_PASSWORD", "your_password")
-# Event inspect and edits. Kept off the roster account on purpose.
+zwift_api = ZwiftAPI(ZWIFT_USERNAME, ZWIFT_PASSWORD)
+
+# Separate credentials for inspecting and editing events.
 ZWIFT_ORGANIZER_USERNAME = os.getenv("ZWIFT_ORGANIZER_USERNAME", "").strip()
 ZWIFT_ORGANIZER_PASSWORD = os.getenv("ZWIFT_ORGANIZER_PASSWORD", "")
+organizer_zwift_api = ZwiftAPI(ZWIFT_ORGANIZER_USERNAME, ZWIFT_ORGANIZER_PASSWORD, account="organizer")
 
 OPENAI_KEY = os.getenv("OPENAI_KEY", "your_openai_key")
 
@@ -406,9 +414,6 @@ def overwrite_zwiftpower_club_members_in_firestore(members: list[dict]) -> dict:
 
 def _refresh_companion_club_roster(club_id: str, limit: int = 100, paginate: bool = True) -> dict:
     """Fetch roster from Zwift and overwrite Firestore collection companion_club_members."""
-    zwift_api = get_authenticated_zwift_api()
-    zwift_api.ensure_valid_token()
-
     roster = zwift_api.get_club_roster(str(club_id), limit=limit, paginate=paginate)
     simplified = ZwiftAPI.simplify_club_roster(roster or [])
 
@@ -560,50 +565,6 @@ def get_authenticated_session() -> requests.Session:
     cached_session_timestamp = now
     return new_session
 
-def get_authenticated_zwift_api() -> ZwiftAPI:
-    """Return a cached, authenticated ZwiftAPI if available and still valid; otherwise, create a new one."""
-    global cached_zwift_api, cached_zwift_api_timestamp
-    now = time.time()
-    
-    # If we have a valid cached API instance, reuse it
-    if cached_zwift_api and cached_zwift_api_timestamp and (now - cached_zwift_api_timestamp < SESSION_VALIDITY):
-        print("Using cached authenticated ZwiftAPI (container is warm).")
-        # Ensure token is still valid
-        cached_zwift_api.ensure_valid_token()
-        return cached_zwift_api
-
-    # Otherwise, create a new API instance and authenticate
-    print("No valid ZwiftAPI found. Creating and authenticating new instance.")
-    new_zwift_api = ZwiftAPI(ZWIFT_USERNAME, ZWIFT_PASSWORD)
-    new_zwift_api.authenticate()
-    
-    # Update the cache
-    cached_zwift_api = new_zwift_api
-    cached_zwift_api_timestamp = now
-    return new_zwift_api
-
-
-def get_authenticated_organizer_api() -> ZwiftAPI:
-    """Zwift login that can edit DZR events. Separate from the roster account."""
-    global cached_organizer_api, cached_organizer_api_timestamp
-    if not ZWIFT_ORGANIZER_USERNAME or not ZWIFT_ORGANIZER_PASSWORD:
-        raise RuntimeError(
-            "ZWIFT_ORGANIZER_USERNAME and ZWIFT_ORGANIZER_PASSWORD are not configured"
-        )
-    now = time.time()
-    if (
-        cached_organizer_api
-        and cached_organizer_api_timestamp
-        and (now - cached_organizer_api_timestamp < SESSION_VALIDITY)
-    ):
-        cached_organizer_api.ensure_valid_token()
-        return cached_organizer_api
-    api = ZwiftAPI(ZWIFT_ORGANIZER_USERNAME, ZWIFT_ORGANIZER_PASSWORD)
-    api.authenticate()
-    cached_organizer_api = api
-    cached_organizer_api_timestamp = now
-    return api
-
 
 def get_organizer_zwiftpower() -> ZwiftPower:
     """ZwiftPower login that can edit DZR results. Separate from the roster account."""
@@ -680,7 +641,7 @@ def _fix_due_fifty_results() -> dict:
         event_id = str(row.get("id") or "").strip()
         if not event_id.isdigit():
             continue
-        start = _event_start(get_authenticated_organizer_api().inspect_event(int(event_id)))
+        start = _event_start(organizer_zwift_api.inspect_event(int(event_id)))
         if start + timedelta(minutes=90) <= now < start + timedelta(hours=4):
             due.append(int(event_id))
         elif row.get("resultsFix"):
@@ -819,7 +780,7 @@ def _fix_due_fifty_sprints() -> dict:
         event_id = str(row.get("id") or "").strip()
         if not event_id.isdigit():
             continue
-        inspected = get_authenticated_organizer_api().inspect_event(int(event_id))
+        inspected = organizer_zwift_api.inspect_event(int(event_id))
         start = _event_start(inspected)
         if start <= now:
             continue
@@ -855,6 +816,8 @@ def _zwift_event_response(result):
 
 
 def _zwift_event_error(exc: Exception):
+    if isinstance(exc, ZwiftAuthError):
+        return _zwift_auth_unavailable(exc)
     if isinstance(exc, ValueError):
         return jsonify({"error": str(exc)}), 400
     if isinstance(exc, ZwiftError):
@@ -880,7 +843,7 @@ def zwift_inspect_event(event_id: int):
     if unauthorized:
         return unauthorized
     try:
-        return _zwift_event_response(get_authenticated_organizer_api().inspect_event(event_id))
+        return _zwift_event_response(organizer_zwift_api.inspect_event(event_id))
     except Exception as exc:
         return _zwift_event_error(exc)
 
@@ -896,7 +859,7 @@ def zwift_add_event_tags(event_id: int):
     if not isinstance(tags, list):
         return jsonify({"error": "tags must be a list"}), 400
     try:
-        return _zwift_event_response(get_authenticated_organizer_api().add_event_tags(event_id, tags))
+        return _zwift_event_response(organizer_zwift_api.add_event_tags(event_id, tags))
     except Exception as exc:
         return _zwift_event_error(exc)
 
@@ -925,7 +888,7 @@ def zwift_update_event_course(event_id: int):
                     subgroup_routes.append({"id": int(item.get("id")), "routeId": int(item.get("routeId"))})
                 except (TypeError, ValueError):
                     raise ValueError("Each category needs an id and a routeId")
-        updated = get_authenticated_organizer_api().update_event_course(
+        updated = organizer_zwift_api.update_event_course(
             event_id,
             new_route_id=route_id,
             new_distance_meters=distance,
@@ -1004,6 +967,8 @@ def zwiftpower_fix_due_results():
         categories = _fix_due_fifty_results()
         sprints = _fix_due_fifty_sprints()
         return jsonify({"categories": categories, "sprints": sprints})
+    except ZwiftAuthError:
+        raise
     except Exception as exc:
         print(f"ZwiftPower due update failed: {exc}")
         return jsonify({"error": str(exc)}), 502
@@ -1176,9 +1141,9 @@ def zwift_profile(rider_id: int):
         unauthorized = require_api_or_401()
         if unauthorized:
             return unauthorized
-        zwift_api = get_authenticated_zwift_api()
-        zwift_api.ensure_valid_token()
         return jsonify(_profile_identity(zwift_api.get_profile(rider_id)))
+    except ZwiftAuthError:
+        raise
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1903,9 +1868,6 @@ def process_rider_queue():
         batch_to_process = pending_riders[:batch_size]
         remaining_pending = pending_riders[batch_size:]
         
-        # Get cached ZwiftAPI instance
-        zwift_api = get_authenticated_zwift_api()
-        
         processed_count = 0
         success_count = 0
         
@@ -1942,6 +1904,8 @@ def process_rider_queue():
                     failed_riders.append(rider)
                     
                     print(f"Could not find racing score for rider {rider_name}")
+            except ZwiftAuthError:
+                raise
             except Exception as rider_error:
                 # Add to failed list with error
                 rider["processedAt"] = datetime.now()
@@ -1979,6 +1943,8 @@ def process_rider_queue():
             "queue_empty": len(remaining_pending) == 0
         })
         
+    except ZwiftAuthError:
+        raise
     except Exception as e:
         print(f"Error processing rider queue: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -4937,6 +4903,8 @@ def refresh_default_zwift_club_roster():
             return jsonify(payload), 409
         return jsonify(payload)
 
+    except ZwiftAuthError:
+        raise
     except Exception as e:
         print(f"Error refreshing default Zwift club roster: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500

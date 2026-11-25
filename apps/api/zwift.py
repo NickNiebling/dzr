@@ -1,5 +1,7 @@
 import logging
+import threading
 import time
+from math import ceil, isfinite
 from typing import Any, Dict, List, Optional
 
 import backoff
@@ -23,6 +25,8 @@ logger = logging.getLogger('ZwiftAPI')
 
 RELAY = "https://us-or-rly101.zwift.com"
 GAME_DICTIONARY_URL = "https://www.zwift.com/zwift-web-pages/gamedictionaryextended"
+AUTH_RETRY_INITIAL = 300
+AUTH_RETRY_MAX = 3600
 _NOT_FOUND = object()
 
 # Game-dictionary world name -> Zwift mapId. Used when a route change has to
@@ -66,6 +70,12 @@ class ZwiftError(Exception):
         self.status_code = status_code
 
 
+class ZwiftAuthError(Exception):
+    def __init__(self, retry_after: int):
+        super().__init__("Zwift authentication is temporarily unavailable")
+        self.retry_after = retry_after
+
+
 def is_unlock_tag(tag: str) -> bool:
     if tag in UNLOCK_TAGS:
         return True
@@ -96,83 +106,126 @@ def merge_tags(existing: Optional[list], extra: List[str]) -> List[str]:
 
 
 class ZwiftAPI:
-    def __init__(self, username, password, client_id='Zwift Game Client'):
+    def __init__(self, username, password, client_id='Zwift Game Client', *, account='default'):
         self.username = username
         self.password = password
         self.client_id = client_id
         self.host = 'https://secure.zwift.com'
         self.token_url = f'{self.host}/auth/realms/zwift/protocol/openid-connect/token'
-        self.auth_token = None
-        self.refresh_token = None
-        self.token_expiry_time = 0
-    
-    def authenticate(self):
-        data = {
-            'client_id': self.client_id,
-            'grant_type': 'password',
-            'username': self.username,
-            'password': self.password
-        }
-        response = requests.post(self.token_url, data=data)
-        if response.status_code == 200:
-            self.auth_token = response.json()
-            logger.info("Authenticated successfully.")
-            logger.debug(f"Access token payload: {self.auth_token}")
-        else:
-            raise Exception(f"Authentication failed: {response.text}")
+        self._account = account
+        self._auth_lock = threading.Lock()
+        self._access_token: str | None = None
+        self._refresh_token: str | None = None
+        self._token_expires_at = 0.0
+        self._auth_retry_at = 0.0
+        self._auth_retry_delay = AUTH_RETRY_INITIAL
 
-        expires_in = self.auth_token['expires_in']
-        self.refresh_token = self.auth_token['refresh_token']
-        logger.info(f"Token will expire in {expires_in} seconds.")
-        # Calculate token expiry time (with 60-second buffer)
-        self.token_expiry_time = time.time() + expires_in - 60
-        
-    def refresh_auth_token(self):
-        logger.info("Refreshing auth token...")
-        data = {
-            'client_id': self.client_id,
-            'grant_type': 'refresh_token',
-            'refresh_token': self.refresh_token
-        }
-        response = requests.post(self.token_url, data=data)
-        if response.status_code == 200:
-            self.auth_token = response.json()
-            logger.info("Token refreshed successfully.")
-            # Update refresh token and expiry time when present
-            self.refresh_token = self.auth_token.get('refresh_token', self.refresh_token)
-            self.token_expiry_time = time.time() + self.auth_token.get('expires_in', 60) - 60
-        else:
-            logger.warning(f"Token refresh failed: {response.text}")
-            # If refresh fails, try to authenticate again
-            logger.info("Attempting to re-authenticate...")
-            self.authenticate()
+    def _request_token(self, **grant) -> requests.Response:
+        return requests.post(self.token_url, data={"client_id": self.client_id, **grant}, timeout=20)
+
+    def _renew_token(self) -> str:
+        response = None
+        if self._refresh_token:
+            response = self._request_token(grant_type="refresh_token", refresh_token=self._refresh_token)
+            if response.status_code != 200:
+                status = response.status_code
+                error = None
+                if status in (400, 401, 403):
+                    try:
+                        error = response.json()
+                    except ValueError:
+                        pass
+                if not isinstance(error, dict) or error.get("error") not in ("invalid_grant", "invalid_token"):
+                    raise ZwiftError(f"Token refresh returned HTTP {status}")
+                logger.warning(
+                    "Zwift %s refresh token was rejected (HTTP %s); signing in again", self._account, status
+                )
+                self._refresh_token = None
+                response = None
+        refreshing = response is not None
+        if response is None:
+            if not self.username or not self.password:
+                raise ZwiftError("Credentials are not configured")
+            response = self._request_token(grant_type="password", username=self.username, password=self.password)
+            if response.status_code != 200:
+                raise ZwiftError(f"Password sign-in returned HTTP {response.status_code}")
+
+        payload = response.json()
+        access_token = payload.get("access_token") if isinstance(payload, dict) else None
+        if not isinstance(access_token, str) or not access_token:
+            raise ZwiftError("Token response has no access token")
+        try:
+            expires_in = float(payload.get("expires_in", 60 if refreshing else 0))
+        except (TypeError, ValueError, OverflowError):
+            expires_in = 0
+        if not isfinite(expires_in) or expires_in <= 0:
+            raise ZwiftError("Token response has an invalid lifetime")
+
+        refresh_token = payload.get("refresh_token", self._refresh_token if refreshing else None)
+        self._refresh_token = refresh_token if isinstance(refresh_token, str) else None
+        self._access_token = access_token
+        # Refresh early while leaving short-lived tokens usable by waiting callers.
+        self._token_expires_at = time.monotonic() + expires_in - min(60, expires_in / 2)
+        return access_token
+
+    def ensure_valid_token(self) -> str:
+        """Return a token, sharing renewal and its cooldown across requests for this account."""
+        with self._auth_lock:
+            now = time.monotonic()
+            if self._access_token is not None and now < self._token_expires_at:
+                return self._access_token
+            retry_after = ceil(self._auth_retry_at - now)
+            if retry_after > 0:
+                raise ZwiftAuthError(retry_after)
+            try:
+                token = self._renew_token()
+            except (RequestException, ValueError, ZwiftError) as error:
+                retry_after = self._auth_retry_delay
+                self._auth_retry_at = time.monotonic() + retry_after
+                self._auth_retry_delay = min(retry_after * 2, AUTH_RETRY_MAX)
+                reason = str(error) if isinstance(error, ZwiftError) else type(error).__name__
+                logger.error(
+                    "Zwift %s authentication failed (%s); retrying in %d seconds", self._account, reason, retry_after
+                )
+                raise ZwiftAuthError(retry_after) from None
+
+            self._auth_retry_at = 0.0
+            self._auth_retry_delay = AUTH_RETRY_INITIAL
+            return token
+
+    def _invalidate_rejected_token(self, authorization: str) -> None:
+        with self._auth_lock:
+            if self._access_token is not None and authorization == f"Bearer {self._access_token}":
+                self._access_token = None
+
+    def _auth_headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.ensure_valid_token()}"}
     
-    def ensure_valid_token(self):
-        """Ensure the token is valid, refresh if needed."""
-        if not self.is_authenticated():
-            logger.info("Not authenticated. Authenticating now.")
-            self.authenticate()
-        elif time.time() >= self.token_expiry_time:
-            logger.info("Token expired or about to expire. Refreshing...")
-            self.refresh_auth_token()
-    
-    def is_authenticated(self):
-        return self.auth_token is not None and 'access_token' in self.auth_token
-    
-    def fetch_json_with_retry(self, url, headers, params, *, not_found_ok=False):
-        """Fetch JSON data with retries and tolerant parsing.
-        - Ensures Accept/User-Agent headers are present
+    def _fetch_json_with_retry(self, url, params=None, *, accept="application/json", not_found_ok=False):
+        """Fetch authenticated JSON data with retries and tolerant parsing.
         - Returns a sentinel for 404 when the caller opts in
         - Handles 204/empty body
         - Validates content-type before parsing JSON
         """
-        req_headers = dict(headers or {})
-        req_headers.setdefault('Accept', 'application/json, text/plain, */*')
-        req_headers.setdefault('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+        headers = {
+            **self._auth_headers(),
+            "Accept": accept,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
+        auth_replayed = False
 
-        @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5)
+        # A request replayed after a 401 gets one attempt with its new token.
+        @backoff.on_exception(backoff.expo, (RequestException, ValueError), max_tries=5, giveup=lambda _: auth_replayed)
         def _fetch():
-            response = requests.get(url, headers=req_headers, params=params, timeout=20)
+            nonlocal auth_replayed
+            response = requests.get(url, headers=headers, params=params, timeout=20)
+            if response.status_code == 401:
+                auth_replayed = True
+                self._invalidate_rejected_token(headers["Authorization"])
+                retry_headers = {**headers, **self._auth_headers()}
+                response = requests.get(url, headers=retry_headers, params=params, timeout=20)
+                if response.status_code == 401:
+                    self._invalidate_rejected_token(retry_headers["Authorization"])
             if not_found_ok and response.status_code == 404:
                 return _NOT_FOUND
             response.raise_for_status()
@@ -195,16 +248,9 @@ class ZwiftAPI:
         return _fetch()
             
     def get_profile(self, id):
-        if not self.is_authenticated():
-            raise Exception("Not authenticated. Please authenticate first.")
-        
-        headers = {
-            'Authorization': f"Bearer {self.auth_token['access_token']}"
-        }
-  
         # Avoid double slash and use tolerant fetcher
         url = f'https://us-or-rly101.zwift.com/api/profiles/{id}'
-        data = self.fetch_json_with_retry(url, headers=headers, params=None, not_found_ok=True)
+        data = self._fetch_json_with_retry(url, accept="application/json, text/plain, */*", not_found_ok=True)
         return None if data is _NOT_FOUND else (data or {})
 
     def get_club_roster(
@@ -223,14 +269,6 @@ class ZwiftAPI:
 
         Some Zwift deployments paginate with `start`; some ignore it. We handle both.
         """
-        if not self.is_authenticated():
-            raise Exception("Not authenticated. Please authenticate first.")
-
-        headers = {
-            "Authorization": f"Bearer {self.auth_token['access_token']}",
-            "Accept": "application/json",
-        }
-
         url = f"https://us-or-rly101.zwift.com/api/clubs/club/{club_id}/roster"
 
         all_rows: List[Dict[str, Any]] = []
@@ -242,7 +280,7 @@ class ZwiftAPI:
             if cur_start:
                 params["start"] = cur_start
 
-            data = self.fetch_json_with_retry(url, headers=headers, params=params)
+            data = self._fetch_json_with_retry(url, params)
 
             # Response shape can be a list or a wrapper dict depending on backend version.
             if isinstance(data, list):
@@ -311,9 +349,8 @@ class ZwiftAPI:
         return out
 
     def _event_headers(self) -> Dict[str, str]:
-        self.ensure_valid_token()
         return {
-            "Authorization": f"Bearer {self.auth_token['access_token']}",
+            **self._auth_headers(),
             "Accept": "application/json",
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -323,16 +360,9 @@ class ZwiftAPI:
 
     def get_event(self, event_id: int):
         """Return (eventTemplateId, eventData) from the organizer events-core document."""
-        self.ensure_valid_token()
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
-        headers = {
-            "Authorization": f"Bearer {self.auth_token['access_token']}",
-            "Accept": "application/json",
-        }
         try:
-            payload = self.fetch_json_with_retry(
-                url, headers=headers, params={"skipDefaults": "true"}
-            )
+            payload = self._fetch_json_with_retry(url, {"skipDefaults": "true"})
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else None
             body = exc.response.text if exc.response is not None else ""
@@ -359,13 +389,20 @@ class ZwiftAPI:
             "eventData": event,
         }
         url = f"{RELAY}/api/events-core/events/{int(event_id)}"
-        response = requests.put(
-            url,
-            headers=self._event_headers(),
-            params={"skipDefaults": "true"},
-            json=payload,
-            timeout=30,
-        )
+        headers = self._event_headers()
+        for attempt in range(2):
+            response = requests.put(
+                url,
+                headers=headers,
+                params={"skipDefaults": "true"},
+                json=payload,
+                timeout=30,
+            )
+            if response.status_code != 401:
+                break
+            self._invalidate_rejected_token(headers["Authorization"])
+            if attempt == 0:
+                headers = {**headers, **self._auth_headers()}
         if not response.ok:
             raise ZwiftError(
                 f"Failed to update event {event_id}: "
