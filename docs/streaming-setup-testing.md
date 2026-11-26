@@ -28,7 +28,8 @@ npm run test:streaming-setup:browser
 ## Kort manuel smoke test
 
 - Opret en registrering på testserveren, og genåbn guiden: privat nøgle ved oprettelse, ingen rotation ved genåbning eller dobbelt indsendelse. Kontrollér også afvisning uden Club Member-rollen og det uændrede `/streaming_add`-flow.
-- Følg Windows/macOS-guiden på OBS-computeren. Klik på “Gem DZR-script”, og kontrollér det foreslåede filnavn, browserens overskrivningsbekræftelse og guidens feedback ved annullering eller fejl. Prøv også “Download DZR-script” og bekræftelse efter flytning til en fast placering. Kontrollér også mobilvisningen.
+- Følg guiden på Windows, macOS eller Linux. Klik på “Gem DZR-script”, og kontrollér det foreslåede filnavn, browserens overskrivningsbekræftelse og guidens feedback ved annullering eller fejl. Prøv også “Download DZR-script” og bekræftelse efter flytning til en fast placering. Kontrollér også mobilvisningen.
+- Hvis scriptet allerede er indlæst, så markér det i OBS, og brug knappen ved siden af **+**, der er markeret i guiden. Kontrollér, at scriptet forsvinder fra listen, og at filen bliver liggende på computeren.
 - Indlæs Lua i OBS, og kopiér din personlige nøgle fra Discord til “DZR key”. Kontrollér, at OBS kun viser “DZR key” og “Test forbindelse”, og at scriptet ignorerer en tidligere gemt endpointindstilling. Klik eventuelt på “Test forbindelse” i OBS og derefter på “Kontrollér OBS-forbindelse” i Discord. Et nyt signal vises uden offentlig annonce. Guiden kan også afsluttes uden test. Et signal fra OBS bekræfter forbindelsen.
 - En valgfri offentlig teststream skal bruge den eksisterende verifikation og testkanal. Notér OS, browser, OBS-version og det faktisk afprøvede; browserillustrationer og automatiske tests dokumenterer ikke native OBS-adfærd.
 
