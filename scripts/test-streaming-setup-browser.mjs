@@ -19,6 +19,8 @@ try {
     { platform: 'Win32', os: 'Windows', supportsPicker: false },
     { platform: 'MacIntel', os: 'macOS', supportsPicker: true },
     { platform: 'MacIntel', os: 'macOS', supportsPicker: false },
+    { platform: 'Linux x86_64', os: 'Linux', supportsPicker: true },
+    { platform: 'Linux x86_64', os: 'Linux', supportsPicker: false },
   ]) {
     const context = await browser.newContext({ acceptDownloads: true })
     let downloadFails = false
@@ -61,14 +63,17 @@ try {
     const savedMessage = page.getByText('custom$&.lua er gemt')
     const transfer = page.getByRole('button', { name: supportsPicker ? 'Gem DZR-script' : 'Download DZR-script', exact: true })
     const otherTransfer = page.getByRole('button', { name: supportsPicker ? 'Download DZR-script' : 'Gem DZR-script', exact: true })
+    const linuxNote = page.getByText('Eksemplerne viser Windows. Menunavne og filvælgeren kan se anderledes ud på Linux.', { exact: true })
     async function assertFreshSaveStep(currentOs) {
       assert.equal(await transfer.isVisible(), true)
       assert.equal(await next.count(), 0)
       assert.equal(await checkbox.count(), 0)
       assert.equal(await savedMessage.count(), 0)
-      const image = page.getByRole('img', { name: new RegExp(`^${currentOs}: .*Dokumenter/DZR`) })
+      assert.equal(await linuxNote.isVisible(), currentOs === 'Linux')
+      const imageOs = currentOs === 'Linux' ? 'Windows' : currentOs
+      const image = page.getByRole('img', { name: new RegExp(`^${imageOs}: .*Dokumenter/DZR`) })
       assert.equal(await image.isVisible(), true)
-      assert.equal(await image.getAttribute('src'), `/streaming/setup/${currentOs.toLowerCase()}/save-file.webp`)
+      assert.equal(await image.getAttribute('src'), `/streaming/setup/${imageOs.toLowerCase()}/save-file.webp`)
       await image.scrollIntoViewIfNeeded()
       await image.evaluate(element => element.decode())
     }
@@ -136,14 +141,22 @@ try {
 
     await next.click()
     await page.getByRole('heading', { name: 'Åbn Scripts i OBS', exact: true }).waitFor()
-    await continueButton.click()
     const removeHint = page.getByText('Står DZR-scriptet allerede på listen?', { exact: true })
+    const removeImage = page.getByRole('img', { name: 'OBS-vinduet Scripts med en rød ramme om knappen til at fjerne det valgte script.', exact: true })
+    assert.equal(await removeImage.count(), 0)
+    await continueButton.click()
     assert.equal(await removeHint.isVisible(), true)
+    assert.equal(await removeImage.isVisible(), true)
+    assert.equal(await removeImage.getAttribute('src'), '/streaming/setup/obs-remove-script.webp')
+    await removeImage.scrollIntoViewIfNeeded()
+    await removeImage.evaluate(element => element.decode())
     await continueButton.click()
     assert.equal(await removeHint.count(), 0)
+    assert.equal(await removeImage.count(), 0)
     const filename = supportsPicker ? 'custom$&.lua' : 'dzr-stream.lua'
     assert.equal(await page.getByText(`Åbn den mappe, hvor du lagde filen i trin 2. Vælg ${filename}, og klik på “Åbn” eller “Open”.`, { exact: true }).isVisible(), true)
-    assert.equal(await page.getByRole('img', { name: `${os}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)
+    const imageOs = os === 'Linux' ? 'Windows' : os
+    assert.equal(await page.getByRole('img', { name: `${imageOs}: Eksempel på filvalg i OBS fra Dokumenter/DZR.`, exact: true }).isVisible(), true)
     await continueButton.click()
     await page.getByRole('heading', { name: 'Forbind OBS med DZR', exact: true }).waitFor()
     assert.equal(await page.getByText(`Vælg ${filename} i OBS-listen. Indsæt din personlige API-nøgle i “DZR key” til højre.`, { exact: true }).isVisible(), true)
@@ -159,7 +172,7 @@ try {
     await page.getByRole('button', { name: 'Afslut guiden', exact: true }).click()
 
     await page.getByRole('button', { name: `Computer: ${os} · Skift`, exact: true }).click()
-    const otherOs = os === 'Windows' ? 'macOS' : 'Windows'
+    const otherOs = { Windows: 'Linux', macOS: 'Windows', Linux: 'macOS' }[os]
     await page.getByRole('button', { name: otherOs, exact: true }).click()
     await continueButton.click()
     await assertFreshSaveStep(otherOs)
@@ -172,24 +185,28 @@ try {
     await context.close()
   }
 
-  const mobile = await browser.newContext({
-    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
-  })
-  await mobile.route('**/*', route => new URL(route.request().url()).origin === baseUrl.origin ? route.continue() : route.abort())
-  await mobile.route('**/api/auth/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
-  const page = await mobile.newPage()
-  await page.goto(new URL('/streaming/setup', baseUrl).href, { waitUntil: 'networkidle', timeout: 180_000 })
-  const warning = page.getByRole('heading', { name: 'Fortsæt på computeren med OBS', exact: true })
-  await warning.waitFor()
-  assert.match(await warning.locator('..').innerText(), /mobil/)
-  assert.match(await warning.locator('..').innerText(), /OBS.*installeret/)
-  assert.equal(await page.getByRole('button', { name: 'Kopiér guideadresse', exact: true }).isVisible(), true)
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Mobile guide must fit the viewport')
-  await page.getByRole('button', { name: 'Vis guiden alligevel', exact: true }).click()
-  assert.equal(await warning.count(), 0)
-  await mobile.close()
-  console.log('PASS mobile warning, computer explanation, copy/dismiss controls and viewport')
+  for (const { device, platform, userAgent } of [
+    { device: 'iPhone', platform: 'iPhone', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' },
+    { device: 'Android', platform: 'Linux armv8l', userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36' },
+  ]) {
+    const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent })
+    await mobile.route('**/*', route => new URL(route.request().url()).origin === baseUrl.origin ? route.continue() : route.abort())
+    await mobile.route('**/api/auth/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }))
+    const page = await mobile.newPage()
+    await page.addInitScript(platform => Object.defineProperty(navigator, 'platform', { value: platform }), platform)
+    await page.goto(new URL('/streaming/setup', baseUrl).href, { waitUntil: 'networkidle', timeout: 180_000 })
+    const warning = page.getByRole('heading', { name: 'Fortsæt på computeren med OBS', exact: true })
+    await warning.waitFor()
+    assert.match(await warning.locator('..').innerText(), /mobil/)
+    assert.match(await warning.locator('..').innerText(), /OBS.*installeret/)
+    assert.equal(await page.getByRole('button', { name: 'Kopiér guideadresse', exact: true }).isVisible(), true)
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Mobile guide must fit the viewport')
+    assert.equal(await page.getByRole('button', { name: 'Linux', exact: true }).getAttribute('aria-pressed'), 'false')
+    await page.getByRole('button', { name: 'Vis guiden alligevel', exact: true }).click()
+    assert.equal(await warning.count(), 0)
+    await mobile.close()
+    console.log(`PASS ${device} warning, computer explanation, copy/dismiss controls and viewport`)
+  }
 } finally {
   await browser.close()
 }

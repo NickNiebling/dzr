@@ -5,21 +5,27 @@ import {
   Alert, AlertIcon, Box, Button, Checkbox, Container, Heading, HStack,
   Image, Progress, SimpleGrid, Stack, Text,
 } from '@chakra-ui/react'
-import { FaApple, FaCheckCircle, FaDownload, FaWindows } from 'react-icons/fa'
+import { FaApple, FaCheckCircle, FaDownload, FaLinux, FaWindows } from 'react-icons/fa'
 import {
   fetchScriptFile, getInstallationErrorMessage, installScript, SAVE_SCRIPT_LABEL, SCRIPT_FILENAME, supportsSavePicker,
   type SaveFilePicker,
 } from './installScript'
 
-type OperatingSystem = 'windows' | 'macos'
 type Props = { scriptUrl?: string }
 type PickerWindow = Window & { showSaveFilePicker?: SaveFilePicker }
+
+const operatingSystems = {
+  windows: { name: 'Windows', Icon: FaWindows },
+  macos: { name: 'macOS', Icon: FaApple },
+  linux: { name: 'Linux', Icon: FaLinux },
+}
+type OperatingSystem = keyof typeof operatingSystems
 
 const steps = ['Computer', 'Gem fil', 'Tilføj i OBS', 'Forbind', 'Afslut']
 const downloadScriptLabel = 'Download DZR-script'
 const obsSteps = [
   { title: 'Åbn Scripts i OBS', image: 'tools-scripts', text: 'Åbn OBS Studio. Vælg “Scripts” under “Værktøjer” eller “Tools” i menuen øverst.' },
-  { title: 'Tilføj DZR-scriptet', image: 'add-script', text: 'Klik på + (plus) nederst til venstre for at tilføje filen fra trin 2.' },
+  { title: 'Tilføj DZR-scriptet', text: 'Klik på + (plus) nederst til venstre for at tilføje filen fra trin 2.' },
   { title: 'Vælg DZR-filen', image: 'select-file', text: 'Åbn den mappe, hvor du lagde filen i trin 2. Vælg {filename}, og klik på “Åbn” eller “Open”.' },
 ]
 
@@ -44,9 +50,13 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
 
   React.useEffect(() => {
     const platform = navigator.platform || navigator.userAgent
-    if (/Win/i.test(platform)) setOs('windows')
-    else if (/Mac/i.test(platform)) setOs('macos')
-    setMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1))
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Mac/i.test(platform) && navigator.maxTouchPoints > 1)
+    setMobile(isMobile)
+    if (!isMobile) {
+      if (/Win/i.test(platform)) setOs('windows')
+      else if (/Mac/i.test(platform)) setOs('macos')
+      else if (/Linux/i.test(platform)) setOs('linux')
+    }
     setSupportsPicker(supportsSavePicker(window as PickerWindow))
   }, [])
 
@@ -62,7 +72,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
       await navigator.clipboard.writeText(value)
       setCopyMessage(success)
     } catch {
-      setCopyMessage('Markér adressen og kopiér med Ctrl+C på Windows eller Cmd+C på Mac.')
+      setCopyMessage('Markér adressen og kopiér med Ctrl+C på Windows eller Linux, eller med Cmd+C på Mac.')
     }
   }
 
@@ -127,10 +137,11 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
   }
 
   function illustration(name: string, alt: string) {
+    const illustrationOs = os === 'macos' ? 'macos' : 'windows'
     return (
       <Image
-        src={`/streaming/setup/${os || 'windows'}/${name}.webp`}
-        alt={`${os === 'macos' ? 'macOS' : 'Windows'}: ${alt}`}
+        src={`/streaming/setup/${illustrationOs}/${name}.webp`}
+        alt={`${operatingSystems[illustrationOs].name}: ${alt}`}
         width="100%" borderRadius="lg" borderWidth="1px" borderColor="gray.600"
         htmlWidth={1280} htmlHeight={760} height="auto"
         loading="lazy"
@@ -138,9 +149,10 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
     )
   }
 
+  const currentObsStep = obsSteps[obsStep]
   const obsFilename = savedFilename ?? SCRIPT_FILENAME
-  const obsInstruction = obsSteps[obsStep].text.replace('{filename}', () => obsFilename)
-  const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', obsSteps[obsStep].title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
+  const obsInstruction = currentObsStep.text.replace('{filename}', () => obsFilename)
+  const titles = ['Hvilken computer bruger du til OBS?', 'Gem DZR-scriptet på computeren', currentObsStep.title, 'Forbind OBS med DZR', 'Opsætningsguiden er gennemført']
 
   return (
     <Container as="main" lang="da" maxW="3xl" py={{ base: 7, md: 12 }} color="white">
@@ -154,7 +166,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
           <Box bg="orange.900" borderWidth="1px" borderColor="orange.400" borderRadius="xl" p={5}>
             <Stack spacing={3}>
               <Heading size="md">Fortsæt på computeren med OBS</Heading>
-              <Text>Du har åbnet guiden fra en mobil. Guiden gemmer en fil, som du skal bruge på din computer. Vi anbefaler derfor, at du åbner guiden på den Windows-computer eller Mac, hvor du har OBS installeret.</Text>
+              <Text>Du har åbnet guiden fra en mobil. Guiden gemmer en fil, som du skal bruge på din computer. Åbn guiden på den computer, hvor du har OBS installeret.</Text>
               <Button size="lg" colorScheme="orange" onClick={() => copy(new URL('/streaming/setup', window.location.origin).href, 'Guideadressen er kopieret. Send den til din OBS-computer.')}>
                 Kopiér guideadresse
               </Button>
@@ -178,16 +190,19 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 1 && (
               <Stack spacing={5}>
                 <Text color="gray.300">Vælg computeren, hvor OBS Studio er installeret. Du kan altid ændre dit valg.</Text>
-                <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
-                  {(['windows', 'macos'] as const).map((value) => (
-                    <Button
-                      key={value} onClick={() => setOs(value)} aria-pressed={os === value}
-                      height="120px" fontSize="xl" color="white" borderWidth="2px"
-                      borderColor={os === value ? 'red.400' : 'gray.600'}
-                      bg={os === value ? 'red.900' : 'gray.800'} _hover={{ bg: 'gray.700' }}
-                      leftIcon={value === 'windows' ? <FaWindows size={32} /> : <FaApple size={36} />}
-                    >{value === 'windows' ? 'Windows' : 'macOS'}</Button>
-                  ))}
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                  {(Object.keys(operatingSystems) as OperatingSystem[]).map((value) => {
+                    const { name, Icon } = operatingSystems[value]
+                    return (
+                      <Button
+                        key={value} onClick={() => setOs(value)} aria-pressed={os === value}
+                        height="120px" fontSize="xl" color="white" borderWidth="2px"
+                        borderColor={os === value ? 'red.400' : 'gray.600'}
+                        bg={os === value ? 'red.900' : 'gray.800'} _hover={{ bg: 'gray.700' }}
+                        leftIcon={<Icon size={32} />}
+                      >{name}</Button>
+                    )
+                  })}
                 </SimpleGrid>
               </Stack>
             )}
@@ -202,6 +217,9 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
                     ? `“${SAVE_SCRIPT_LABEL}” foreslår ${SCRIPT_FILENAME} som filnavn og Dokumenter som startmappe. I Dokumenter kan du vælge eller oprette mappen DZR og gemme filen dér.`
                     : `Klik på “${downloadScriptLabel}”, og flyt derefter ${SCRIPT_FILENAME} fra Downloads / Overførsler til den mappe, hvor du vil beholde filen.`}
                 </Text>
+                {os === 'linux' && (
+                  <Text color="gray.400" fontSize="sm">Eksemplerne viser Windows. Menunavne og filvælgeren kan se anderledes ud på Linux.</Text>
+                )}
                 {illustration('save-file', 'Eksempel på en fast placering for dzr-stream.lua i Dokumenter/DZR.')}
                 <Button
                   colorScheme="red" size="lg" minH="56px" whiteSpace="normal"
@@ -233,12 +251,21 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
               <Stack spacing={4}>
                 <Text color="red.300" fontSize="sm">OBS · {obsStep + 1} af {obsSteps.length}</Text>
                 {obsStep === 1 && (
-                  <Text color="gray.300">
-                    <strong>Står DZR-scriptet allerede på listen?</strong> Markér det, og klik på <strong>− (minus)</strong> nederst til venstre for at fjerne det fra OBS. Filen bliver liggende på computeren.
-                  </Text>
+                  <Stack spacing={3}>
+                    <Text color="gray.300">
+                      <strong>Står DZR-scriptet allerede på listen?</strong> Markér det, og brug knappen lige til højre for <strong>+</strong> under listen til at fjerne det fra OBS. Knappen er markeret med rødt på billedet. Filen bliver liggende på computeren.
+                    </Text>
+                    <Image
+                      src="/streaming/setup/obs-remove-script.webp"
+                      alt="OBS-vinduet Scripts med en rød ramme om knappen til at fjerne det valgte script."
+                      width="100%" borderRadius="lg" borderWidth="1px" borderColor="gray.600"
+                      htmlWidth={776} htmlHeight={520} height="auto"
+                      loading="lazy"
+                    />
+                  </Stack>
                 )}
                 <Text fontSize="lg">{obsInstruction}</Text>
-                {illustration(obsSteps[obsStep].image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
+                {currentObsStep.image && illustration(currentObsStep.image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
               </Stack>
             )}
 
@@ -301,7 +328,7 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 5 && <Button variant="link" color="gray.300" alignSelf="start" onClick={resetWizard}>Tilbage til start</Button>}
           </Stack>
         </Box>
-        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={resetWizard}>Computer: {os === 'windows' ? 'Windows' : 'macOS'} · Skift</Button>}
+        {os && <Button variant="link" color="gray.400" alignSelf="start" isDisabled={busy} onClick={resetWizard}>Computer: {operatingSystems[os].name} · Skift</Button>}
       </Stack>
     </Container>
   )

@@ -4,7 +4,7 @@ import { getStreamingSetupConfig } from '@/app/lib/streamingSetup'
 
 export const metadata: Metadata = {
   title: 'Gør OBS klar til DZR',
-  description: 'Installér DZR-scriptet i OBS Studio med en enkel vejledning til Windows og macOS.',
+  description: 'Installér DZR-scriptet i OBS Studio med en enkel vejledning til Windows, macOS og Linux.',
   robots: { index: false, follow: false },
 }
 
