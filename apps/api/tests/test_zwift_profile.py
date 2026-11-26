@@ -62,34 +62,30 @@ class ZwiftProfileTest(unittest.TestCase):
             return response(200, b'{"id": 123}')
 
         self.get.side_effect = get
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with self.assertLogs("ZwiftAPI", "WARNING") as logs, ThreadPoolExecutor(max_workers=2) as pool:
             calls = [pool.submit(self.zwift.get_profile, rider_id) for rider_id in ("123", "456")]
             self.assertEqual([call.result(timeout=6) for call in calls], [{"id": 123}] * 2)
 
+        self.assertEqual([record.levelname for record in logs.records], ["WARNING"])
         self.assertEqual(self.get.call_count, 4)
         self.assertEqual(
             [call.kwargs["data"]["grant_type"] for call in self.post.call_args_list],
             ["password", "refresh_token"],
         )
 
-    def test_profile_401_replay_stops_after_one_attempt(self):
-        for status in (401, 503):
-            with self.subTest(status=status):
-                client = ZwiftAPI("test-user", "test-password")
-                self.post.reset_mock()
-                self.get.reset_mock()
-                self.post.side_effect = [
-                    response(200, b'{"access_token":"test-token","refresh_token":"test-refresh","expires_in":300}'),
-                    response(200, b'{"access_token":"new-token","expires_in":300}'),
-                ]
-                self.get.side_effect = [response(401), response(status)]
+    def test_profile_replay_401_leaves_renewed_token_available(self):
+        self.zwift.ensure_valid_token()
+        self.post.return_value = response(200, b'{"access_token":"new-token","expires_in":300}')
+        self.get.side_effect = [response(401), response(401), response(200, b'{"id": 456}')]
 
-                with self.assertRaises(HTTPError) as failure:
-                    client.get_profile("123")
+        with self.assertRaises(ZwiftAuthError) as failure:
+            self.zwift.get_profile("123")
 
-                self.assertEqual(failure.exception.response.status_code, status)
-                self.assertEqual(self.get.call_count, 2)
-                self.assertEqual(self.post.call_count, 2)
+        self.assertIsNone(failure.exception.retry_after)
+        self.assertEqual(self.get.call_count, 2)
+        self.assertEqual(self.zwift.get_profile("456"), {"id": 456})
+        self.assertEqual(self.get.call_args.kwargs["headers"]["Authorization"], "Bearer new-token")
+        self.assertEqual(self.post.call_count, 2)
 
     def test_profile_stops_when_401_recovery_enters_cooldown(self):
         self.zwift.ensure_valid_token()

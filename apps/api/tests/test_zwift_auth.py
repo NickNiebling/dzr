@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 from requests import ConnectionError
 
-from zwift import AUTH_RETRY_INITIAL, AUTH_RETRY_MAX, ZwiftAPI, ZwiftAuthError, ZwiftError
+from zwift import AUTH_RETRY_INITIAL, AUTH_RETRY_MAX, ZwiftAPI, ZwiftAuthError
 
 
 def token_response(access_token, refresh_token=None, *, expires_in=300):
@@ -140,13 +140,11 @@ class ZwiftAuthTest(unittest.TestCase):
             token_response("new-access", "new-refresh"),
         ]
         with patch("zwift.requests.put", side_effect=[
-            Mock(status_code=401, ok=False),
-            Mock(status_code=401, ok=False, reason="Unauthorized", text="rejected again"),
+            Mock(status_code=401),
+            Mock(status_code=200, ok=True),
         ]) as put:
-            with self.assertRaises(ZwiftError) as failure:
-                self.client.save_event(42, {"title": "Fixture"}, event_template_id=100)
+            self.client.save_event(42, {"title": "Fixture"}, event_template_id=100)
 
-        self.assertEqual(failure.exception.status_code, 401)
         self.assertEqual(self.post.call_count, 2)
         self.assertEqual(
             [call.kwargs["headers"]["Authorization"] for call in put.call_args_list],

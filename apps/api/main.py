@@ -58,7 +58,9 @@ def log_request_path():
     })
 
 @app.errorhandler(ZwiftAuthError)
-def _zwift_auth_unavailable(error: ZwiftAuthError):
+def _zwift_auth_error_response(error: ZwiftAuthError):
+    if error.retry_after is None:
+        return jsonify({"error": str(error), "code": "zwift_request_rejected"}), 502
     # ZwiftAPI reports the failed attempt once for all requests in the cooldown.
     g.skip_handled_failure_report = True
     return jsonify({"error": str(error), "code": "zwift_auth_unavailable"}), 503, {
@@ -817,7 +819,7 @@ def _zwift_event_response(result):
 
 def _zwift_event_error(exc: Exception):
     if isinstance(exc, ZwiftAuthError):
-        return _zwift_auth_unavailable(exc)
+        return _zwift_auth_error_response(exc)
     if isinstance(exc, ValueError):
         return jsonify({"error": str(exc)}), 400
     if isinstance(exc, ZwiftError):
