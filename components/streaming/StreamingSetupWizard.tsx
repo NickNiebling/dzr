@@ -250,21 +250,38 @@ export default function StreamingSetupWizard({ scriptUrl = '/api/streaming/scrip
             {step === 3 && (
               <Stack spacing={4}>
                 <Text color="red.300" fontSize="sm">OBS · {obsStep + 1} af {obsSteps.length}</Text>
+                <Text fontSize="lg">{obsInstruction}</Text>
                 {obsStep === 1 && (
-                  <Stack spacing={3}>
-                    <Text color="gray.300">
-                      <strong>Står DZR-scriptet allerede på listen?</strong> Markér det, og brug knappen lige til højre for <strong>+</strong> under listen til at fjerne det fra OBS. Knappen er markeret med rødt på billedet. Filen bliver liggende på computeren.
-                    </Text>
+                  <>
                     <Image
-                      src="/streaming/setup/obs-remove-script.webp"
-                      alt="OBS-vinduet Scripts med en rød ramme om knappen til at fjerne det valgte script."
+                      src="/streaming/setup/obs-add-script.webp"
+                      alt="OBS-vinduet Scripts med en rød ramme om plusknappen nederst til venstre."
                       width="100%" borderRadius="lg" borderWidth="1px" borderColor="gray.600"
                       htmlWidth={776} htmlHeight={520} height="auto"
                       loading="lazy"
                     />
-                  </Stack>
+                    <Box as="details" borderWidth="1px" borderColor="gray.700" borderRadius="lg" bg="gray.800" p={4}>
+                      <Box
+                        as="summary" color="gray.200" fontSize="sm" fontWeight="semibold" cursor="pointer"
+                        _focusVisible={{ outline: '2px solid', outlineColor: 'red.300', outlineOffset: '3px' }}
+                      >
+                        Står DZR-scriptet allerede på listen?
+                      </Box>
+                      <Stack spacing={3} mt={3}>
+                        <Text color="gray.300">
+                          Markér scriptet, og brug knappen lige til højre for <strong>+</strong> under listen til at fjerne det fra OBS, før du tilføjer filen. Filen bliver liggende på computeren.
+                        </Text>
+                        <Image
+                          src="/streaming/setup/obs-remove-script.webp"
+                          alt="OBS-vinduet Scripts med en rød ramme om knappen til at fjerne det valgte script."
+                          width="100%" borderRadius="lg" borderWidth="1px" borderColor="gray.600"
+                          htmlWidth={776} htmlHeight={520} height="auto"
+                          loading="lazy"
+                        />
+                      </Stack>
+                    </Box>
+                  </>
                 )}
-                <Text fontSize="lg">{obsInstruction}</Text>
                 {currentObsStep.image && illustration(currentObsStep.image, obsStep === 2 ? 'Eksempel på filvalg i OBS fra Dokumenter/DZR.' : obsInstruction)}
               </Stack>
             )}

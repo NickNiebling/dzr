@@ -2,7 +2,7 @@
 
 The Windows and macOS directories contain original DZR click illustrations. Each is marked “Illustration” and names the operating system it depicts. The SVG and PNG sources in `sources/` contain example paths and masked keys. The Linux guide reuses the Windows illustrations.
 
-`obs-remove-script.webp` is a shared example based on a Linux user's OBS screenshot. The edited image has a red outline around the remove button beside **+**. It shows a masked DZR key and replaces the per-platform `add-script.webp` illustrations in the guide.
+The shared `obs-add-script.webp` and `obs-remove-script.webp` illustrations use a Linux user's OBS screenshot as their reference. The add image shows an empty Scripts list and highlights **+**. The remove image highlights the neighboring remove button and shows a masked DZR key. It appears inside the expandable help for users who already have the script installed.
 
 ## UI references
 
