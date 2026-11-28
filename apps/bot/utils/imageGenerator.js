@@ -84,9 +84,9 @@ async function generateSingleRiderStatsImage(rider) {
   const rows = [
     ["Name", rider.name],
     ["Phenotype", rider.phenotype ?? "—"],
-    ["Ladder", rider.ladder.label],
-    ["vELO2", rider.velo.label],
-    ["ZRL", rider.zrl.label],
+    ["Ladder", rider.ladder.label, true],
+    ["vELO2", rider.velo.label, true],
+    ["ZRL", rider.zrl.label, true],
     ["zFTP", formatMetric(rider.zFTP)],
     ["zMAP", formatMetric(rider.zMAP)],
     ["ZwiftPower FTP", formatMetric(rider.ftp)],
@@ -144,8 +144,10 @@ async function generateSingleRiderStatsImage(rider) {
 
   // Values
   ctx.font = "bold 16px Arial";
-  rows.forEach(([, value], i) => {
-    drawRiderStatsValue(ctx, value, xOffset, topMargin + i * rowHeight);
+  rows.forEach(([, value, hasCategoryIcon], i) => {
+    const y = topMargin + i * rowHeight;
+    if (hasCategoryIcon) drawRiderStatsValue(ctx, value, xOffset, y);
+    else ctx.fillText(value, xOffset, y);
   });
 
   return canvas.toBuffer();
