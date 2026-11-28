@@ -32,6 +32,54 @@ function formatMetric({ watts, wkg }) {
   return `${watts} W (${wkg.toFixed(2)} W/kg)`;
 }
 
+const CATEGORY_ICONS = {
+  "💎": ["#77daff", "diamond"],
+  "🔴": ["#d82943"],
+  "🟢": ["#40b54b"],
+  "🔵": ["#237ee9"],
+  "🟣": ["#a64ddd"],
+  "🥇": ["#f8cc38", "medal"],
+  "🥈": ["#cbd5e1", "medal"],
+  "🥉": ["#c88049", "medal"],
+  "🟤": ["#96552f"],
+  "🟡": ["#ffdc36"],
+};
+
+function drawRiderStatsValue(ctx, value, x, y) {
+  const [emoji] = String(value).split(" ", 1);
+  if (!Object.hasOwn(CATEGORY_ICONS, emoji)) {
+    ctx.fillText(value, x, y);
+    return;
+  }
+
+  // Draw category icons directly so the PNG works without an emoji font.
+  const [color, shape] = CATEGORY_ICONS[emoji];
+  const centerX = x + 8;
+  const centerY = y - 6;
+  ctx.save();
+  if (shape === "medal") {
+    ctx.fillStyle = "#3664aa";
+    ctx.fillRect(centerX - 4, centerY - 9, 8, 6);
+  }
+  ctx.beginPath();
+  if (shape === "diamond") {
+    ctx.moveTo(centerX, centerY - 8);
+    ctx.lineTo(centerX + 8, centerY - 2);
+    ctx.lineTo(centerX, centerY + 8);
+    ctx.lineTo(centerX - 8, centerY - 2);
+    ctx.closePath();
+  } else {
+    ctx.arc(centerX, centerY + (shape === "medal" ? 2 : 0), shape === "medal" ? 6 : 7, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillText(value.slice(emoji.length + 1), x + 23, y);
+}
+
 async function generateSingleRiderStatsImage(rider) {
   const rows = [
     ["Name", rider.name],
@@ -88,17 +136,16 @@ async function generateSingleRiderStatsImage(rider) {
   ctx.fillText("Rider Stats", leftMargin, 70);
 
   // Row labels
+  const xOffset = leftMargin + 180;
   ctx.font = "bold 22px Arial";
   rows.forEach(([label], i) => {
-    ctx.fillText(label, leftMargin, topMargin + i * rowHeight);
+    ctx.fillText(label, leftMargin, topMargin + i * rowHeight, xOffset - leftMargin - 12);
   });
 
   // Values
-  ctx.textDrawingMode = "glyph";
   ctx.font = "bold 16px Arial";
-  const xOffset = leftMargin + 180;
   rows.forEach(([, value], i) => {
-    ctx.fillText(value, xOffset, topMargin + i * rowHeight);
+    drawRiderStatsValue(ctx, value, xOffset, topMargin + i * rowHeight);
   });
 
   return canvas.toBuffer();
