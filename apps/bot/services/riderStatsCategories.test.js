@@ -70,14 +70,32 @@ test("Rider Stats keeps the ZRL category provisional and excludes estimated metr
   assert.deepEqual(zMAP, { watts: null, wkg: null });
 });
 
-test("Rider Stats formats live vELO with the API category number and its emoji", async () => {
-  const { velo } = await getRiderStatsCategories({
-    velo: { race: 712.6, category: { number: 3, name: "Emerald" }, max30: { race: 750 } },
+test("Rider Stats prefers current vELO2 to current vELO1 and keeps Ladder separate", async () => {
+  const { ladder, velo } = await getRiderStatsCategories({
+    velo: { race: 712.6, category: { number: 3, name: "Emerald" } },
+    race: {
+      current: { rating: 1725, mixed: { number: 4, category: "Sapphire" } },
+      max30: { rating: 2160, mixed: { number: 2, category: "Ruby" } },
+    },
   });
-  assert.deepEqual(velo, { number: 3, category: "Emerald", rating: 712.6, label: "🟢 3 – Emerald (713)" });
+  assert.deepEqual(velo, { version: 2, number: 3, category: "Emerald", rating: 712.6, label: "🟢 3 – Emerald (713)" });
+  assert.deepEqual(ladder, { number: 2, category: "Ruby", rating: 2160, label: "🔴 2 – Ruby (2160)" });
 });
 
-test("Rider Stats marks live vELO unavailable when only a legacy rating exists", async () => {
-  const { velo } = await getRiderStatsCategories({ race: { max30: { rating: 1868 } } });
-  assert.deepEqual(velo, { number: null, category: null, rating: null, label: "Unavailable" });
+test("Rider Stats uses current vELO1 and its own category when the vELO2 score is missing", async () => {
+  const race = { current: { rating: 1725, mixed: { number: 4, category: "Sapphire" } } };
+  const incompleteVelo2 = { race: NaN, category: { number: 3, name: "Emerald" } };
+
+  for (const velo2 of [undefined, incompleteVelo2]) {
+    const { velo } = await getRiderStatsCategories({ race, velo: velo2 });
+    assert.deepEqual(velo, { version: 1, number: 4, category: "Sapphire", rating: 1725, label: "🔵 4 – Sapphire (1725)" });
+  }
+});
+
+test("Rider Stats marks vELO unavailable without a current score in either version", async () => {
+  const { velo } = await getRiderStatsCategories({
+    velo: { max30: { race: 750 } },
+    race: { max30: { rating: 1868 } },
+  });
+  assert.deepEqual(velo, { version: null, number: null, category: null, rating: null, label: "Unavailable" });
 });

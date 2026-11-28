@@ -37,7 +37,7 @@ async function generateSingleRiderStatsImage(rider) {
     ["Name", rider.name],
     ["Phenotype", rider.phenotype ?? "—"],
     ["Ladder", rider.ladder.label],
-    ["vELO2", rider.velo.label],
+    [rider.velo.version === 1 ? "vELO1 (current)" : "vELO2", rider.velo.label],
     ["ZRL", rider.zrl.label],
     ["zFTP", formatMetric(rider.zFTP)],
     ["zMAP", formatMetric(rider.zMAP)],

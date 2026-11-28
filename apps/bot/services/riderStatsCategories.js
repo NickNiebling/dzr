@@ -29,9 +29,20 @@ function getLadder(rider) {
   return summarizeRating(rank?.rating, rank?.mixed?.number, rank?.mixed?.category, "Unranked");
 }
 
-async function getRiderStatsCategories(rider) {
+function getVelo(rider) {
   const { race: liveRating, category: liveCategory } = rider.velo ?? {};
+  const live = summarizeRating(liveRating, liveCategory?.number, liveCategory?.name, "Unavailable");
+  if (live.rating != null) return { ...live, version: 2 };
 
+  const current = rider.race?.current;
+  if (!Number.isFinite(current?.rating)) return { ...live, version: null };
+  return {
+    ...summarizeRating(current.rating, current.mixed?.number, current.mixed?.category, "Unavailable"),
+    version: 1,
+  };
+}
+
+async function getRiderStatsCategories(rider) {
   const metrics = extractRiderMetrics(rider);
   const hasOfficialMetrics = hasOfficialZrlMetrics(metrics);
   const paceGroup = rider.zpCategory === "A+" ? "A" : rider.zpCategory;
@@ -53,7 +64,7 @@ async function getRiderStatsCategories(rider) {
 
   return {
     ladder: getLadder(rider),
-    velo: summarizeRating(liveRating, liveCategory?.number, liveCategory?.name, "Unavailable"),
+    velo: getVelo(rider),
     zrl: { category, developmentEligible, label },
     zFTP: {
       watts: metrics.ftpSource === "zFTP" ? metrics.ftpW : null,
