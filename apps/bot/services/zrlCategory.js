@@ -1,5 +1,4 @@
 const axios = require("axios");
-const { getAllBotKnowledge } = require("./firebase");
 
 const CATEGORY_RANK = { D: 0, C: 1, B: 2, A: 3 };
 const CATEGORIES_HIGH_TO_LOW = ["A", "B", "C", "D"];
@@ -32,10 +31,10 @@ const FALLBACK_LIMITS = {
   },
 };
 
-function toNumber(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+function positiveNumber(value) {
+  if (typeof value !== "number" && typeof value !== "string") return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function round(value, digits = 2) {
@@ -117,8 +116,6 @@ function parseZrlKnowledge(content) {
   const womenC = parseCategoryFields(womenStd.C);
   const womenD = parseCategoryFields(womenStd.D);
 
-  if (!openA.ftp.minW || !openA.ftp.minWkg) return null;
-
   const parsed = {
     season: "2026/27",
     open: {
@@ -160,7 +157,10 @@ function parseZrlKnowledge(content) {
     };
   }
 
-  return parsed;
+  const standardBands = [...Object.values(parsed.open), ...Object.values(parsed.women)];
+  const complete = standardBands.every(band =>
+    Object.values(band).every(threshold => Number.isFinite(threshold) && threshold > 0));
+  return complete ? parsed : null;
 }
 
 function isZrlKnowledgeEntry(entry) {
@@ -176,6 +176,7 @@ function isZrlKnowledgeEntry(entry) {
 }
 
 async function loadZrlLimits() {
+  const { getAllBotKnowledge } = require("./firebase");
   const all = await getAllBotKnowledge();
   const entry = (all || []).find(isZrlKnowledgeEntry) || null;
   const parsed = entry ? parseZrlKnowledge(entry.content) : null;
@@ -244,13 +245,11 @@ function classifyBand(metrics, mins, useWatts) {
   };
 }
 
-function developmentEligible(category, metrics, devLimits) {
+function developmentEligibility(category, metrics, devLimits) {
   const cap = devLimits?.[category];
-  if (!cap || cap.ftpWkgMax == null) return false;
-  if (metrics.ftpWkg == null || metrics.ftpWkg >= cap.ftpWkgMax) return false;
-  if (cap.ftpWMin != null && (metrics.ftpW == null || metrics.ftpW < cap.ftpWMin)) return false;
-  if (metrics.mapWkg != null && cap.mapWkgMax != null && metrics.mapWkg >= cap.mapWkgMax) return false;
-  return true;
+  if (!hasOfficialZrlMetrics(metrics) || !Number.isFinite(cap?.ftpWkgMax) || !Number.isFinite(cap?.mapWkgMax)) return null;
+  return metrics.ftpWkg < cap.ftpWkgMax && metrics.mapWkg < cap.mapWkgMax &&
+    (cap.ftpWMin == null || metrics.ftpW >= cap.ftpWMin);
 }
 
 function canRaceDivisions(category) {
@@ -264,27 +263,35 @@ function isFemaleGender(gender) {
 }
 
 function extractRiderMetrics(rider) {
-  const ftpW = toNumber(rider?.zFTP ?? rider?.zpFTP);
-  const weight = toNumber(rider?.weight);
-  const ftpWkg = ftpW != null && weight ? ftpW / weight : null;
-  const officialMapW = toNumber(rider?.zMAP ?? rider?.power?.zMAP ?? rider?.power?.MAP);
-  const officialMapWkg = officialMapW != null && weight ? officialMapW / weight : toNumber(rider?.zMAPWkg);
-  const estimatedMapW = toNumber(rider?.power?.w300);
-  const estimatedMapWkg = toNumber(rider?.power?.wkg300) ?? (estimatedMapW != null && weight ? estimatedMapW / weight : null);
+  const officialFtpW = positiveNumber(rider?.zFTP);
+  const ftpW = officialFtpW ?? positiveNumber(rider?.zpFTP);
+  const weight = positiveNumber(rider?.weight);
+  const officialMapW = positiveNumber(rider?.zMAP) ?? positiveNumber(rider?.power?.zMAP);
+  const officialMapWkg = positiveNumber(rider?.zMAPWkg) ??
+    (officialMapW != null && weight != null ? officialMapW / weight : null);
+  const estimatedMapW = positiveNumber(rider?.power?.w300);
+  const estimatedMapWkg = positiveNumber(rider?.power?.wkg300) ??
+    (estimatedMapW != null && weight != null ? estimatedMapW / weight : null);
 
-  const mapIsOfficial = officialMapWkg != null;
+  const mapIsOfficial = officialMapW != null || officialMapWkg != null;
   return {
     name: rider?.name || null,
     zwiftId: rider?.riderId ?? rider?.zwiftId ?? null,
     gender: rider?.gender || rider?.sex || null,
     weight: round(weight),
-    ftpW: round(ftpW, 0),
-    ftpWkg: round(ftpWkg),
-    mapW: round(mapIsOfficial ? officialMapW : estimatedMapW, 0),
-    mapWkg: round(mapIsOfficial ? officialMapWkg : estimatedMapWkg),
+    ftpW,
+    ftpWkg: ftpW != null && weight != null ? ftpW / weight : null,
+    ftpSource: officialFtpW != null ? "zFTP" : ftpW != null ? "zpFTP" : "missing",
+    mapW: mapIsOfficial ? officialMapW : estimatedMapW,
+    mapWkg: mapIsOfficial ? officialMapWkg : estimatedMapWkg,
     mapSource: mapIsOfficial ? "zMAP" : estimatedMapWkg != null ? "5min_estimate" : "missing",
     zpCategory: rider?.zpCategory || null,
   };
+}
+
+function hasOfficialZrlMetrics(metrics) {
+  return metrics.ftpSource === "zFTP" && metrics.ftpWkg != null &&
+    metrics.mapSource === "zMAP" && metrics.mapWkg != null;
 }
 
 function classifyRider(metrics, limits) {
@@ -298,15 +305,12 @@ function classifyRider(metrics, limits) {
   const womenWithEstimate = classifyBand(metrics, limits.women, false);
   const female = isFemaleGender(metrics.gender);
 
-  const openDev = developmentEligible(open.category, officialMapMetrics, limits.development.open);
-  const womenDev = developmentEligible(women.category, officialMapMetrics, limits.development.women);
-
   return {
     primaryBand: female ? "women" : "open",
     open: {
       category: open.category,
       estimatedCategory: openWithEstimate.category,
-      developmentEligible: openDev,
+      developmentEligible: developmentEligibility(open.category, metrics, limits.development.open),
       canRace: canRaceDivisions(open.category),
       drivers: {
         zFTP_W: open.fromFtpW,
@@ -317,7 +321,7 @@ function classifyRider(metrics, limits) {
     women: {
       category: women.category,
       estimatedCategory: womenWithEstimate.category,
-      developmentEligible: womenDev,
+      developmentEligible: developmentEligibility(women.category, metrics, limits.development.women),
       canRace: canRaceDivisions(women.category),
       drivers: {
         zFTP_Wkg: women.fromFtpWkg,
@@ -332,10 +336,11 @@ function buildSummary(metrics, placement) {
   const other = placement.primaryBand === "women" ? placement.open : placement.women;
   const bandLabel = placement.primaryBand === "women" ? "Women's" : "Open";
   const name = metrics.name || "Rytteren";
-  const ftp = `${metrics.ftpW ?? "?"} W / ${metrics.ftpWkg ?? "?"} W/kg`;
+  const ftpLabel = metrics.ftpSource === "zFTP" ? "zFTP" : "ZwiftPower FTP";
+  const ftp = `${round(metrics.ftpW, 0) ?? "?"} W / ${round(metrics.ftpWkg) ?? "?"} W/kg`;
   const mapLabel = metrics.mapSource === "zMAP" ? "zMAP" : "5-min (zMAP-estimat)";
-  const map = metrics.mapWkg != null ? `${metrics.mapW ?? "?"} W / ${metrics.mapWkg} W/kg` : "ukendt";
-  const dev = band.developmentEligible ? "ja" : "nej";
+  const map = metrics.mapWkg != null ? `${round(metrics.mapW, 0) ?? "?"} W / ${round(metrics.mapWkg)} W/kg` : "ukendt";
+  const dev = band.developmentEligible == null ? "ukendt" : band.developmentEligible ? "ja" : "nej";
   const raceUp = band.canRace.join("/");
   const zp = metrics.zpCategory
     ? metrics.zpCategory === band.category
@@ -354,7 +359,7 @@ function buildSummary(metrics, placement) {
       : "";
 
   return (
-    `${name}: ${bandLabel} ${band.category} (zFTP ${ftp}, ${mapLabel} ${map}). ` +
+    `${name}: ${bandLabel} ${band.category} (${ftpLabel} ${ftp}, ${mapLabel} ${map}). ` +
     `Kan køre ${raceUp}. Development ${band.category}: ${dev}.` +
     alt +
     mapCaveat +
@@ -418,6 +423,7 @@ module.exports = {
   parseZrlKnowledge,
   classifyRider,
   extractRiderMetrics,
+  hasOfficialZrlMetrics,
   lookupZrlCategory,
   loadZrlLimits,
 };

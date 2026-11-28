@@ -25,13 +25,37 @@ function roundRect(ctx, x, y, width, height, radius) {
   return ctx;
 }
 
+function formatMetric({ watts, wkg }) {
+  if (watts == null && wkg == null) return "Unavailable";
+  if (watts == null) return `${wkg.toFixed(2)} W/kg`;
+  if (wkg == null) return `${watts} W`;
+  return `${watts} W (${wkg.toFixed(2)} W/kg)`;
+}
+
 async function generateSingleRiderStatsImage(rider) {
-  const rowCount = 13;
+  const rows = [
+    ["Name", rider.name],
+    ["Phenotype", rider.phenotype ?? "—"],
+    ["Ladder", rider.ladder.label],
+    ["vELO2", rider.velo.label],
+    ["ZRL", rider.zrl.label],
+    ["zFTP", formatMetric(rider.zFTP)],
+    ["zMAP", formatMetric(rider.zMAP)],
+    ["ZwiftPower FTP", formatMetric(rider.ftp)],
+    ["30s", formatMetric(rider.power.w30)],
+    ["1m", formatMetric(rider.power.w60)],
+    ["5m", formatMetric(rider.power.w300)],
+    ["20m", formatMetric(rider.power.w1200)],
+    ["Finishes", rider.race.finishes ?? "—"],
+    ["😁 Wins", rider.race.wins ?? "—"],
+    ["☺️ Podiums", rider.race.podiums ?? "—"],
+    ["😖 DNFs", rider.race.dnfs ?? "—"],
+  ];
   const rowHeight = 30;
   const topMargin = 150;
   const leftMargin = 50;
   const width = 450;
-  const height = topMargin + rowCount * rowHeight + 40;
+  const height = topMargin + rows.length * rowHeight + 40;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -65,38 +89,17 @@ async function generateSingleRiderStatsImage(rider) {
 
   // Row labels
   ctx.font = "bold 22px Arial";
-  const labels = [
-    "Name", "Pace Group", "vELO Category", "Phenotype",
-    "FTP", "30s", "1m", "5m", "20m",
-    "Finishes", "😁 Wins", "☺️ Podiums", "😖 DNFs"
-  ];
-  labels.forEach((label, i) => {
+  rows.forEach(([label], i) => {
     ctx.fillText(label, leftMargin, topMargin + i * rowHeight);
   });
 
   // Values
+  ctx.textDrawingMode = "glyph";
   ctx.font = "bold 16px Arial";
-  let yOffset = topMargin;
   const xOffset = leftMargin + 180;
-  ctx.fillText(rider.name, xOffset, yOffset);           yOffset += rowHeight;
-  ctx.fillText(rider.zpCategory, xOffset, yOffset);       yOffset += rowHeight;
-  const veloCat = `${rider.race.current.mixed.category} (${rider.race.current.rating.toFixed(0)})`;
-  ctx.fillText(veloCat, xOffset, yOffset);                yOffset += rowHeight;
-  ctx.fillText(phenotypeLabel(rider.phenotype) || "—", xOffset, yOffset);  yOffset += rowHeight;
-  const ftpString = `${rider.zpFTP} W (${(rider.zpFTP / rider.weight).toFixed(2)} W/kg)`;
-  ctx.fillText(ftpString, xOffset, yOffset);              yOffset += rowHeight;
-  const w30String = `${rider.power.w30} W (${rider.power.wkg30.toFixed(2)} W/kg)`;
-  ctx.fillText(w30String, xOffset, yOffset);              yOffset += rowHeight;
-  const w60String = `${rider.power.w60} W (${rider.power.wkg60.toFixed(2)} W/kg)`;
-  ctx.fillText(w60String, xOffset, yOffset);              yOffset += rowHeight;
-  const w300String = `${rider.power.w300} W (${rider.power.wkg300.toFixed(2)} W/kg)`;
-  ctx.fillText(w300String, xOffset, yOffset);             yOffset += rowHeight;
-  const w1200String = `${rider.power.w1200} W (${rider.power.wkg1200.toFixed(2)} W/kg)`;
-  ctx.fillText(w1200String, xOffset, yOffset);            yOffset += rowHeight;
-  ctx.fillText(`${rider.race.finishes}`, xOffset, yOffset); yOffset += rowHeight;
-  ctx.fillText(`${rider.race.wins}`, xOffset, yOffset);     yOffset += rowHeight;
-  ctx.fillText(`${rider.race.podiums}`, xOffset, yOffset);  yOffset += rowHeight;
-  ctx.fillText(`${rider.race.dnfs}`, xOffset, yOffset);
+  rows.forEach(([, value], i) => {
+    ctx.fillText(value, xOffset, topMargin + i * rowHeight);
+  });
 
   return canvas.toBuffer();
 }
