@@ -69,3 +69,15 @@ test("Rider Stats keeps the ZRL category provisional and excludes estimated metr
   assert.deepEqual(zFTP, { watts: null, wkg: null });
   assert.deepEqual(zMAP, { watts: null, wkg: null });
 });
+
+test("Rider Stats uses the live vELO rating and its API category", async () => {
+  const { velo } = await getRiderStatsCategories({
+    velo: { race: 712.6, category: { number: 3, name: "Emerald" }, max30: { race: 750 } },
+  });
+  assert.deepEqual(velo, { number: 3, category: "Emerald", rating: 712.6, label: "Emerald (713)" });
+});
+
+test("Rider Stats marks live vELO unavailable when only a legacy rating exists", async () => {
+  const { velo } = await getRiderStatsCategories({ race: { max30: { rating: 1868 } } });
+  assert.deepEqual(velo, { number: null, category: null, rating: null, label: "Unavailable" });
+});

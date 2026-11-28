@@ -28,6 +28,12 @@ function getLadder(rider) {
 }
 
 async function getRiderStatsCategories(rider) {
+  const { race: liveRating, category: liveCategory } = rider.velo ?? {};
+  const rating = Number.isFinite(liveRating) ? liveRating : null;
+  const name = typeof liveCategory?.name === "string" ? liveCategory.name.trim() || null : null;
+  const number = Number.isInteger(liveCategory?.number) ? liveCategory.number : null;
+  const veloLabel = rating == null ? "Unavailable" : name ? `${name} (${rating.toFixed(0)})` : rating.toFixed(0);
+
   const metrics = extractRiderMetrics(rider);
   const paceGroup = rider.zpCategory === "A+" ? "A" : rider.zpCategory;
   let category = /^[A-D]$/.test(paceGroup) ? paceGroup : null;
@@ -48,6 +54,7 @@ async function getRiderStatsCategories(rider) {
 
   return {
     ladder: getLadder(rider),
+    velo: { number, category: name, rating, label: veloLabel },
     zrl: { category, developmentEligible, label },
     zFTP: {
       watts: metrics.ftpSource === "zFTP" ? metrics.ftpW : null,
