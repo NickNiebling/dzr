@@ -185,10 +185,27 @@ test("empty histories produce no chart points for any selection", () => {
 });
 
 const { buildChartTimeline, buildSnapshotTimeline, dateTimestamp, isDateKey } = require(path.join(outputDir, "statsTimeline.js"));
-const { normalizeMemberHistory, buildMemberTimeline, findMissingMemberObservations } = require(path.join(outputDir, "statsMemberHistory.js"));
+const { normalizeMemberHistory, buildMemberTimeline, findMissingMemberObservations, memberChartDate } = require(path.join(outputDir, "statsMemberHistory.js"));
 const now = new Date("2026-10-20T12:00:00Z");
 const member = (date, members = 700, clubMembers = 100) => ({ date, members, clubMembers, presence: null, estimated: false });
 const dailyWindow = (start, end) => ({ selection: StatsPeriod.Last30Days, granularity: "day", start, end });
+
+for (const [season, utc, saturday, sunday, monday] of [
+  ["summer", "2026-06-14T22:00:00Z", "2026-06-13", "2026-06-14", "2026-06-15"],
+  ["winter", "2026-12-06T23:00:00Z", "2026-12-05", "2026-12-06", "2026-12-07"],
+]) {
+  test(`member charts close the week and report Sunday gaps at Copenhagen midnight in ${season}`, () => {
+    const today = memberChartDate(new Date(utc));
+    const rows = [member(saturday, 700, null)];
+    const timeline = buildMemberTimeline(rows, getPeriodWindow(StatsPeriod.All, today), today);
+
+    assert.equal(getPeriodWindow(StatsPeriod.Last30Days, today).end, monday);
+    assert.equal(timeline.points.at(-1).date, sunday);
+    assert.deepEqual(findMissingMemberObservations(rows, timeline, today), [
+      { series: "members", start: sunday, end: sunday, days: 1 },
+    ]);
+  });
+}
 
 test("screenshot dates are sorted without losing observations and spaced in a 3:30:1 ratio", () => {
   const rows = Object.freeze([member("2026-10-20"), member("2026-09-16"), member("2026-10-19"), member("2026-09-19")]);

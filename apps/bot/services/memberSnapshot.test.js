@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { maybeSaveMemberSnapshot } = require("./memberSnapshot");
 
-test("the evening job preserves history through a failed fetch and retries", async t => {
+test("the evening job uses Copenhagen time and retries without erasing history", async t => {
   const previous = { memberCount: 99, estimated: true };
   const documents = {
     "server_member_counts/2026-06-14": previous,
@@ -50,4 +50,7 @@ test("the evening job preserves history through a failed fetch and retries", asy
     roleCounts: { club: 1, other: 1, empty: 0 },
   });
   assert.equal(fetchMembers.mock.callCount(), 2);
+
+  await maybeSaveMemberSnapshot(client, db, "guild", () => new Date("2026-12-06T22:45:00Z"));
+  assert.equal(documents["server_member_counts/2026-12-06"]?.timestamp, "2026-12-06T22:45:00.000Z");
 });

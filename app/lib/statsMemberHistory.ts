@@ -5,6 +5,16 @@ import { shiftDay, weekStart, type PeriodWindow } from './statsPeriods'
 const MEMBER_SERIES = ['members', 'clubMembers'] as const
 type MemberSeries = typeof MEMBER_SERIES[number]
 
+const memberDateFormat = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+
+export function memberChartDate(now: Date): Date {
+  const { year, month, day } = Object.fromEntries(memberDateFormat.formatToParts(now).map(({ type, value }) => [type, value]))
+  // Chart helpers use UTC for arithmetic on calendar dates.
+  return new Date(`${year}-${month}-${day}T00:00:00Z`)
+}
+
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }

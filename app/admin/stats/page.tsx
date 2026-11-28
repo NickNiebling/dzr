@@ -7,7 +7,7 @@ import KpiCard from '@/components/admin/stats/KpiCard'
 import PeriodToggle from '@/components/admin/stats/PeriodToggle'
 import { StatsPeriod, getPeriodWindow, periodLabel } from '@/app/lib/statsPeriods'
 import { buildChartTimeline, buildSnapshotTimeline } from '@/app/lib/statsTimeline'
-import { buildMemberTimeline, findMissingMemberObservations } from '@/app/lib/statsMemberHistory'
+import { buildMemberTimeline, findMissingMemberObservations, memberChartDate } from '@/app/lib/statsMemberHistory'
 import MissingObservations from '@/components/admin/stats/MissingObservations'
 import RankingTable from '@/components/admin/stats/RankingTable'
 import { ActivityChart, BreakdownDonut, GrowthChart, MembersChart, type GrowthChartPoint } from '@/components/admin/stats/charts'
@@ -23,7 +23,7 @@ function fmtDay(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(`${iso}T00:00:00.000Z`)
   if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  return d.toLocaleDateString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function mergeGrowthSeries(
@@ -100,9 +100,10 @@ export default function StatsAdminPage() {
   const totals = stats?.totals
   const hasActivity = (totals?.messages || 0) + (totals?.reactions || 0) + (totals?.voice || 0) + (totals?.interactions || 0) > 0
   const now = new Date()
-  const memberTimeline = buildMemberTimeline(stats?.members.series || [], getPeriodWindow(memberPeriod, now), now)
+  const memberToday = memberChartDate(now)
+  const memberTimeline = buildMemberTimeline(stats?.members.series || [], getPeriodWindow(memberPeriod, memberToday), memberToday)
   const missingObservations = !loadingStats && !statsError && !stats?.members.error
-    ? findMissingMemberObservations(stats?.members.series || [], memberTimeline, now)
+    ? findMissingMemberObservations(stats?.members.series || [], memberTimeline, memberToday)
     : []
   const activityTimeline = buildChartTimeline(stats?.activity || [], stats?.period || getPeriodWindow(activityPeriod, now))
   const latestMembers = stats?.members?.latest
