@@ -36,7 +36,7 @@ function formatMetric({ watts, wkg }) {
   return `${watts} W (${wkg.toFixed(2)} W/kg)`;
 }
 
-const CATEGORY_ICONS = {
+const RIDER_STATS_ICONS = {
   "💎": ["#77daff", "diamond"],
   "🔴": ["#d82943"],
   "🟢": ["#40b54b"],
@@ -47,41 +47,79 @@ const CATEGORY_ICONS = {
   "🥉": ["#c88049", "medal"],
   "🟤": ["#96552f"],
   "🟡": ["#ffdc36"],
+  "🏁": ["#ffffff", "flag"],
+  "🏆": ["#f8cc38", "trophy"],
+  "❌": ["#ad1737", "cross"],
 };
 
-function drawRiderStatsValue(ctx, value, x, y) {
-  const [emoji] = String(value).split(" ", 1);
-  if (!Object.hasOwn(CATEGORY_ICONS, emoji)) {
-    ctx.fillText(value, x, y);
-    return;
-  }
-
-  // Draw category icons directly so the PNG works without an emoji font.
-  const [color, shape] = CATEGORY_ICONS[emoji];
-  const centerX = x + 8;
-  const centerY = y - 6;
+function drawRiderStatsIcon(ctx, [color, shape], x, y) {
+  // Draw the icon directly so the PNG works without an emoji font.
   ctx.save();
-  if (shape === "medal") {
-    ctx.fillStyle = "#3664aa";
-    ctx.fillRect(centerX - 4, centerY - 9, 8, 6);
-  }
-  ctx.beginPath();
-  if (shape === "diamond") {
-    ctx.moveTo(centerX, centerY - 8);
-    ctx.lineTo(centerX + 8, centerY - 2);
-    ctx.lineTo(centerX, centerY + 8);
-    ctx.lineTo(centerX - 8, centerY - 2);
-    ctx.closePath();
-  } else {
-    ctx.arc(centerX, centerY + (shape === "medal" ? 2 : 0), shape === "medal" ? 6 : 7, 0, Math.PI * 2);
-  }
+  ctx.translate(x + 8, y - 7);
   ctx.fillStyle = color;
-  ctx.fill();
-  ctx.lineWidth = 1;
   ctx.strokeStyle = "#ffffff";
-  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+
+  if (shape === "flag") {
+    ctx.fillRect(-8, -8, 2, 16);
+    ctx.fillRect(-6, -8, 14, 10);
+    ctx.fillStyle = "#222222";
+    for (const [left, top] of [[-6, -8], [1, -8], [-2.5, -3], [4.5, -3]]) {
+      ctx.fillRect(left, top, 3.5, 5);
+    }
+  } else if (shape === "trophy") {
+    ctx.strokeRect(-8, -6, 16, 6);
+    ctx.fillRect(-1.5, 2, 3, 5);
+    ctx.fillRect(-5, 6, 10, 2);
+    ctx.moveTo(-5, -8);
+    ctx.lineTo(5, -8);
+    ctx.quadraticCurveTo(5, 3, 0, 3);
+    ctx.quadraticCurveTo(-5, 3, -5, -8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (shape === "cross") {
+    ctx.moveTo(-5, -5);
+    ctx.lineTo(5, 5);
+    ctx.moveTo(5, -5);
+    ctx.lineTo(-5, 5);
+    ctx.lineCap = "round";
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  } else {
+    if (shape === "diamond") {
+      ctx.moveTo(0, -8);
+      ctx.lineTo(8, -2);
+      ctx.lineTo(0, 8);
+      ctx.lineTo(-8, -2);
+      ctx.closePath();
+    } else {
+      if (shape === "medal") {
+        ctx.fillStyle = "#3664aa";
+        ctx.fillRect(-4, -9, 8, 6);
+        ctx.fillStyle = color;
+      }
+      ctx.arc(0, shape === "medal" ? 2 : 0, shape === "medal" ? 6 : 7, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.stroke();
+  }
   ctx.restore();
-  ctx.fillText(value.slice(emoji.length + 1), x + 23, y);
+}
+
+function drawRiderStatsText(ctx, value, x, y, maxWidth) {
+  const [emoji] = String(value).split(" ", 1);
+  if (Object.hasOwn(RIDER_STATS_ICONS, emoji)) {
+    const iconWidth = 23;
+    drawRiderStatsIcon(ctx, RIDER_STATS_ICONS[emoji], x, y);
+    ctx.fillText(value.slice(emoji.length + 1), x + iconWidth, y, maxWidth == null ? undefined : maxWidth - iconWidth);
+  } else {
+    ctx.fillText(value, x, y, maxWidth);
+  }
 }
 
 async function generateSingleRiderStatsImage(rider) {
@@ -98,10 +136,10 @@ async function generateSingleRiderStatsImage(rider) {
     ["1m", formatMetric(rider.power.w60)],
     ["5m", formatMetric(rider.power.w300)],
     ["20m", formatMetric(rider.power.w1200)],
-    ["Finishes", rider.race.finishes ?? "—"],
-    ["Wins", rider.race.wins ?? "—"],
-    ["Podiums", rider.race.podiums ?? "—"],
-    ["DNFs", rider.race.dnfs ?? "—"],
+    ["🏁 Finishes", rider.race.finishes ?? "—"],
+    ["🏆 Wins", rider.race.wins ?? "—"],
+    ["🥈 Podiums", rider.race.podiums ?? "—"],
+    ["❌ DNFs", rider.race.dnfs ?? "—"],
   ];
   const rowHeight = 30;
   const topMargin = 150;
@@ -143,14 +181,14 @@ async function generateSingleRiderStatsImage(rider) {
   const xOffset = leftMargin + 180;
   ctx.font = `21px ${RIDER_STATS_FONT}`;
   rows.forEach(([label], i) => {
-    ctx.fillText(label, leftMargin, topMargin + i * rowHeight, xOffset - leftMargin - 12);
+    drawRiderStatsText(ctx, label, leftMargin, topMargin + i * rowHeight, xOffset - leftMargin - 12);
   });
 
   // Values
   ctx.font = `16px ${RIDER_STATS_FONT}`;
   rows.forEach(([, value, hasCategoryIcon], i) => {
     const y = topMargin + i * rowHeight;
-    if (hasCategoryIcon) drawRiderStatsValue(ctx, value, xOffset, y);
+    if (hasCategoryIcon) drawRiderStatsText(ctx, value, xOffset, y);
     else ctx.fillText(value, xOffset, y);
   });
 
