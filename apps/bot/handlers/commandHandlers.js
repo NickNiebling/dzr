@@ -11,6 +11,7 @@ const { syncZpRolesForGuild } = require("../services/zpRoleSync");
 const { checkVerificationAfterZwiftLink } = require("./memberHandler");
 const { prepareZwiftIdConfirmation, sendConfirmation } = require("./zwiftIdMessageHandler");
 const { findRidersByName, buildRiderSearchReply } = require("../services/riderSearch");
+const { getRiderStatsCategories } = require("../services/riderStatsCategories");
 const { MessageFlags } = require("discord.js");
 const { postSignupBoard, repostSignupBoard } = require("../services/signupService");
 
@@ -152,6 +153,7 @@ async function handleRiderStats(interaction) {
     }
 
     const toNumber = (value) => {
+      if (value == null || value === "") return null;
       if (typeof value === "number") return Number.isFinite(value) ? value : null;
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : null;
@@ -164,15 +166,12 @@ async function handleRiderStats(interaction) {
       return wattsNum / weightNum;
     };
 
+    const categories = await getRiderStatsCategories(rider);
     const riderSummary = {
       name: rider?.name ?? null,
       zwiftId: rider?.riderId ?? null,
-      paceGroup: rider?.zpCategory ?? null,
+      ...categories,
       phenotype: phenotypeLabel(rider?.phenotype),
-      velo: {
-        category: rider?.race?.current?.mixed?.category ?? null,
-        rating: toNumber(rider?.race?.current?.rating)
-      },
       ftp: {
         watts: toNumber(rider?.zpFTP),
         wkg: computeWkg(rider?.zpFTP, rider?.weight)
@@ -203,7 +202,7 @@ async function handleRiderStats(interaction) {
       }
     };
 
-    const imageBuffer = await generateSingleRiderStatsImage(rider);
+    const imageBuffer = await generateSingleRiderStatsImage(riderSummary);
     const graphBuffer = await generatePowerLineGraph(rider);
     const graphBuffer2 = await generatePowerLineGraph2(rider);
 
