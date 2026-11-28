@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { AttachmentBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { AttachmentBuilder, ActionRowBuilder, StringSelectMenuBuilder, escapeMarkdown } = require("discord.js");
 const { generatePowerLineGraph, generatePowerLineGraph2 } = require("../utils/powerGraph");
 const { generateSingleRiderStatsImage, generateTeamStatsImage, generateEventResultsImage } = require("../utils/imageGenerator");
 const { phenotypeLabel } = require("../utils/phenotype");
@@ -213,16 +213,15 @@ async function handleRiderStats(interaction) {
       );
     }
 
-    const zwiftPowerLink = `[${rider.name}](<https://www.zwiftpower.com/profile.php?z=${rider.riderId}>)`;
-    const content = `ZwiftPower Profile: ${zwiftPowerLink}`;
+    const zwiftPowerUrl = `https://www.zwiftpower.com/profile.php?z=${rider.riderId}`;
+    const zwiftRacingUrl = `https://www.zwiftracing.app/riders/${rider.riderId}`;
+    const content = `${escapeMarkdown(rider.name)}: [ZwiftPower](<${zwiftPowerUrl}>) • [ZwiftRacing](<${zwiftRacingUrl}>)`;
 
     await ephemeralReplyWithPublish(interaction, content, attachments);
     return {
       success: true,
       rider: riderSummary,
-      metadata: {
-        zwiftPowerUrl: `https://www.zwiftpower.com/profile.php?z=${rider.riderId}`
-      }
+      metadata: { zwiftPowerUrl, zwiftRacingUrl }
     };
   } catch (error) {
     console.error("❌ rider_stats Error:", error);
