@@ -65,7 +65,7 @@ test("Rider Stats keeps the ZRL category provisional and excludes estimated metr
     power: { w300: 301 },
   });
 
-  assert.deepEqual(zrl, { category: "B", developmentEligible: null, label: "🟢 B (provisional)" });
+  assert.deepEqual(zrl, { category: "B", developmentEligible: null, label: "🟢 B (ZwiftPower est.)" });
   assert.deepEqual(zFTP, { watts: null, wkg: null });
   assert.deepEqual(zMAP, { watts: null, wkg: null });
 });

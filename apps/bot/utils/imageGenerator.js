@@ -35,13 +35,13 @@ function formatMetric({ watts, wkg }) {
 async function generateSingleRiderStatsImage(rider) {
   const rows = [
     ["Name", rider.name],
-    ["ZRL", rider.zrl.label],
     ["Ladder", rider.ladder.label],
     ["vELO", rider.velo.label],
     ["Phenotype", rider.phenotype ?? "—"],
-    ["FTP", formatMetric(rider.ftp)],
+    ["ZRL", rider.zrl.label],
     ["zFTP", formatMetric(rider.zFTP)],
     ["zMAP", formatMetric(rider.zMAP)],
+    ["ZwiftPower FTP", formatMetric(rider.ftp)],
     ["30s", formatMetric(rider.power.w30)],
     ["1m", formatMetric(rider.power.w60)],
     ["5m", formatMetric(rider.power.w300)],

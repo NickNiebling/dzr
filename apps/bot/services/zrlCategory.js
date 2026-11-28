@@ -116,8 +116,6 @@ function parseZrlKnowledge(content) {
   const womenC = parseCategoryFields(womenStd.C);
   const womenD = parseCategoryFields(womenStd.D);
 
-  if (!openA.ftp.minW || !openA.ftp.minWkg) return null;
-
   const parsed = {
     season: "2026/27",
     open: {
@@ -159,7 +157,10 @@ function parseZrlKnowledge(content) {
     };
   }
 
-  return parsed;
+  const standardBands = [...Object.values(parsed.open), ...Object.values(parsed.women)];
+  const complete = standardBands.every(band =>
+    Object.values(band).every(threshold => Number.isFinite(threshold) && threshold > 0));
+  return complete ? parsed : null;
 }
 
 function isZrlKnowledgeEntry(entry) {
@@ -244,10 +245,10 @@ function classifyBand(metrics, mins, useWatts) {
   };
 }
 
-function developmentEligible(category, metrics, devLimits) {
+function developmentEligibility(category, metrics, devLimits) {
   const cap = devLimits?.[category];
-  return cap?.ftpWkgMax != null && cap.mapWkgMax != null &&
-    metrics.ftpWkg < cap.ftpWkgMax && metrics.mapWkg < cap.mapWkgMax &&
+  if (!hasOfficialZrlMetrics(metrics) || !Number.isFinite(cap?.ftpWkgMax) || !Number.isFinite(cap?.mapWkgMax)) return null;
+  return metrics.ftpWkg < cap.ftpWkgMax && metrics.mapWkg < cap.mapWkgMax &&
     (cap.ftpWMin == null || metrics.ftpW >= cap.ftpWMin);
 }
 
@@ -304,16 +305,12 @@ function classifyRider(metrics, limits) {
   const womenWithEstimate = classifyBand(metrics, limits.women, false);
   const female = isFemaleGender(metrics.gender);
 
-  const canConfirmDev = hasOfficialZrlMetrics(metrics);
-  const openDev = canConfirmDev && developmentEligible(open.category, metrics, limits.development.open);
-  const womenDev = canConfirmDev && developmentEligible(women.category, metrics, limits.development.women);
-
   return {
     primaryBand: female ? "women" : "open",
     open: {
       category: open.category,
       estimatedCategory: openWithEstimate.category,
-      developmentEligible: openDev,
+      developmentEligible: developmentEligibility(open.category, metrics, limits.development.open),
       canRace: canRaceDivisions(open.category),
       drivers: {
         zFTP_W: open.fromFtpW,
@@ -324,7 +321,7 @@ function classifyRider(metrics, limits) {
     women: {
       category: women.category,
       estimatedCategory: womenWithEstimate.category,
-      developmentEligible: womenDev,
+      developmentEligible: developmentEligibility(women.category, metrics, limits.development.women),
       canRace: canRaceDivisions(women.category),
       drivers: {
         zFTP_Wkg: women.fromFtpWkg,
@@ -343,7 +340,7 @@ function buildSummary(metrics, placement) {
   const ftp = `${round(metrics.ftpW, 0) ?? "?"} W / ${round(metrics.ftpWkg) ?? "?"} W/kg`;
   const mapLabel = metrics.mapSource === "zMAP" ? "zMAP" : "5-min (zMAP-estimat)";
   const map = metrics.mapWkg != null ? `${round(metrics.mapW, 0) ?? "?"} W / ${round(metrics.mapWkg)} W/kg` : "ukendt";
-  const dev = hasOfficialZrlMetrics(metrics) ? (band.developmentEligible ? "ja" : "nej") : "ukendt";
+  const dev = band.developmentEligible == null ? "ukendt" : band.developmentEligible ? "ja" : "nej";
   const raceUp = band.canRace.join("/");
   const zp = metrics.zpCategory
     ? metrics.zpCategory === band.category

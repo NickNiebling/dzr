@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { classifyRider, extractRiderMetrics, FALLBACK_LIMITS } = require("./zrlCategory");
+const { classifyRider, extractRiderMetrics, parseZrlKnowledge, FALLBACK_LIMITS } = require("./zrlCategory");
 
 test("official zFTP and zMAP confirm Open B DEV", () => {
   const metrics = extractRiderMetrics({ weight: 70, zFTP: 245, zMAP: 301 });
@@ -40,7 +40,7 @@ test("a 5-minute estimate cannot confirm DEV or drive the standard category", ()
   assert.equal(metrics.mapSource, "5min_estimate");
   assert.equal(open.category, "B");
   assert.equal(open.estimatedCategory, "A");
-  assert.equal(open.developmentEligible, false);
+  assert.equal(open.developmentEligible, null);
 });
 
 test("zpFTP cannot confirm DEV even when official zMAP is available", () => {
@@ -50,7 +50,7 @@ test("zpFTP cannot confirm DEV even when official zMAP is available", () => {
   assert.equal(metrics.ftpSource, "zpFTP");
   assert.equal(metrics.mapSource, "zMAP");
   assert.equal(open.category, "B");
-  assert.equal(open.developmentEligible, false);
+  assert.equal(open.developmentEligible, null);
 });
 
 test("empty, null and zero values leave power metrics missing", () => {
@@ -59,6 +59,14 @@ test("empty, null and zero values leave power metrics missing", () => {
 
   assert.deepEqual([metrics.ftpW, metrics.ftpWkg, metrics.ftpSource], [null, null, "missing"]);
   assert.deepEqual([metrics.mapW, metrics.mapWkg, metrics.mapSource], [null, null, "missing"]);
-  assert.equal(placement.open.developmentEligible, false);
-  assert.equal(placement.women.developmentEligible, false);
+  assert.equal(placement.open.developmentEligible, null);
+  assert.equal(placement.women.developmentEligible, null);
+});
+
+test("partial knowledge limits cannot replace the standard ZRL rules", () => {
+  const content = JSON.stringify({
+    standard: { open_divisions: { A: { zFTP: ">=250 W and >=4.2 W/kg" } } },
+  });
+
+  assert.equal(parseZrlKnowledge(content), null);
 });

@@ -35,11 +35,12 @@ async function getRiderStatsCategories(rider) {
   const veloLabel = rating == null ? "Unavailable" : name ? `${name} (${rating.toFixed(0)})` : rating.toFixed(0);
 
   const metrics = extractRiderMetrics(rider);
+  const hasOfficialMetrics = hasOfficialZrlMetrics(metrics);
   const paceGroup = rider.zpCategory === "A+" ? "A" : rider.zpCategory;
   let category = /^[A-D]$/.test(paceGroup) ? paceGroup : null;
   let developmentEligible = null;
 
-  if (hasOfficialZrlMetrics(metrics)) {
+  if (hasOfficialMetrics) {
     const { limits } = await loadZrlLimits().catch(() => ({ limits: FALLBACK_LIMITS }));
     const placement = classifyRider(metrics, limits);
     ({ category, developmentEligible } = placement[placement.primaryBand]);
@@ -49,7 +50,7 @@ async function getRiderStatsCategories(rider) {
   if (category) {
     label = `${ZRL_EMOJI[category]} ${category}`;
     if (developmentEligible === true) label += " DEV";
-    if (developmentEligible === null) label += " (provisional)";
+    if (!hasOfficialMetrics) label += " (ZwiftPower est.)";
   }
 
   return {
