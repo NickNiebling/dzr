@@ -1,6 +1,6 @@
 const { classifyRider, extractRiderMetrics, hasOfficialZrlMetrics, loadZrlLimits, FALLBACK_LIMITS } = require("./zrlCategory");
 
-const LADDER_EMOJI = {
+const RATING_EMOJI = {
   diamond: "💎",
   ruby: "🔴",
   emerald: "🟢",
@@ -13,26 +13,24 @@ const LADDER_EMOJI = {
 };
 const ZRL_EMOJI = { A: "🔴", B: "🟢", C: "🔵", D: "🟡" };
 
+function summarizeRating(rating, categoryNumber, categoryName, missingLabel) {
+  const number = Number.isInteger(categoryNumber) ? categoryNumber : null;
+  const category = typeof categoryName === "string" ? categoryName.trim() || null : null;
+  if (!Number.isFinite(rating)) return { number, category, rating: null, label: missingLabel };
+
+  const emoji = RATING_EMOJI[category?.toLowerCase()];
+  const rankLabel = [number, category].filter(value => value != null).join(" – ");
+  const label = rankLabel ? `${rankLabel} (${rating.toFixed(0)})` : rating.toFixed(0);
+  return { number, category, rating, label: emoji ? `${emoji} ${label}` : label };
+}
+
 function getLadder(rider) {
-  for (const rank of [rider?.race?.max30, rider?.race?.max90]) {
-    const { rating, mixed } = rank ?? {};
-    if (!Number.isFinite(rating)) continue;
-    const number = Number.isInteger(mixed?.number) ? mixed.number : null;
-    const category = typeof mixed?.category === "string" ? mixed.category.trim() || null : null;
-    const emoji = LADDER_EMOJI[category?.toLowerCase()];
-    const rankLabel = [number, category].filter(value => value != null).join(" – ");
-    const label = rankLabel ? `${rankLabel} (${rating.toFixed(0)})` : rating.toFixed(0);
-    return { number, category, rating, label: emoji ? `${emoji} ${label}` : label };
-  }
-  return { number: null, category: null, rating: null, label: "Unranked" };
+  const rank = [rider?.race?.max30, rider?.race?.max90].find(entry => Number.isFinite(entry?.rating));
+  return summarizeRating(rank?.rating, rank?.mixed?.number, rank?.mixed?.category, "Unranked");
 }
 
 async function getRiderStatsCategories(rider) {
   const { race: liveRating, category: liveCategory } = rider.velo ?? {};
-  const rating = Number.isFinite(liveRating) ? liveRating : null;
-  const name = typeof liveCategory?.name === "string" ? liveCategory.name.trim() || null : null;
-  const number = Number.isInteger(liveCategory?.number) ? liveCategory.number : null;
-  const veloLabel = rating == null ? "Unavailable" : name ? `${name} (${rating.toFixed(0)})` : rating.toFixed(0);
 
   const metrics = extractRiderMetrics(rider);
   const hasOfficialMetrics = hasOfficialZrlMetrics(metrics);
@@ -55,7 +53,7 @@ async function getRiderStatsCategories(rider) {
 
   return {
     ladder: getLadder(rider),
-    velo: { number, category: name, rating, label: veloLabel },
+    velo: summarizeRating(liveRating, liveCategory?.number, liveCategory?.name, "Unavailable"),
     zrl: { category, developmentEligible, label },
     zFTP: {
       watts: metrics.ftpSource === "zFTP" ? metrics.ftpW : null,
