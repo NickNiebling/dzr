@@ -36,7 +36,7 @@ async function generateSingleRiderStatsImage(rider) {
   const rows = [
     ["Name", rider.name],
     ["Ladder", rider.ladder.label],
-    ["vELO", rider.velo.label],
+    ["vELO2", rider.velo.label],
     ["Phenotype", rider.phenotype ?? "—"],
     ["ZRL", rider.zrl.label],
     ["zFTP", formatMetric(rider.zFTP)],
