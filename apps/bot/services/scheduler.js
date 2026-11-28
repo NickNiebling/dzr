@@ -2,7 +2,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("
 const { getDueScheduledMessages, markScheduledMessageSent, processMessageContent, refreshClubRoster, refreshZwiftPowerRoster, fixDueFiftyResults, applyDueWeeklySeries } = require("./contentApi");
 const { sweepGuildForNewMembers } = require("./newMemberService");
 const config = require("../config/config");
-const { getBotState, setBotState } = require("./firebase");
+const { db, getBotState, setBotState } = require("./firebase");
 const { syncZpRolesForGuild } = require("./zpRoleSync");
 const { maybePostScheduledQuiz } = require("./quizService");
 const { maybeSendCoachFollowUps } = require("./coachFollowUp");
@@ -10,6 +10,7 @@ const { maybeRunLadderJobs } = require("./ladder/ladderJobs");
 const { maybeSyncAnnouncements } = require("./announcementIndex");
 const { maybeRunAnnouncer } = require("./announcer");
 const { reportRecurringError } = require("./recurringError");
+const { maybeSaveMemberSnapshot } = require("./memberSnapshot");
 
 let schedulerRunning = false;
 
@@ -563,15 +564,14 @@ async function sendScheduledMessage(client, scheduledMessage) {
  */
 function startScheduler(client) {
   console.log("🚀 Starting message scheduler...");
-  
-  // Check immediately
-  checkScheduledMessages(client);
-  
-  // Then check every minute
-  setInterval(() => {
+
+  const tick = () => {
+    maybeSaveMemberSnapshot(client, db, config.discord.guildId);
     checkScheduledMessages(client);
-  }, 60000); // 1 minute
-  
+  };
+  tick();
+  setInterval(tick, 60000);
+
   console.log("✅ Message scheduler started - checking every minute");
 }
 
@@ -579,4 +579,4 @@ module.exports = {
   startScheduler,
   checkScheduledMessages,
   updateKmsStatus,
-}; 
+};

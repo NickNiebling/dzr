@@ -82,7 +82,7 @@ Coach notes and calendar entries are subcollections beneath Discord-ID parents. 
 | `series_catalogs`, `series_schedules`, `event_series`, `group_ride_schedules` | Website planning/publishing; Flask updates Fifty result markers | Public/member event views, bot automation and result jobs; [events guide](events.md) |
 | `club_stats` | Website ZwiftRacing ingestion route; legacy Flask queue enrichment can also update snapshots | Website stats, bot rider tools, role sync and Flask member views |
 | `companion_club_members`, `zwiftpower_club_members`, `zwiftpower_roster_counts` | Flask roster refresh endpoints | Membership/growth comparisons and admin views; empty fetch does not clear stored roster |
-| `server_activity`, `server_member_counts` | Bot activity summaries; website admin stats writes member-count snapshots | Admin analytics; operational records are separate from Coach notes |
+| `server_activity`, `server_member_counts` | Bot activity summaries and daily member counts (23:45 Europe/Copenhagen); Flask can backfill estimates | Admin analytics; operational records are separate from Coach notes |
 | `intervals_connections` | Website OAuth callback; bot can migrate legacy token fields | Website status and bot training tools; tokens encrypted, client SDK denied |
 | `coach_profiles`, `coach_chat_notes/{id}/notes` | Website settings/notes and bot Coach memory | Shared validation/encryption; consent governs conversation-derived notes |
 | `member_calendar/{id}/entries` | Website member calendar and authorized bot tools | Website and Coach; encrypted text, independent member lifecycle |

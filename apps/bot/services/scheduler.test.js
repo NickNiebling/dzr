@@ -28,6 +28,7 @@ function loadScheduler(contentApi, maybePostScheduledQuiz = noop) {
     "./announcementIndex": { maybeSyncAnnouncements: noop },
     "./announcer": { maybeRunAnnouncer: noop },
     "./recurringError": { reportRecurringError: noop },
+    "./memberSnapshot": { maybeSaveMemberSnapshot: noop },
   }, {
     console: { log() {}, error() {} },
     process: { env: {} },

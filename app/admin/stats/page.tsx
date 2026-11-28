@@ -139,7 +139,8 @@ export default function StatsAdminPage() {
             latestMembers?.members === null ? 'Discord total unavailable for this snapshot' : null,
             latestMembers?.presence != null ? `${fmt(latestMembers.presence)} online` : null,
             clubRoleCount != null ? `${fmt(clubRoleCount)} club member role` : null,
-          ].filter(Boolean).join(' · ') || (latestMembers?.date ? `Snapshot ${fmtDay(latestMembers.date)}` : 'Server member count')}
+            latestMembers?.date ? `Snapshot ${fmtDay(latestMembers.date)}` : null,
+          ].filter(Boolean).join(' · ') || 'Server member count'}
           loading={loadingStats && !stats}
         />
         <KpiCard
@@ -187,7 +188,7 @@ export default function StatsAdminPage() {
           title="Discord members"
           loading={loadingStats && !stats}
           isEmpty={memberTimeline.points.length < 1}
-          empty="No member snapshots yet. Open this page again later to start the series."
+          empty="No member snapshots yet. Member counts are collected daily."
           actions={<PeriodToggle value={memberPeriod} onChange={setMemberPeriod} />}
         >
           <MembersChart timeline={memberTimeline} />
