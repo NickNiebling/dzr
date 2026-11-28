@@ -1,5 +1,9 @@
-const { createCanvas, loadImage } = require("canvas");
+const { join } = require("node:path");
+const { createCanvas, loadImage, registerFont } = require("canvas");
 const { phenotypeLabel } = require("./phenotype");
+
+const RIDER_STATS_FONT = "Inter, Arial, sans-serif";
+registerFont(join(__dirname, "../assets/fonts/Inter-Regular.ttf"), { family: "Inter" });
 
 function getRacingScore(rider) {
   if (rider && typeof rider.racingScore === "number" && Number.isFinite(rider.racingScore)) {
@@ -95,9 +99,9 @@ async function generateSingleRiderStatsImage(rider) {
     ["5m", formatMetric(rider.power.w300)],
     ["20m", formatMetric(rider.power.w1200)],
     ["Finishes", rider.race.finishes ?? "—"],
-    ["😁 Wins", rider.race.wins ?? "—"],
-    ["☺️ Podiums", rider.race.podiums ?? "—"],
-    ["😖 DNFs", rider.race.dnfs ?? "—"],
+    ["Wins", rider.race.wins ?? "—"],
+    ["Podiums", rider.race.podiums ?? "—"],
+    ["DNFs", rider.race.dnfs ?? "—"],
   ];
   const rowHeight = 30;
   const topMargin = 150;
@@ -132,18 +136,18 @@ async function generateSingleRiderStatsImage(rider) {
 
   // Title text
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "bold 30px Arial";
+  ctx.font = `bold 30px ${RIDER_STATS_FONT}`;
   ctx.fillText("Rider Stats", leftMargin, 70);
 
   // Row labels
   const xOffset = leftMargin + 180;
-  ctx.font = "bold 22px Arial";
+  ctx.font = `21px ${RIDER_STATS_FONT}`;
   rows.forEach(([label], i) => {
     ctx.fillText(label, leftMargin, topMargin + i * rowHeight, xOffset - leftMargin - 12);
   });
 
   // Values
-  ctx.font = "bold 16px Arial";
+  ctx.font = `16px ${RIDER_STATS_FONT}`;
   rows.forEach(([, value, hasCategoryIcon], i) => {
     const y = topMargin + i * rowHeight;
     if (hasCategoryIcon) drawRiderStatsValue(ctx, value, xOffset, y);
