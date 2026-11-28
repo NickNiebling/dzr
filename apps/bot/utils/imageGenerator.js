@@ -28,8 +28,8 @@ function roundRect(ctx, x, y, width, height, radius) {
 function formatMetric({ watts, wkg }) {
   if (watts == null && wkg == null) return "Unavailable";
   if (watts == null) return `${wkg.toFixed(2)} W/kg`;
-  if (wkg == null) return `${Math.round(watts)} W`;
-  return `${Math.round(watts)} W (${wkg.toFixed(2)} W/kg)`;
+  if (wkg == null) return `${watts} W`;
+  return `${watts} W (${wkg.toFixed(2)} W/kg)`;
 }
 
 async function generateSingleRiderStatsImage(rider) {

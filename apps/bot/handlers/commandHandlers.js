@@ -203,17 +203,20 @@ async function handleRiderStats(interaction) {
     };
 
     const imageBuffer = await generateSingleRiderStatsImage(riderSummary);
-    const graphBuffer = await generatePowerLineGraph(rider);
-    const graphBuffer2 = await generatePowerLineGraph2(rider);
-
-    const attachment1 = new AttachmentBuilder(imageBuffer, { name: "rider_stats.png" });
-    const attachment2 = new AttachmentBuilder(graphBuffer, { name: "power_graph.png" });
-    const attachment3 = new AttachmentBuilder(graphBuffer2, { name: "power_graph2.png" });
+    const attachments = [new AttachmentBuilder(imageBuffer, { name: "rider_stats.png" })];
+    if (rider.power) {
+      const graphBuffer = await generatePowerLineGraph(rider);
+      const graphBuffer2 = await generatePowerLineGraph2(rider);
+      attachments.push(
+        new AttachmentBuilder(graphBuffer, { name: "power_graph.png" }),
+        new AttachmentBuilder(graphBuffer2, { name: "power_graph2.png" })
+      );
+    }
 
     const zwiftPowerLink = `[${rider.name}](<https://www.zwiftpower.com/profile.php?z=${rider.riderId}>)`;
     const content = `ZwiftPower Profile: ${zwiftPowerLink}`;
 
-    await ephemeralReplyWithPublish(interaction, content, [attachment1, attachment2, attachment3]);
+    await ephemeralReplyWithPublish(interaction, content, attachments);
     return {
       success: true,
       rider: riderSummary,
